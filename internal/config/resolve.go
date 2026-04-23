@@ -41,13 +41,18 @@ func LoadAliases() (map[string]string, error) {
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", path, err)
+			return nil
 		}
 		var af aliasesFile
 		if err := yaml.Unmarshal(data, &af); err != nil {
-			return fmt.Errorf("parsing %s: %w", path, err)
+			fmt.Fprintf(os.Stderr, "warning: skipping malformed %s: %v\n", path, err)
+			return nil
 		}
 		for k, v := range af.Aliases {
+			if k == "" || v == "" {
+				continue
+			}
 			merged[k] = v
 		}
 		return nil
