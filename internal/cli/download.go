@@ -40,9 +40,9 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	if err := gh.CheckInstalled(); err != nil {
 		return err
 	}
-	aliases, aliasErr := config.FetchAliases()
+	aliases, aliasErr := config.LoadAliases()
 	if aliasErr != nil {
-		color.Yellow("⚠ could not fetch aliases (offline?): %v", aliasErr)
+		color.Yellow("⚠ could not load aliases: %v", aliasErr)
 	}
 
 	type dlJob struct {

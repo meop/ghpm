@@ -55,9 +55,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	aliases, aliasErr := config.FetchAliases()
+	aliases, aliasErr := config.LoadAliases()
 	if aliasErr != nil {
-		color.Yellow("⚠ could not fetch aliases (offline?): %v", aliasErr)
+		color.Yellow("⚠ could not load aliases: %v", aliasErr)
 	}
 
 	jobs := make([]installJob, 0, len(args))

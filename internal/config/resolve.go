@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
-	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -20,20 +20,38 @@ type aliasesFile struct {
 	Aliases map[string]string `yaml:"aliases"`
 }
 
-var (
-	aliasCache     map[string]string
-	aliasesFetched bool
-	aliasesMu      sync.Mutex
-)
-
-// FetchAliases fetches the remote aliases.yaml once per session.
-// Only caches on success so a transient network error retries next call.
-func FetchAliases() (map[string]string, error) {
-	aliasesMu.Lock()
-	defer aliasesMu.Unlock()
-	if aliasesFetched {
-		return aliasCache, nil
+func aliasesCachePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
 	}
+	return filepath.Join(home, ".ghpm", "aliases.yaml"), nil
+}
+
+// LoadAliases reads the locally cached aliases from ~/.ghpm/aliases.yaml.
+// Returns nil (no error) if the cache doesn't exist yet.
+func LoadAliases() (map[string]string, error) {
+	path, err := aliasesCachePath()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var af aliasesFile
+	if err := yaml.Unmarshal(data, &af); err != nil {
+		return nil, err
+	}
+	return af.Aliases, nil
+}
+
+// RefreshAliases fetches the remote aliases.yaml and saves it to
+// ~/.ghpm/aliases.yaml for local caching. Called during ghpm update.
+func RefreshAliases() (map[string]string, error) {
 	resp, err := http.Get(aliasesURL)
 	if err != nil {
 		return nil, err
@@ -47,9 +65,25 @@ func FetchAliases() (map[string]string, error) {
 	if err := yaml.Unmarshal(data, &af); err != nil {
 		return nil, err
 	}
-	aliasCache = af.Aliases
-	aliasesFetched = true
-	return aliasCache, nil
+	if err := saveAliasesCache(data); err != nil {
+		return nil, err
+	}
+	return af.Aliases, nil
+}
+
+func saveAliasesCache(data []byte) error {
+	path, err := aliasesCachePath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).
@@ -86,7 +120,7 @@ func ResolveSource(name, version string, manifest *Manifest, aliases map[string]
 		return p.Source, nil
 	}
 
-	// 2. Remote aliases
+	// 2. Aliases (from local cache)
 	if aliases != nil {
 		if src, ok := aliases[name]; ok {
 			return normalizeSource(src), nil

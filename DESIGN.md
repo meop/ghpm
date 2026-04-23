@@ -253,14 +253,12 @@ Users type `ghpm install fzf`, but we need `github.com/junegunn/fzf`.
 
 1. **Manifest lookup**: already installed → use stored `source`
 2. **`@version` parsing**: `fzf@0.70` → split name `fzf` + version `0.70`, then resolve `fzf`
-3. **Remote aliases**: fetch `aliases.yaml` from `github.com/meop/ghpm-config` (cached locally for the session). This is the primary alias source.
-4. **Shorthand syntax**: `owner/repo` → `github.com/owner/repo`
-5. **Full URI**: `github.com/owner/repo` → use directly
-6. **GitHub search fallback**: use `gh search repos <name>` to find candidates. Prompt the user to confirm which repo they meant.
+3. **Local alias cache**: read `~/.ghpm/aliases.yaml` (cached on disk)
+4. **GitHub search fallback**: use `gh search repos <name>` to find candidates. Prompt the user to confirm which repo they meant.
 
 ### 6.2 Remote aliases format
 
-Fetched from `github.com/meop/ghpm-config/cfg/aliases.yaml`:
+Sourced from `github.com/meop/ghpm-config/cfg/aliases.yaml`:
 
 ```yaml
 aliases:
@@ -272,7 +270,7 @@ aliases:
   lazygit: github.com/jesseduffield/lazygit
 ```
 
-Fetched once per session (or on demand), cached in memory. Not written to disk — always fresh from remote so updates to the config repo propagate immediately.
+Cached on disk at `~/.ghpm/aliases.yaml`. Only `ghpm update` fetches a fresh copy from the remote repo. All other commands (`install`, `info`, `download`) read from the local cache only. This avoids a network roundtrip on every command while keeping aliases up to date when the user is already updating packages.
 
 ### 6.3 `@version` syntax
 
@@ -532,7 +530,7 @@ Ordered to minimize blocking dependencies and deliver a usable tool incrementall
 | Version syntax | Homebrew-style `name@version` instead of `--version` flag |
 | Versioned binary naming | `@` separator: `fzf@0.70.0` (not `-`). Consistent with manifest key syntax and avoids ambiguity with hyphenated package names like `lazy-git` |
 | Manifest format | JSON — stdlib only, no comments needed (machine-managed) |
-| Package aliases | Remote `aliases.yaml` from `github.com/meop/ghpm-config`, cached per session |
+| Package aliases | Remote `aliases.yaml` from `github.com/meop/ghpm-config`, cached on disk at `~/.ghpm/aliases.yaml`, refreshed only during `ghpm update` |
 | Asset selection | Store chosen filename in manifest (`asset_pattern`) for repeatable updates |
 | Platform priorities | Windows: MSVC > GNU; Linux: GNU > Musl. Configurable in `settings.json` |
 | Parallelism | 5 workers default, configurable in `settings.json` |

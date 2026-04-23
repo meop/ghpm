@@ -37,6 +37,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Refresh aliases from remote (update is the only command that fetches fresh aliases)
+	if _, err := config.RefreshAliases(); err != nil {
+		color.Yellow("⚠ could not refresh aliases: %v", err)
+	}
+
 	// Build target list — skip exact pins, include floating and major/minor pins
 	isExactPin := func(key string) bool {
 		_, verStr, isPinned := config.ParseVersionSuffix(key)
