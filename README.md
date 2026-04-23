@@ -123,4 +123,4 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE.txt)
