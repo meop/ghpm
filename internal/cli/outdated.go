@@ -1,8 +1,9 @@
 package cli
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -41,7 +42,6 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 
 	tasks := make([]parallel.Task, 0)
 	for key, pkg := range manifest.Packages {
-		key, pkg := key, pkg
 		_, verStr, isPinned := config.ParseVersionSuffix(key)
 		var c config.Constraint
 		if isPinned {
@@ -94,7 +94,9 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sort.Slice(outdated, func(i, j int) bool { return outdated[i].name < outdated[j].name })
+	slices.SortFunc(outdated, func(a, b outdatedResult) int {
+		return cmp.Compare(a.name, b.name)
+	})
 	fmt.Printf("%-30s %-15s %s\n", "NAME", "INSTALLED", "LATEST")
 	fmt.Printf("%-30s %-15s %s\n", "----", "---------", "------")
 	for _, o := range outdated {

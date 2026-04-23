@@ -56,7 +56,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 	tasks := make([]parallel.Task, 0, len(args))
 	for _, arg := range args {
-		arg := arg
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if err := config.ValidateName(name); err != nil {
 			color.Red("✗ %s: %v", arg, err)
@@ -123,7 +122,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 	dlTasks := make([]parallel.Task, len(ready))
 	for i, r := range ready {
-		r := r
 		dlTasks[i] = parallel.Task{
 			Name: r.name,
 			Run: func() (any, error) {

@@ -2,6 +2,8 @@ module github.com/meop/ghpm
 
 go 1.25.0
 
+toolchain go1.26.2
+
 require (
 	github.com/fatih/color v1.19.0
 	github.com/spf13/cobra v1.10.2

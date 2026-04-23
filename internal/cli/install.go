@@ -90,7 +90,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	// Resolve releases and pick assets in parallel
 	tasks := make([]parallel.Task, len(jobs))
 	for i, job := range jobs {
-		job := job
 		tasks[i] = parallel.Task{
 			Name: job.name,
 			Run: func() (any, error) {
@@ -164,7 +163,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	// Download + verify + extract in parallel
 	installTasks := make([]parallel.Task, len(ready))
 	for i, r := range ready {
-		r := r
 		installTasks[i] = parallel.Task{
 			Name: r.job.name,
 			Run: func() (any, error) {

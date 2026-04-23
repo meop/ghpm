@@ -90,7 +90,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	tasks := make([]parallel.Task, 0, len(targets))
 	for key, pkg := range targets {
-		key, pkg := key, pkg
 		_, verStr, isPinned := config.ParseVersionSuffix(key)
 		var c config.Constraint
 		if isPinned {
@@ -156,7 +155,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	updateTasks := make([]parallel.Task, len(ready))
 	for i, r := range ready {
-		r := r
 		updateTasks[i] = parallel.Task{
 			Name: r.key,
 			Run: func() (any, error) {

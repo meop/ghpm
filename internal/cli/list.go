@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -32,7 +32,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	for k := range manifest.Packages {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	fmt.Printf("%-30s %-15s %-10s %s\n", "NAME", "VERSION", "PINNED", "SOURCE")
 	fmt.Printf("%-30s %-15s %-10s %s\n", "----", "-------", "------", "------")
