@@ -32,7 +32,7 @@ func TestReleaseBaseDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "release")
+	want := filepath.Join(home, ".ghpm", "releases")
 	if dir != want {
 		t.Errorf("ReleaseBaseDir() = %q, want %q", dir, want)
 	}
@@ -58,9 +58,35 @@ func TestReleaseDir_Structure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Expect: ~/.ghpm/release/github.com/cli/cli/v2.0.0
-	want := filepath.Join(home, ".ghpm", "release", "github.com", "cli", "cli", "v2.0.0")
+	want := filepath.Join(home, ".ghpm", "releases", "github.com", "cli", "cli", "v2.0.0")
 	if dir != want {
 		t.Errorf("ReleaseDir = %q, want %q", dir, want)
+	}
+}
+
+func TestAliasesBaseDir(t *testing.T) {
+	home := withHome(t)
+	dir, err := AliasesBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".ghpm", "aliases")
+	if dir != want {
+		t.Errorf("AliasesBaseDir() = %q, want %q", dir, want)
+	}
+}
+
+func TestAliasDir_Structure(t *testing.T) {
+	home := withHome(t)
+	dir, err := AliasDir("github.com/meop/ghpm-config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".ghpm", "aliases", "github.com", "meop", "ghpm-config")
+	if dir != want {
+		t.Errorf("AliasDir = %q, want %q", dir, want)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Errorf("AliasDir did not create directory: %v", err)
 	}
 }

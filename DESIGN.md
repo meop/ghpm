@@ -56,14 +56,19 @@ No heavy GitHub SDK — all GitHub interaction goes through `gh` CLI invoked via
 ```
 ~/.ghpm/
 ├── bin/                        # installed binaries (added to PATH)
-├── release/                    # cached release assets
+├── releases/                   # cached release assets
 │   └── github.com/
 │       └── <owner>/
 │           └── <repo>/
 │               └── <version>/
 │                   └── <asset>
+├── aliases/                    # cached alias files per repo
+│   └── github.com/
+│       └── <owner>/
+│           └── <repo>/
+│               └── aliases.yaml
 ├── manifest.json               # tracked packages
-└── settings.json               # user preferences (optional)
+└── settings.json               # user preferences (optional, not created by default)
 ```
 
 ### 2.2 Manifest format (`manifest.json`)
@@ -98,7 +103,7 @@ Key fields:
 
 ### 2.3 Settings (`settings.json`, optional)
 
-Defaults are hardcoded. User can override by creating `~/.ghpm/settings.json`:
+`~/.ghpm/settings.json` is **not created by default** — ghpm runs fine without it using hardcoded defaults. Create it to override:
 
 ```json
 {
@@ -107,20 +112,22 @@ Defaults are hardcoded. User can override by creating `~/.ghpm/settings.json`:
     "linux": ["gnu", "musl"],
     "windows": ["msvc", "gnu"]
   },
-  "no_verify": false
+  "no_verify": false,
+  "alias_repos": ["github.com/meop/ghpm-config"]
 }
 ```
 
 - **`parallelism`**: max concurrent download/extract operations (default: 5)
 - **`platform_priority`**: when multiple assets match OS+arch, prefer toolchains in this order. Default: Windows → MSVC over GNU; Linux → GNU over Musl.
 - **`no_verify`**: skip SHA verification globally (default: false)
+- **`alias_repos`**: list of GitHub repos to fetch `aliases.yaml` from (default: `["github.com/meop/ghpm-config"]`). Multiple repos are supported; their alias maps are merged (later entries win on conflict).
 
 ### 2.4 Config module (`internal/config/`)
 
 - `LoadManifest() (*Manifest, error)` — read manifest, create if missing
 - `SaveManifest(m *Manifest) error` — atomic write (write to temp, rename)
 - `LoadSettings() (*Settings, error)` — load settings with hardcoded defaults for missing file
-- `EnsureDirs() error` — create `~/.ghpm/{bin,release}` if missing
+- `EnsureDirs() error` — create `~/.ghpm/{bin,releases,aliases}` if missing
 - Define `PackageEntry`, `Manifest`, `Settings` structs
 
 ---
@@ -258,7 +265,7 @@ Users type `ghpm install fzf`, but we need `github.com/junegunn/fzf`.
 
 ### 6.2 Remote aliases format
 
-Sourced from `github.com/meop/ghpm-config/cfg/aliases.yaml`:
+Each alias repo (configurable via `alias_repos` in settings) must have an `aliases.yaml` at its root:
 
 ```yaml
 aliases:
@@ -270,21 +277,27 @@ aliases:
   lazygit: github.com/jesseduffield/lazygit
 ```
 
-Cached on disk at `~/.ghpm/aliases.yaml`. Only `ghpm update` fetches a fresh copy from the remote repo. All other commands (`install`, `info`, `download`) read from the local cache only. This avoids a network roundtrip on every command while keeping aliases up to date when the user is already updating packages.
+Each repo's file is cached at `~/.ghpm/aliases/github.com/<owner>/<repo>/aliases.yaml`. On load, ghpm walks the entire `~/.ghpm/aliases/` tree and merges all `aliases.yaml` files it finds — later files win on key conflict. Only `ghpm update` fetches fresh copies from remote. All other commands read from the local cache only, avoiding a network roundtrip while keeping aliases up to date during regular updates.
 
 ### 6.3 `@version` syntax
 
-Homebrew-style version pinning:
+Three levels of pinning, plus floating:
 
 ```
-ghpm install fzf@0.70        # installs fzf version 0.70.x, binary → fzf@0.70.0
-ghpm install fzf              # installs latest fzf, binary → fzf
-ghpm install fzf ripgrep bat  # installs latest of all three in parallel
-ghpm update fzf@0.70 ripgrep  # updates only fzf@0.70 and ripgrep
-ghpm uninstall fzf@0.70       # removes the versioned copy only
+ghpm install fzf              # latest, binary → fzf
+ghpm install fzf@14           # latest 14.x, binary → fzf@14
+ghpm install fzf@14.1         # latest 14.1.x, binary → fzf@14.1
+ghpm install fzf@14.1.0       # exact, binary → fzf@14.1.0 (never updates)
+ghpm update fzf@14 ripgrep    # updates fzf@14 within major, and ripgrep to latest
+ghpm uninstall fzf@14         # removes only the major-pinned copy
 ```
 
-The manifest key includes the version for versioned installs: `fzf@0.70.0`.
+The manifest key uses the constraint as written by the user (`fzf@14`, not `fzf@14.2.1`). The actual installed version is stored in `version`. Binary names strip the `v` prefix (`fzf@14.2.1` → binary is `fzf@14`).
+
+- **Floating** (`fzf`): `ghpm update` always fetches the newest release.
+- **Major pin** (`fzf@14`): `ghpm update` finds the latest `14.x.x`.
+- **Minor pin** (`fzf@14.1`): `ghpm update` finds the latest `14.1.x`.
+- **Exact pin** (`fzf@14.1.0`): `ghpm outdated` and `ghpm update` skip it entirely.
 
 ---
 
@@ -346,22 +359,22 @@ Examples: `ghpm download fzf`, `ghpm download fzf@0.70 --path /tmp`
 #### `ghpm outdated`
 
 1. Load manifest
-2. For each package where `versioned == false`:
-   - Fetch latest release tag from GitHub
-   - Compare with installed version
-   - If newer, add to outdated list
+2. For each package, determine update scope from the manifest key:
+   - **Floating** (`fzf`): fetch latest release, compare
+   - **Major/minor pin** (`fzf@14`, `fzf@14.1`): find latest release matching the constraint, compare
+   - **Exact pin** (`fzf@14.1.0`): skip — never shown as outdated
 3. Print table: `NAME  INSTALLED  LATEST`
-4. Versioned packages (`fzf@0.70`) are never shown as outdated — they are pinned
 
 #### `ghpm update [names]`
 
 Examples: `ghpm update`, `ghpm update fzf ripgrep`
 
-1. If no names given, update all unversioned (`versioned == false`) packages
-2. If names given, update only those (must be unversioned)
-3. For each: download latest, extract, replace binary, update manifest
+1. If no names given, update all floating and major/minor-pinned packages (exact pins are skipped)
+2. If names given, update only those (exact pins warn and skip)
+3. For each: find latest release within constraint, download, extract, replace binary, update manifest
 4. Uses stored `asset_pattern` to prefer the same asset naming
 5. Prompt before each update (or batch prompt)
+6. Refreshes all configured alias repos before checking for updates
 
 #### `ghpm uninstall <names>`
 
@@ -375,8 +388,8 @@ Examples: `ghpm uninstall fzf`, `ghpm uninstall fzf@0.70 ripgrep`
 
 #### `ghpm clean [--all]`
 
-1. Default: scan `~/.ghpm/release/`, compare against manifest, remove assets for versions not currently installed
-2. `--all`: remove entire `~/.ghpm/release/` contents
+1. Default: scan `~/.ghpm/releases/`, compare against manifest, remove assets for versions not currently installed
+2. `--all`: remove entire `~/.ghpm/releases/` contents
 3. Prompt before deleting
 
 #### `ghpm upgrade`
@@ -394,7 +407,7 @@ Diagnostic command — checks system health:
 2. `~/.ghpm/bin` in PATH?
 3. Manifest file valid JSON?
 4. Settings file valid (if present)?
-5. Disk usage of `~/.ghpm/release/` cache
+5. Disk usage of `~/.ghpm/releases/` cache
 6. Print summary with PASS/FAIL per check
 
 ---
@@ -530,7 +543,9 @@ Ordered to minimize blocking dependencies and deliver a usable tool incrementall
 | Version syntax | Homebrew-style `name@version` instead of `--version` flag |
 | Versioned binary naming | `@` separator: `fzf@0.70.0` (not `-`). Consistent with manifest key syntax and avoids ambiguity with hyphenated package names like `lazy-git` |
 | Manifest format | JSON — stdlib only, no comments needed (machine-managed) |
-| Package aliases | Remote `aliases.yaml` from `github.com/meop/ghpm-config`, cached on disk at `~/.ghpm/aliases.yaml`, refreshed only during `ghpm update` |
+| Package aliases | One or more alias repos configured via `alias_repos` in settings (default: `github.com/meop/ghpm-config`). Each repo's `aliases.yaml` is cached at `~/.ghpm/aliases/<repo>/aliases.yaml` and merged on load. Refreshed only during `ghpm update`. |
+| Version pinning | Three levels: major (`@14`), minor (`@14.1`), exact (`@14.1.0`). Exact pins never update. Major/minor pins update within their constraint. Manifest key and binary name use the constraint string, not the actual tag. |
+| `settings.json` | Not created by default — ghpm uses hardcoded defaults. User creates it manually to override parallelism, platform priority, SHA verification, or alias repos. |
 | Asset selection | Store chosen filename in manifest (`asset_pattern`) for repeatable updates |
 | Platform priorities | Windows: MSVC > GNU; Linux: GNU > Musl. Configurable in `settings.json` |
 | Parallelism | 5 workers default, configurable in `settings.json` |

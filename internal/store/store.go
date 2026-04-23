@@ -23,13 +23,34 @@ func BinDir() (string, error) {
 	return filepath.Join(base, "bin"), nil
 }
 
-// ReleaseBaseDir returns ~/.ghpm/release.
+// ReleaseBaseDir returns ~/.ghpm/releases.
 func ReleaseBaseDir() (string, error) {
 	base, err := ghpmDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "release"), nil
+	return filepath.Join(base, "releases"), nil
+}
+
+// AliasesBaseDir returns ~/.ghpm/aliases.
+func AliasesBaseDir() (string, error) {
+	base, err := ghpmDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "aliases"), nil
+}
+
+// AliasDir returns (and creates) the cache directory for a specific alias repo.
+// source is e.g. "github.com/meop/ghpm-config".
+func AliasDir(source string) (string, error) {
+	base, err := AliasesBaseDir()
+	if err != nil {
+		return "", err
+	}
+	relPath := strings.ReplaceAll(source, "/", string(filepath.Separator))
+	dir := filepath.Join(base, relPath)
+	return dir, os.MkdirAll(dir, 0755)
 }
 
 // ReleaseDir returns the cache directory for a specific source+version.

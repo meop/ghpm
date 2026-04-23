@@ -12,73 +12,103 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-)
 
-const aliasesURL = "https://raw.githubusercontent.com/meop/ghpm-config/main/cfg/aliases.yaml"
+	"github.com/meop/ghpm/internal/store"
+)
 
 type aliasesFile struct {
 	Aliases map[string]string `yaml:"aliases"`
 }
 
-func aliasesCachePath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".ghpm", "aliases.yaml"), nil
-}
-
-// LoadAliases reads the locally cached aliases from ~/.ghpm/aliases.yaml.
-// Returns nil (no error) if the cache doesn't exist yet.
+// LoadAliases scans ~/.ghpm/aliases recursively for aliases.yaml files,
+// loads all of them, and merges into a single map (later entries win on conflict).
+// Returns an empty map (no error) if the aliases directory doesn't exist yet.
 func LoadAliases() (map[string]string, error) {
-	path, err := aliasesCachePath()
+	base, err := store.AliasesBaseDir()
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
+	merged := map[string]string{}
+	err = filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() || d.Name() != "aliases.yaml" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var af aliasesFile
+		if err := yaml.Unmarshal(data, &af); err != nil {
+			return fmt.Errorf("parsing %s: %w", path, err)
+		}
+		for k, v := range af.Aliases {
+			merged[k] = v
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	var af aliasesFile
-	if err := yaml.Unmarshal(data, &af); err != nil {
-		return nil, err
-	}
-	return af.Aliases, nil
+	return merged, nil
 }
 
-// RefreshAliases fetches the remote aliases.yaml and saves it to
-// ~/.ghpm/aliases.yaml for local caching. Called during ghpm update.
+// RefreshAliases fetches aliases.yaml from each repo configured in settings
+// (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/aliases/.
+// Called during ghpm update.
 func RefreshAliases() (map[string]string, error) {
-	resp, err := http.Get(aliasesURL)
+	cfg, err := LoadSettings()
 	if err != nil {
 		return nil, err
+	}
+	repos := cfg.AliasRepos
+	if len(repos) == 0 {
+		repos = defaultSettings().AliasRepos
+	}
+	var fetchErrs []string
+	for _, repo := range repos {
+		if err := fetchAndCacheAliases(repo); err != nil {
+			fetchErrs = append(fetchErrs, fmt.Sprintf("%s: %v", repo, err))
+		}
+	}
+	if len(fetchErrs) > 0 {
+		return nil, fmt.Errorf("%s", strings.Join(fetchErrs, "; "))
+	}
+	return LoadAliases()
+}
+
+func fetchAndCacheAliases(repo string) error {
+	slug := strings.TrimPrefix(repo, "github.com/")
+	if !strings.Contains(slug, "/") {
+		return fmt.Errorf("invalid alias repo %q (want github.com/owner/repo)", repo)
+	}
+	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/aliases.yaml", slug)
+	resp, err := http.Get(url) //nolint:noctx
+	if err != nil {
+		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, url)
+	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var af aliasesFile
 	if err := yaml.Unmarshal(data, &af); err != nil {
-		return nil, err
+		return fmt.Errorf("parsing aliases.yaml from %s: %w", repo, err)
 	}
-	if err := saveAliasesCache(data); err != nil {
-		return nil, err
-	}
-	return af.Aliases, nil
-}
-
-func saveAliasesCache(data []byte) error {
-	path, err := aliasesCachePath()
+	dir, err := store.AliasDir(repo)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
+	path := filepath.Join(dir, "aliases.yaml")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return err

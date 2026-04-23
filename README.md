@@ -37,14 +37,16 @@ export PATH="$PATH:$HOME/.ghpm/bin"
 
 ```sh
 ghpm install fzf              # install latest fzf
-ghpm install fzf@0.70         # install fzf 0.70.x (tracks latest patch)
+ghpm install fzf@14           # install latest fzf 14.x (tracks within major)
+ghpm install fzf@14.1         # install latest fzf 14.1.x (tracks within minor)
+ghpm install fzf@14.1.0       # install exact fzf 14.1.0 (static, never updates)
 ghpm install fzf ripgrep bat  # install multiple in parallel
 
 ghpm list                     # show installed packages
 ghpm info fzf                 # show available releases and assets
 ghpm outdated                 # check for updates
 
-ghpm update                   # update all unversioned packages
+ghpm update                   # update all floating and major/minor-pinned packages
 ghpm update fzf               # update specific package
 
 ghpm uninstall fzf            # remove package
@@ -64,17 +66,18 @@ ghpm doctor                   # check system health
 
 ### Version pinning
 
-`ghpm` supports Homebrew-style version constraints:
+| Syntax | Meaning | Updates |
+|---|---|---|
+| `fzf` | Latest version | Yes — `ghpm update` fetches newest release |
+| `fzf@14` | Latest 14.x | Yes — within major only |
+| `fzf@14.1` | Latest 14.1.x | Yes — within major.minor only |
+| `fzf@14.1.0` | Exact version | Never — static pin |
 
-| Syntax | Meaning |
-|---|---|
-| `fzf` | Latest version, updates on `ghpm update` |
-| `fzf@0.70` | Latest `0.70.x`, updates within minor |
-| `fzf@0.70.0` | Exact version, never updates |
+Manifest key and binary name both use the constraint as written (e.g., `fzf@14`, not `fzf@14.2.1`). The actual installed version is recorded in the manifest.
 
 ### Configuration
 
-Optional `~/.ghpm/settings.json`:
+`~/.ghpm/settings.json` is **not created by default** — ghpm runs fine without it. Create it to override any of these defaults:
 
 ```json
 {
@@ -83,11 +86,19 @@ Optional `~/.ghpm/settings.json`:
     "linux": ["gnu", "musl"],
     "windows": ["msvc", "gnu"]
   },
-  "no_verify": false
+  "no_verify": false,
+  "alias_repos": ["github.com/meop/ghpm-config"]
 }
 ```
 
-Package aliases are fetched from [ghpm-config](https://github.com/meop/ghpm-config). If a name isn't found in the alias list, `ghpm` searches GitHub and prompts you to pick a repo.
+| Field | Default | Description |
+|---|---|---|
+| `parallelism` | `5` | Max concurrent downloads |
+| `platform_priority` | see above | Preferred toolchain order when multiple assets match |
+| `no_verify` | `false` | Skip SHA256 verification globally |
+| `alias_repos` | `["github.com/meop/ghpm-config"]` | Alias repos to fetch from; all their `aliases.yaml` files are merged |
+
+Package aliases resolve simple names like `fzf` to GitHub repos. `ghpm update` refreshes all configured alias repos. If a name isn't found, `ghpm` searches GitHub and prompts you to pick a repo.
 
 ## Build from source
 
@@ -104,7 +115,8 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 ## How it works
 
 - All GitHub interaction goes through the `gh` CLI — no GitHub SDK
-- Releases are cached in `~/.ghpm/release/github.com/<owner>/<repo>/<version>/`
+- Release assets are cached in `~/.ghpm/releases/github.com/<owner>/<repo>/<version>/`
+- Alias files are cached in `~/.ghpm/aliases/github.com/<owner>/<repo>/aliases.yaml`
 - Binaries are installed to `~/.ghpm/bin/`
 - State is tracked in `~/.ghpm/manifest.json`
 - SHA256 verification runs by default when `.sha256` sidecar files are available in the release
