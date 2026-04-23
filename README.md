@@ -4,7 +4,7 @@ A package manager that installs binaries from GitHub Releases, using `gh` as its
 
 ## Requirements
 
-- [Go 1.25+](https://go.dev/dl/)
+- [Go 1.26+](https://go.dev/dl/)
 - [gh CLI](https://cli.github.com/) (authenticated for private repos)
 
 ## Install
