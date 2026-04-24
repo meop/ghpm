@@ -63,7 +63,7 @@ echo "Installed ghpm to $INSTALL_DIR/ghpm"
 # --- Check / install gh CLI ---
 if ! command -v gh >/dev/null 2>&1; then
   printf "gh CLI not found. Install it from its GitHub release now? [y/N] "
-  read -r REPLY
+  read -r REPLY </dev/tty
   if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
     GH_TMP=$(mktemp -d)
     trap 'rm -rf "$GH_TMP"' EXIT
