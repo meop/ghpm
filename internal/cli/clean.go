@@ -57,7 +57,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 	installed := map[string]bool{}
 	for key, pkg := range manifest.Installs {
 		name, _, _ := config.ParseVersionSuffix(key)
-		if src, ok := manifest.Tools[name]; ok {
+		if src, ok := manifest.Repos[name]; ok {
 			installed[src+"/"+pkg.Version] = true
 		}
 	}

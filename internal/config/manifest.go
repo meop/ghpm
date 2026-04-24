@@ -12,7 +12,7 @@ type PackageEntry struct {
 }
 
 type Manifest struct {
-	Tools    map[string]string       `json:"tools"`
+	Repos    map[string]string       `json:"repos"`
 	Installs map[string]PackageEntry `json:"installs"`
 }
 
@@ -44,7 +44,7 @@ func loadManifestFile(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return &Manifest{
-			Tools:  map[string]string{},
+			Repos:    map[string]string{},
 			Installs: map[string]PackageEntry{},
 		}, nil
 	}
@@ -55,8 +55,8 @@ func loadManifestFile(path string) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
-	if m.Tools == nil {
-		m.Tools = map[string]string{}
+	if m.Repos == nil {
+		m.Repos = map[string]string{}
 	}
 	if m.Installs == nil {
 		m.Installs = map[string]PackageEntry{}

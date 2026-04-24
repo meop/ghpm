@@ -86,7 +86,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !hasOther {
-			delete(manifest.Tools, baseName)
+			delete(manifest.Repos, baseName)
 		}
 		color.Green("✓ uninstalled %s", t.key)
 	}

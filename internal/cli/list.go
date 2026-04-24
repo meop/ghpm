@@ -39,7 +39,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	for _, k := range keys {
 		p := manifest.Installs[k]
 		baseName, _, _ := config.ParseVersionSuffix(k)
-		src := manifest.Tools[baseName]
+		src := manifest.Repos[baseName]
 		fmt.Printf("%-30s %-15s %-10s %s\n", k, p.Version, p.Pin, src)
 	}
 	return nil

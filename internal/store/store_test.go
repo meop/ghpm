@@ -64,29 +64,29 @@ func TestReleaseDir_Structure(t *testing.T) {
 	}
 }
 
-func TestToolsBaseDir(t *testing.T) {
+func TestReposBaseDir(t *testing.T) {
 	home := withHome(t)
-	dir, err := ToolsBaseDir()
+	dir, err := ReposBaseDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "tools")
+	want := filepath.Join(home, ".ghpm", "repos")
 	if dir != want {
-		t.Errorf("ToolsBaseDir() = %q, want %q", dir, want)
+		t.Errorf("ReposBaseDir() = %q, want %q", dir, want)
 	}
 }
 
-func TestToolDir_Structure(t *testing.T) {
+func TestRepoDir_Structure(t *testing.T) {
 	home := withHome(t)
-	dir, err := ToolDir("github.com/meop/ghpm-config")
+	dir, err := RepoDir("github.com/meop/ghpm-config")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "tools", "github.com", "meop", "ghpm-config")
+	want := filepath.Join(home, ".ghpm", "repos", "github.com", "meop", "ghpm-config")
 	if dir != want {
-		t.Errorf("ToolDir = %q, want %q", dir, want)
+		t.Errorf("RepoDir = %q, want %q", dir, want)
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		t.Errorf("ToolDir did not create directory: %v", err)
+		t.Errorf("RepoDir did not create directory: %v", err)
 	}
 }

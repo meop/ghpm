@@ -37,9 +37,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Refresh tools from remote (update is the only command that fetches fresh tools)
-	if _, err := config.RefreshTools(); err != nil {
-		color.Yellow("⚠ could not refresh tools: %v", err)
+	// Refresh repos from remote (update is the only command that fetches fresh repos)
+	if _, err := config.RefreshRepos(); err != nil {
+		color.Yellow("⚠ could not refresh repos: %v", err)
 	}
 
 	// Build target list — skip fixed pins
@@ -79,7 +79,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	tasks := make([]parallel.Task, 0, len(targets))
 	for key, pkg := range targets {
 		name, verStr, isPinned := config.ParseVersionSuffix(key)
-		source := manifest.Tools[name]
+		source := manifest.Repos[name]
 		var c config.Constraint
 		if isPinned {
 			c, _ = config.ParseConstraint(verStr)

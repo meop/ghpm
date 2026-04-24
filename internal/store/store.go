@@ -32,19 +32,19 @@ func ReleaseBaseDir() (string, error) {
 	return filepath.Join(base, "releases"), nil
 }
 
-// ToolsBaseDir returns ~/.ghpm/tools.
-func ToolsBaseDir() (string, error) {
+// ReposBaseDir returns ~/.ghpm/repos.
+func ReposBaseDir() (string, error) {
 	base, err := ghpmDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "tools"), nil
+	return filepath.Join(base, "repos"), nil
 }
 
-// ToolDir returns (and creates) the cache directory for a specific tool repo.
+// RepoDir returns (and creates) the cache directory for a specific repo source.
 // source is e.g. "github.com/meop/ghpm-config".
-func ToolDir(source string) (string, error) {
-	base, err := ToolsBaseDir()
+func RepoDir(source string) (string, error) {
+	base, err := ReposBaseDir()
 	if err != nil {
 		return "", err
 	}
