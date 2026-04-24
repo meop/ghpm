@@ -11,14 +11,14 @@ A package manager that installs binaries from GitHub Releases, using `gh` as its
 
 **Linux / macOS:**
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/meop/ghpm/main/install.sh | sh
+```bash
+curl --fail-with-body --location --no-progress-meter --url https://raw.githubusercontent.com/meop/ghpm/main/install.sh | bash
 ```
 
-**Windows (PowerShell):**
+**Windows:**
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/meop/ghpm/main/install.ps1 | Invoke-Expression
+irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubusercontent.com/meop/ghpm/main/install.ps1 | iex
 ```
 
 **From source:**
