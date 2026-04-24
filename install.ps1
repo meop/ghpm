@@ -23,49 +23,48 @@ function Save-Asset($Release, $Pattern, $Dest) {
   Invoke-WebRequest $asset.browser_download_url -OutFile $Dest -UseBasicParsing
 }
 
+function Install-Binary($Release, $Pattern, $Binary, $Dest) {
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
+  New-Item -ItemType Directory -Path $tmp | Out-Null
+  try {
+    $zip = Join-Path $tmp 'pkg.zip'
+    Save-Asset $Release $Pattern $zip
+    Expand-Archive $zip -DestinationPath $tmp
+    if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest | Out-Null }
+    $exe = Get-ChildItem $tmp -Recurse -Filter $Binary | Select-Object -First 1
+    Copy-Item $exe.FullName $Dest -Force
+  } finally {
+    Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 # Install ghpm
 Write-Host "Fetching latest ghpm release: github.com/$GhpmRepo"
 $GhpmRelease = Get-LatestRelease $GhpmRepo
-$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
-New-Item -ItemType Directory -Path $TmpDir | Out-Null
-try {
-  Save-Asset $GhpmRelease "ghpm-.*-windows-$Arch\.zip" (Join-Path $TmpDir 'ghpm.zip')
-  Expand-Archive (Join-Path $TmpDir 'ghpm.zip') -DestinationPath $TmpDir
-  if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir | Out-Null }
-  Copy-Item (Join-Path $TmpDir 'ghpm.exe') $InstallDir -Force
-} finally {
-  Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
-}
+Install-Binary $GhpmRelease "ghpm-.*-windows-$Arch\.zip$" 'ghpm.exe' $InstallDir
 Write-Host "Installed ghpm $($GhpmRelease.tag_name)" -ForegroundColor Green
 
 # Install gh (bootstrap — ghpm needs it to operate)
 Write-Host "Fetching latest gh release: github.com/$GhRepo"
 $GhRelease = Get-LatestRelease $GhRepo
-$GhTmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
-New-Item -ItemType Directory -Path $GhTmp | Out-Null
-try {
-  Save-Asset $GhRelease "gh_.*_windows_$Arch\.zip" (Join-Path $GhTmp 'gh.zip')
-  Expand-Archive (Join-Path $GhTmp 'gh.zip') -DestinationPath $GhTmp
-  if (-not (Test-Path $GhpmBin)) { New-Item -ItemType Directory -Path $GhpmBin | Out-Null }
-  $GhExe = Get-ChildItem $GhTmp -Recurse -Filter 'gh.exe' | Select-Object -First 1
-  Copy-Item $GhExe.FullName $GhpmBin -Force
-} finally {
-  Remove-Item $GhTmp -Recurse -Force -ErrorAction SilentlyContinue
-}
+Install-Binary $GhRelease "gh_.*_windows_$Arch\.zip$" 'gh.exe' $GhpmBin
 Write-Host "Installed gh $($GhRelease.tag_name)" -ForegroundColor Green
 
-# Register gh in ghpm manifest
+# Authenticate gh and register it in ghpm manifest
 $env:PATH = "$InstallDir;$GhpmBin;$env:PATH"
+Write-Host 'Authenticating gh...'
+& "$GhpmBin\gh.exe" auth login
 Write-Host 'Registering gh in ghpm manifest...'
 & "$InstallDir\ghpm.exe" install gh
 
+function Check-EnvPath($Dir) {
+  $current = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+  if ($current -notlike "*$Dir*") {
+    Write-Host "NOTE: $Dir is not in your PATH." -ForegroundColor Yellow
+    Write-Host "  Add it with: [System.Environment]::SetEnvironmentVariable('Path', `"`$env:Path;$Dir`", 'User')" -ForegroundColor Yellow
+  }
+}
+
 Write-Host ''
-$CurrentPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
-if ($CurrentPath -notlike "*$InstallDir*") {
-  Write-Host "NOTE: $InstallDir is not in your PATH." -ForegroundColor Yellow
-  Write-Host "  Add it with: [System.Environment]::SetEnvironmentVariable('Path', `"`$env:Path;$InstallDir`", 'User')" -ForegroundColor Yellow
-}
-if ($CurrentPath -notlike "*$GhpmBin*") {
-  Write-Host "NOTE: $GhpmBin is not in your PATH." -ForegroundColor Yellow
-  Write-Host "  Add it with: [System.Environment]::SetEnvironmentVariable('Path', `"`$env:Path;$GhpmBin`", 'User')" -ForegroundColor Yellow
-}
+Check-EnvPath $InstallDir
+Check-EnvPath $GhpmBin

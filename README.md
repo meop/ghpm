@@ -6,8 +6,8 @@ A package manager that installs binaries from GitHub Releases, using `gh` as its
 
 **Linux / macOS:**
 
-```bash
-curl --fail-with-body --location --no-progress-meter --url https://raw.githubusercontent.com/meop/ghpm/main/install.sh | bash
+```sh
+curl --fail-with-body --location --no-progress-meter --url https://raw.githubusercontent.com/meop/ghpm/main/install.sh | sh
 ```
 
 **Windows:**
