@@ -260,7 +260,7 @@ Users type `ghpm install fzf`, but we need `github.com/junegunn/fzf`.
 
 1. **Manifest lookup**: already installed → use stored `source`
 2. **`@version` parsing**: `fzf@0.70` → split name `fzf` + version `0.70`, then resolve `fzf`
-3. **Local alias cache**: read `~/.ghpm/aliases.yaml` (cached on disk)
+3. **Local alias cache**: read all `aliases.yaml` files from `~/.ghpm/aliases/` subdirectories (one per configured repo)
 4. **GitHub search fallback**: use `gh search repos <name>` to find candidates. Prompt the user to confirm which repo they meant.
 
 ### 6.2 Remote aliases format
