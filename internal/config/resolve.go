@@ -141,8 +141,13 @@ func ValidateName(name string) error {
 	return nil
 }
 
+// builtinSources maps names that ghpm always knows about without aliases or search.
+var builtinSources = map[string]string{
+	"gh": "github.com/cli/cli",
+}
+
 // ResolveSource resolves a simple package name to a full GitHub URI (github.com/owner/repo).
-// Resolution order: manifest → aliases → gh search fallback.
+// Resolution order: manifest → builtins → aliases → gh search fallback.
 // name must have already been validated by ValidateName.
 func ResolveSource(name, version string, manifest *Manifest, aliases map[string]string) (string, error) {
 	// 1. Manifest lookup
@@ -155,14 +160,19 @@ func ResolveSource(name, version string, manifest *Manifest, aliases map[string]
 		return p.Source, nil
 	}
 
-	// 2. Aliases (from local cache)
+	// 2. Builtins
+	if src, ok := builtinSources[name]; ok {
+		return src, nil
+	}
+
+	// 3. Aliases (from local cache)
 	if aliases != nil {
 		if src, ok := aliases[name]; ok {
 			return normalizeSource(src), nil
 		}
 	}
 
-	// 3. GitHub search fallback
+	// 4. GitHub search fallback
 	return searchGitHub(name)
 }
 
