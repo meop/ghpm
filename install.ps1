@@ -14,7 +14,7 @@ $GhpmBin = "$env:USERPROFILE\.ghpm\bin"
 $Arch = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
   "arm64"
 } else {
-  "x86_64"
+  "amd64"
 }
 
 function Get-LatestRelease($Repo) {
