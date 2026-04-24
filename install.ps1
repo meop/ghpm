@@ -52,8 +52,11 @@ Write-Host "Installed gh $($GhRelease.tag_name)" -ForegroundColor Green
 
 # Authenticate gh and register it in ghpm manifest
 $env:PATH = "$InstallDir;$GhpmBin;$env:PATH"
-Write-Host 'Authenticating gh...'
-& "$GhpmBin\gh.exe" auth login
+& "$GhpmBin\gh.exe" auth status 2>$null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host 'Authenticating gh...'
+  & "$GhpmBin\gh.exe" auth login
+}
 Write-Host 'Registering gh in ghpm manifest...'
 & "$InstallDir\ghpm.exe" install gh
 

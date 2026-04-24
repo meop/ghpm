@@ -21,10 +21,12 @@ builds:
 archives:
   - id: ghpm
     name_template: "ghpm-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - none*
 
