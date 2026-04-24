@@ -88,8 +88,6 @@ if ! command -v gh >/dev/null 2>&1; then
     esac
 
     echo "Installed gh to $GHPM_BIN/gh"
-    echo "Registering gh in ghpm manifest..."
-    "$INSTALL_DIR/ghpm" install gh
   fi
 fi
 
