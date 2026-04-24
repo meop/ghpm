@@ -11,7 +11,7 @@ OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
 case "$ARCH" in
-  x86_64)  ARCH_TAG="x86_64" ;;
+  x86_64)  ARCH_TAG="amd64" ;;
   aarch64|arm64) ARCH_TAG="arm64" ;;
   *)
     echo "Unsupported architecture: $ARCH"
