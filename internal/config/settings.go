@@ -12,7 +12,7 @@ type Settings struct {
 	Parallelism      int              `json:"parallelism"`
 	PlatformPriority PlatformPriority `json:"platform_priority"`
 	NoVerify         bool             `json:"no_verify"`
-	AliasRepos       []string         `json:"alias_repos"`
+	ToolRepos        []string         `json:"tool_repos"`
 }
 
 func defaultSettings() *Settings {
@@ -22,7 +22,7 @@ func defaultSettings() *Settings {
 			"linux":   {"gnu", "musl"},
 			"windows": {"msvc", "gnu"},
 		},
-		AliasRepos: []string{"github.com/meop/ghpm-config"},
+		ToolRepos: []string{"github.com/meop/ghpm-config"},
 	}
 }
 
@@ -55,7 +55,7 @@ func EnsureDirs() error {
 	for _, dir := range []string{
 		filepath.Join(base, "bin"),
 		filepath.Join(base, "releases"),
-		filepath.Join(base, "aliases"),
+		filepath.Join(base, "tools"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err

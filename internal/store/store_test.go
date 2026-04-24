@@ -64,29 +64,29 @@ func TestReleaseDir_Structure(t *testing.T) {
 	}
 }
 
-func TestAliasesBaseDir(t *testing.T) {
+func TestToolsBaseDir(t *testing.T) {
 	home := withHome(t)
-	dir, err := AliasesBaseDir()
+	dir, err := ToolsBaseDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "aliases")
+	want := filepath.Join(home, ".ghpm", "tools")
 	if dir != want {
-		t.Errorf("AliasesBaseDir() = %q, want %q", dir, want)
+		t.Errorf("ToolsBaseDir() = %q, want %q", dir, want)
 	}
 }
 
-func TestAliasDir_Structure(t *testing.T) {
+func TestToolDir_Structure(t *testing.T) {
 	home := withHome(t)
-	dir, err := AliasDir("github.com/meop/ghpm-config")
+	dir, err := ToolDir("github.com/meop/ghpm-config")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "aliases", "github.com", "meop", "ghpm-config")
+	want := filepath.Join(home, ".ghpm", "tools", "github.com", "meop", "ghpm-config")
 	if dir != want {
-		t.Errorf("AliasDir = %q, want %q", dir, want)
+		t.Errorf("ToolDir = %q, want %q", dir, want)
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		t.Errorf("AliasDir did not create directory: %v", err)
+		t.Errorf("ToolDir did not create directory: %v", err)
 	}
 }

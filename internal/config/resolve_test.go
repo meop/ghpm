@@ -40,11 +40,14 @@ func TestValidateName(t *testing.T) {
 	}
 }
 
-func TestResolveSource_ManifestAndAliases(t *testing.T) {
-	m := &Manifest{Packages: map[string]PackageEntry{
-		"bat": {Source: "github.com/sharkdp/bat"},
-	}}
-	aliases := map[string]string{
+func TestResolveSource_ManifestAndTools(t *testing.T) {
+	m := &Manifest{
+		Tools: map[string]string{
+			"bat": "github.com/sharkdp/bat",
+		},
+		Installs: map[string]PackageEntry{},
+	}
+	tools := map[string]string{
 		"fzf": "github.com/junegunn/fzf",
 		"rg":  "github.com/BurntSushi/ripgrep",
 	}
@@ -55,9 +58,9 @@ func TestResolveSource_ManifestAndAliases(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		// From manifest
+		// From manifest sources
 		{"bat", "", "github.com/sharkdp/bat", false},
-		// From aliases
+		// From tools
 		{"fzf", "", "github.com/junegunn/fzf", false},
 		{"rg", "", "github.com/BurntSushi/ripgrep", false},
 		// Unknown — falls through to gh search which fails (no gh in test env)
@@ -65,7 +68,7 @@ func TestResolveSource_ManifestAndAliases(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		got, err := ResolveSource(c.name, c.version, m, aliases)
+		got, err := ResolveSource(c.name, c.version, m, tools)
 		if c.wantErr {
 			if err == nil {
 				t.Errorf("ResolveSource(%q) expected error, got %q", c.name, got)
@@ -83,10 +86,13 @@ func TestResolveSource_ManifestAndAliases(t *testing.T) {
 }
 
 func TestFindBySource(t *testing.T) {
-	m := &Manifest{Packages: map[string]PackageEntry{
-		"gh":  {Source: "github.com/cli/cli"},
-		"fzf": {Source: "github.com/junegunn/fzf"},
-	}}
+	m := &Manifest{
+		Tools: map[string]string{
+			"gh":  "github.com/cli/cli",
+			"fzf": "github.com/junegunn/fzf",
+		},
+		Installs: map[string]PackageEntry{},
+	}
 
 	key, found := FindBySource("github.com/cli/cli", m)
 	if !found || key != "gh" {

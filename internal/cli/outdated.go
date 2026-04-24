@@ -41,12 +41,16 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 	}
 
 	tasks := make([]parallel.Task, 0)
-	for key, pkg := range manifest.Packages {
-		_, verStr, isPinned := config.ParseVersionSuffix(key)
+	for key, pkg := range manifest.Installs {
+		if pkg.Pin == "fixed" {
+			continue
+		}
+		name, verStr, isPinned := config.ParseVersionSuffix(key)
+		source := manifest.Tools[name]
 		var c config.Constraint
 		if isPinned {
 			parsed, cerr := config.ParseConstraint(verStr)
-			if cerr != nil || parsed.Level == config.PinExact {
+			if cerr != nil {
 				continue
 			}
 			c = parsed
@@ -54,7 +58,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		tasks = append(tasks, parallel.Task{
 			Name: key,
 			Run: func() (any, error) {
-				owner, repo, err := gh.SplitSource(pkg.Source)
+				owner, repo, err := gh.SplitSource(source)
 				if err != nil {
 					return nil, err
 				}

@@ -48,8 +48,6 @@ Write-Host "Installed ghpm $($GhpmRelease.tag_name)" -ForegroundColor Green
 Write-Host "Fetching latest gh release: github.com/$GhRepo"
 $GhRelease = Get-LatestRelease $GhRepo
 Install-Binary $GhRelease "gh_.*_windows_$Arch\.zip$" 'gh.exe' $GhpmBin
-Write-Host "Installed gh $($GhRelease.tag_name)" -ForegroundColor Green
-
 # Authenticate gh and register it in ghpm manifest
 $env:PATH = "$InstallDir;$GhpmBin;$env:PATH"
 & "$GhpmBin\gh.exe" auth status 2>$null
@@ -57,17 +55,16 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host 'Authenticating gh...'
   & "$GhpmBin\gh.exe" auth login
 }
-Write-Host 'Registering gh in ghpm manifest...'
-& "$InstallDir\ghpm.exe" install gh
+& "$InstallDir\ghpm.exe" install --yes gh
 
 function Check-EnvPath($Dir) {
   $current = [System.Environment]::GetEnvironmentVariable('Path', 'User')
   if ($current -notlike "*$Dir*") {
+    Write-Host ''
     Write-Host "NOTE: $Dir is not in your PATH." -ForegroundColor Yellow
     Write-Host "  Add it with: [System.Environment]::SetEnvironmentVariable('Path', `"`$env:Path;$Dir`", 'User')" -ForegroundColor Yellow
   }
 }
 
-Write-Host ''
 Check-EnvPath $InstallDir
 Check-EnvPath $GhpmBin

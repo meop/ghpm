@@ -11,25 +11,25 @@ func TestLoadManifestMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Packages == nil {
-		t.Error("expected non-nil packages map")
+	if m.Tools == nil {
+		t.Error("expected non-nil tools map")
 	}
-	if len(m.Packages) != 0 {
-		t.Error("expected empty packages map for missing file")
+	if m.Installs == nil {
+		t.Error("expected non-nil installs map")
+	}
+	if len(m.Installs) != 0 {
+		t.Error("expected empty installs map for missing file")
 	}
 }
 
 func TestSaveAndLoadManifest(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest.json")
 	m := &Manifest{
-		Packages: map[string]PackageEntry{
-			"fzf": {
-				Source:       "github.com/junegunn/fzf",
-				Version:      "v0.56.0",
-				Versioned:    false,
-				AssetPattern: "fzf-0.56.0-linux_amd64.tar.gz",
-				InstalledAt:  "2026-04-23T10:00:00Z",
-			},
+		Tools: map[string]string{
+			"fzf": "github.com/junegunn/fzf",
+		},
+		Installs: map[string]PackageEntry{
+			"fzf": {Pin: "latest", Version: "0.56.0"},
 		},
 	}
 
@@ -42,15 +42,18 @@ func TestSaveAndLoadManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entry, ok := loaded.Packages["fzf"]
+	entry, ok := loaded.Installs["fzf"]
 	if !ok {
 		t.Fatal("fzf entry missing after reload")
 	}
-	if entry.Version != "v0.56.0" {
+	if entry.Version != "0.56.0" {
 		t.Errorf("unexpected version: %s", entry.Version)
 	}
-	if entry.Source != "github.com/junegunn/fzf" {
-		t.Errorf("unexpected source: %s", entry.Source)
+	if entry.Pin != "latest" {
+		t.Errorf("unexpected pin: %s", entry.Pin)
+	}
+	if loaded.Tools["fzf"] != "github.com/junegunn/fzf" {
+		t.Errorf("unexpected source: %s", loaded.Tools["fzf"])
 	}
 }
 
@@ -58,7 +61,10 @@ func TestAtomicSave(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "manifest.json")
 
-	m := &Manifest{Packages: map[string]PackageEntry{}}
+	m := &Manifest{
+		Tools:  map[string]string{},
+		Installs: map[string]PackageEntry{},
+	}
 	if err := saveManifestFile(m, path); err != nil {
 		t.Fatal(err)
 	}
