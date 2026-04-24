@@ -2,11 +2,6 @@
 
 A package manager that installs binaries from GitHub Releases, using `gh` as its primary interface to GitHub.
 
-## Requirements
-
-- [Go 1.26+](https://go.dev/dl/)
-- [gh CLI](https://cli.github.com/) (authenticated for private repos)
-
 ## Install
 
 **Linux / macOS:**
