@@ -33,9 +33,9 @@ release_tag() {
 
 release_asset_url() {
   local url
-  url=$(printf '%s' "$RELEASE_JSON" | grep '"browser_download_url"' | grep "\"$1\"" | head -1 | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
+  url=$(printf '%s' "$RELEASE_JSON" | grep '"browser_download_url"' | grep "/$1\"" | head -1 | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
   if [ -z "$url" ]; then
-    echo "Could not find asset matching '$1'"
+    echo "Could not find asset matching '$1'" >&2
     exit 1
   fi
   printf '%s' "$url"
@@ -78,8 +78,10 @@ echo "Installed gh $GH_TAG"
 
 # Authenticate gh and register it in ghpm manifest
 export PATH="$INSTALL_DIR:$GHPM_BIN:$PATH"
-echo 'Authenticating gh...'
-gh auth login </dev/tty
+if ! gh auth status >/dev/null 2>&1; then
+  echo 'Authenticating gh...'
+  gh auth login </dev/tty
+fi
 echo 'Registering gh in ghpm manifest...'
 ghpm install gh </dev/tty
 

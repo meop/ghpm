@@ -45,7 +45,7 @@ func SplitSource(source string) (string, string, error) {
 func ListReleases(owner, repo string) ([]Release, error) {
 	out, err := run("gh", "release", "list",
 		"-R", owner+"/"+repo,
-		"--json", "tagName,isLatest",
+		"--json", "tagName",
 		"--limit", "200",
 	)
 	if err != nil {
@@ -62,7 +62,7 @@ func ListReleases(owner, repo string) ([]Release, error) {
 func GetLatestRelease(owner, repo string) (Release, error) {
 	out, err := run("gh", "release", "view",
 		"-R", owner+"/"+repo,
-		"--json", "tagName,assets,isLatest",
+		"--json", "tagName,assets",
 	)
 	if err != nil {
 		return Release{}, err
