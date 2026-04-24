@@ -73,8 +73,6 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     }
 
     Write-Host "Installed gh to $GhpmBin\gh.exe" -ForegroundColor Green
-    Write-Host "Registering gh in ghpm manifest..."
-    & "$InstallDir\ghpm.exe" install gh
   }
 }
 
