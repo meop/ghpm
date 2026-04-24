@@ -11,11 +11,14 @@ func readYN() bool {
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(strings.ToLower(line))
-	return line == "y" || line == "yes"
+	return line == "" || line == "y" || line == "yes"
 }
 
 func promptConfirm(msg string) bool {
-	fmt.Printf("%s [y/N] ", msg)
+	if yes {
+		return true
+	}
+	fmt.Printf("%s [Y/n] ", msg)
 	return readYN()
 }
 

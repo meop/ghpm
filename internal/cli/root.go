@@ -5,9 +5,10 @@ import (
 )
 
 var (
-	version   = "dev"
-	DryRun    bool
-	NoVerify  bool
+	version  = "dev"
+	dryRun   bool
+	noVerify bool
+	yes      bool
 )
 
 func SetVersion(v string) { version = v }
@@ -19,8 +20,9 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	root.PersistentFlags().BoolVar(&DryRun, "dry-run", false, "Print what would be done without executing")
-	root.PersistentFlags().BoolVar(&NoVerify, "no-verify", false, "Skip SHA256 verification")
+	root.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Print what would be done without executing")
+	root.PersistentFlags().BoolVar(&noVerify, "no-verify", false, "Skip SHA256 verification")
+	root.PersistentFlags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
 	root.Flags().Bool("version", false, "Print ghpm version")
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		v, _ := cmd.Flags().GetBool("version")

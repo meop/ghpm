@@ -33,7 +33,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if cfg.NoVerify {
-		NoVerify = true
+		noVerify = true
 	}
 
 	rel, err := gh.GetLatestRelease("meop", "ghpm")
@@ -51,7 +51,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if DryRun {
+	if dryRun {
 		fmt.Printf("[dry-run] would upgrade ghpm %s → %s (asset: %s)\n", version, rel.TagName, chosen.Name)
 		return nil
 	}
@@ -68,7 +68,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if err := gh.DownloadAsset("meop", "ghpm", rel.TagName, chosen.Name, cacheDir); err != nil {
 		return err
 	}
-	if !NoVerify {
+	if !noVerify {
 		if err := asset.VerifySHA("meop", "ghpm", rel.TagName, cacheDir, chosen.Name, rel.Assets); err != nil {
 			return fmt.Errorf("SHA verification failed: %w", err)
 		}

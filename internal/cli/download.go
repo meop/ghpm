@@ -31,7 +31,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if cfg.NoVerify {
-		NoVerify = true
+		noVerify = true
 	}
 	manifest, err := config.LoadManifest()
 	if err != nil {
@@ -40,9 +40,9 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	if err := gh.CheckInstalled(); err != nil {
 		return err
 	}
-	aliases, aliasErr := config.LoadAliases()
-	if aliasErr != nil {
-		color.Yellow("⚠ could not load aliases: %v", aliasErr)
+	tools, toolErr := config.LoadTools()
+	if toolErr != nil {
+		color.Yellow("⚠ could not load tools: %v", toolErr)
 	}
 
 	type dlJob struct {
@@ -58,12 +58,12 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if err := config.ValidateName(name); err != nil {
-			color.Red("✗ %s: %v", arg, err)
+			color.Yellow("⚠ %s: %v", arg, err)
 			continue
 		}
-		source, err := config.ResolveSource(name, ver, manifest, aliases)
+		source, err := config.ResolveSource(name, ver, manifest, tools)
 		if err != nil {
-			color.Red("✗ %s: %v", arg, err)
+			color.Yellow("⚠ %s: %v", arg, err)
 			continue
 		}
 		tasks = append(tasks, parallel.Task{
@@ -82,11 +82,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return nil, err
 				}
-				var hint string
-				if existing, ok := manifest.Packages[name]; ok {
-					hint = existing.AssetPattern
-				}
-				chosen, err := asset.SelectAsset(rel.Assets, cfg, hint)
+				chosen, err := asset.SelectAsset(rel.Assets, cfg, "")
 				if err != nil {
 					return nil, err
 				}
@@ -99,7 +95,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	var ready []dlJob
 	for _, res := range results {
 		if res.Err != nil {
-			color.Red("✗ %s: %v", res.Name, res.Err)
+			color.Yellow("⚠ %s: %v", res.Name, res.Err)
 			continue
 		}
 		r, ok := res.Value.(dlJob)
@@ -112,7 +108,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if DryRun {
+	if dryRun {
 		for _, r := range ready {
 			fmt.Printf("[dry-run] would download %s %s (asset: %s)\n", r.name, r.release.TagName, r.chosen.Name)
 		}
@@ -145,7 +141,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 	for _, res := range parallel.Run(cmd.Context(), dlTasks, cfg.Parallelism) {
 		if res.Err != nil {
-			color.Red("✗ %s: %v", res.Name, res.Err)
+			color.Yellow("⚠ %s: %v", res.Name, res.Err)
 		} else {
 			color.Green("✓ downloaded %s", res.Name)
 		}

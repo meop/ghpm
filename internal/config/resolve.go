@@ -16,15 +16,15 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-type aliasesFile struct {
-	Aliases map[string]string `yaml:"aliases"`
+type toolsFile struct {
+	Tools map[string]string `yaml:"tools"`
 }
 
-// LoadAliases scans ~/.ghpm/aliases recursively for aliases.yaml files,
+// LoadTools scans ~/.ghpm/tools recursively for tools.yaml files,
 // loads all of them, and merges into a single map (later entries win on conflict).
-// Returns an empty map (no error) if the aliases directory doesn't exist yet.
-func LoadAliases() (map[string]string, error) {
-	base, err := store.AliasesBaseDir()
+// Returns an empty map (no error) if the tools directory doesn't exist yet.
+func LoadTools() (map[string]string, error) {
+	base, err := store.ToolsBaseDir()
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func LoadAliases() (map[string]string, error) {
 			}
 			return err
 		}
-		if d.IsDir() || d.Name() != "aliases.yaml" {
+		if d.IsDir() || d.Name() != "tools.yaml" {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -44,12 +44,12 @@ func LoadAliases() (map[string]string, error) {
 			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", path, err)
 			return nil
 		}
-		var af aliasesFile
-		if err := yaml.Unmarshal(data, &af); err != nil {
+		var tf toolsFile
+		if err := yaml.Unmarshal(data, &tf); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: skipping malformed %s: %v\n", path, err)
 			return nil
 		}
-		for k, v := range af.Aliases {
+		for k, v := range tf.Tools {
 			if k == "" || v == "" {
 				continue
 			}
@@ -63,36 +63,36 @@ func LoadAliases() (map[string]string, error) {
 	return merged, nil
 }
 
-// RefreshAliases fetches aliases.yaml from each repo configured in settings
-// (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/aliases/.
+// RefreshTools fetches tools.yaml from each repo configured in settings
+// (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/tools/.
 // Called during ghpm update.
-func RefreshAliases() (map[string]string, error) {
+func RefreshTools() (map[string]string, error) {
 	cfg, err := LoadSettings()
 	if err != nil {
 		return nil, err
 	}
-	repos := cfg.AliasRepos
+	repos := cfg.ToolRepos
 	if len(repos) == 0 {
-		repos = defaultSettings().AliasRepos
+		repos = defaultSettings().ToolRepos
 	}
 	var fetchErrs []string
 	for _, repo := range repos {
-		if err := fetchAndCacheAliases(repo); err != nil {
+		if err := fetchAndCacheTools(repo); err != nil {
 			fetchErrs = append(fetchErrs, fmt.Sprintf("%s: %v", repo, err))
 		}
 	}
 	if len(fetchErrs) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(fetchErrs, "; "))
 	}
-	return LoadAliases()
+	return LoadTools()
 }
 
-func fetchAndCacheAliases(repo string) error {
+func fetchAndCacheTools(repo string) error {
 	slug := strings.TrimPrefix(repo, "github.com/")
 	if !strings.Contains(slug, "/") {
-		return fmt.Errorf("invalid alias repo %q (want github.com/owner/repo)", repo)
+		return fmt.Errorf("invalid tool repo %q (want github.com/owner/repo)", repo)
 	}
-	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/aliases.yaml", slug)
+	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/tools.yaml", slug)
 	resp, err := http.Get(url) //nolint:noctx
 	if err != nil {
 		return err
@@ -105,15 +105,15 @@ func fetchAndCacheAliases(repo string) error {
 	if err != nil {
 		return err
 	}
-	var af aliasesFile
-	if err := yaml.Unmarshal(data, &af); err != nil {
-		return fmt.Errorf("parsing aliases.yaml from %s: %w", repo, err)
+	var tf toolsFile
+	if err := yaml.Unmarshal(data, &tf); err != nil {
+		return fmt.Errorf("parsing tools.yaml from %s: %w", repo, err)
 	}
-	dir, err := store.AliasDir(repo)
+	dir, err := store.ToolDir(repo)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, "aliases.yaml")
+	path := filepath.Join(dir, "tools.yaml")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return err
@@ -141,33 +141,28 @@ func ValidateName(name string) error {
 	return nil
 }
 
-// builtinSources maps names that ghpm always knows about without aliases or search.
-var builtinSources = map[string]string{
+// builtinTools maps names that ghpm always knows about without user tools or search.
+var builtinTools = map[string]string{
 	"gh": "github.com/cli/cli",
 }
 
-// ResolveSource resolves a simple package name to a full GitHub URI (github.com/owner/repo).
-// Resolution order: manifest → builtins → aliases → gh search fallback.
+// ResolveSource resolves a simple tool name to a full GitHub URI (github.com/owner/repo).
+// Resolution order: manifest tools → builtin tools → user tools → gh search fallback.
 // name must have already been validated by ValidateName.
-func ResolveSource(name, version string, manifest *Manifest, aliases map[string]string) (string, error) {
-	// 1. Manifest lookup
-	if version != "" {
-		if p, ok := manifest.Packages[name+"@"+version]; ok {
-			return p.Source, nil
-		}
-	}
-	if p, ok := manifest.Packages[name]; ok {
-		return p.Source, nil
-	}
-
-	// 2. Builtins
-	if src, ok := builtinSources[name]; ok {
+func ResolveSource(name, version string, manifest *Manifest, tools map[string]string) (string, error) {
+	// 1. Manifest tools (already-installed)
+	if src, ok := manifest.Tools[name]; ok {
 		return src, nil
 	}
 
-	// 3. Aliases (from local cache)
-	if aliases != nil {
-		if src, ok := aliases[name]; ok {
+	// 2. Builtin tools (well-known)
+	if src, ok := builtinTools[name]; ok {
+		return src, nil
+	}
+
+	// 3. User tools (from local cache)
+	if tools != nil {
+		if src, ok := tools[name]; ok {
 			return normalizeSource(src), nil
 		}
 	}
@@ -176,11 +171,11 @@ func ResolveSource(name, version string, manifest *Manifest, aliases map[string]
 	return searchGitHub(name)
 }
 
-// FindBySource returns the manifest key of any package already installed from source.
+// FindBySource returns the tool name already registered with source.
 func FindBySource(source string, manifest *Manifest) (string, bool) {
-	for key, pkg := range manifest.Packages {
-		if pkg.Source == source {
-			return key, true
+	for name, src := range manifest.Tools {
+		if src == source {
+			return name, true
 		}
 	}
 	return "", false
@@ -190,7 +185,7 @@ func FindBySource(source string, manifest *Manifest) (string, bool) {
 func searchGitHub(name string) (string, error) {
 	out, err := exec.Command("gh", "search", "repos", name, "--limit", "5", "--json", "fullName").Output()
 	if err != nil {
-		return "", fmt.Errorf("no alias for %q and gh search failed — is gh authenticated?", name)
+		return "", fmt.Errorf("no entry for %q and gh search failed — is gh authenticated?", name)
 	}
 
 	var repos []struct {
@@ -200,7 +195,7 @@ func searchGitHub(name string) (string, error) {
 		return "", fmt.Errorf("no results found for %q", name)
 	}
 
-	fmt.Printf("No alias for %q. GitHub search results:\n", name)
+	fmt.Printf("No entry for %q. GitHub search results:\n", name)
 	for i, r := range repos {
 		fmt.Printf("  %d) %s\n", i+1, r.FullName)
 	}

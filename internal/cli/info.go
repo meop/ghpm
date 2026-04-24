@@ -28,9 +28,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	if err := gh.CheckInstalled(); err != nil {
 		return err
 	}
-	aliases, aliasErr := config.LoadAliases()
-	if aliasErr != nil {
-		color.Yellow("⚠ could not load aliases: %v", aliasErr)
+	tools, toolErr := config.LoadTools()
+	if toolErr != nil {
+		color.Yellow("⚠ could not load tools: %v", toolErr)
 	}
 
 	for _, arg := range args {
@@ -39,7 +39,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 			fmt.Printf("✗ %s: %v\n", arg, err)
 			continue
 		}
-		source, err := config.ResolveSource(name, ver, manifest, aliases)
+		source, err := config.ResolveSource(name, ver, manifest, tools)
 		if err != nil {
 			fmt.Printf("✗ %s: %v\n", arg, err)
 			continue

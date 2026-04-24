@@ -32,19 +32,19 @@ func ReleaseBaseDir() (string, error) {
 	return filepath.Join(base, "releases"), nil
 }
 
-// AliasesBaseDir returns ~/.ghpm/aliases.
-func AliasesBaseDir() (string, error) {
+// ToolsBaseDir returns ~/.ghpm/tools.
+func ToolsBaseDir() (string, error) {
 	base, err := ghpmDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "aliases"), nil
+	return filepath.Join(base, "tools"), nil
 }
 
-// AliasDir returns (and creates) the cache directory for a specific alias repo.
+// ToolDir returns (and creates) the cache directory for a specific tool repo.
 // source is e.g. "github.com/meop/ghpm-config".
-func AliasDir(source string) (string, error) {
-	base, err := AliasesBaseDir()
+func ToolDir(source string) (string, error) {
+	base, err := ToolsBaseDir()
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +60,6 @@ func ReleaseDir(source, version string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Normalize source path separators
 	relPath := strings.ReplaceAll(source, "/", string(filepath.Separator))
 	dir := filepath.Join(base, relPath, version)
 	return dir, os.MkdirAll(dir, 0755)

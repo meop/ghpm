@@ -4,20 +4,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 type PackageEntry struct {
-	Source       string `json:"source"`
-	Version      string `json:"version"`
-	Versioned    bool   `json:"versioned"`
-	AssetPattern string `json:"asset_pattern"`
-	BinaryName   string `json:"binary_name"`
-	InstalledAt  string `json:"installed_at"`
+	Pin     string `json:"pin"`
+	Version string `json:"version"`
 }
 
 type Manifest struct {
-	Packages map[string]PackageEntry `json:"packages"`
+	Tools    map[string]string       `json:"tools"`
+	Installs map[string]PackageEntry `json:"installs"`
 }
 
 func manifestPath() (string, error) {
@@ -47,7 +43,10 @@ func SaveManifest(m *Manifest) error {
 func loadManifestFile(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return &Manifest{Packages: map[string]PackageEntry{}}, nil
+		return &Manifest{
+			Tools:  map[string]string{},
+			Installs: map[string]PackageEntry{},
+		}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -56,8 +55,11 @@ func loadManifestFile(path string) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
-	if m.Packages == nil {
-		m.Packages = map[string]PackageEntry{}
+	if m.Tools == nil {
+		m.Tools = map[string]string{}
+	}
+	if m.Installs == nil {
+		m.Installs = map[string]PackageEntry{}
 	}
 	return &m, nil
 }
@@ -72,8 +74,4 @@ func saveManifestFile(m *Manifest, path string) error {
 		return err
 	}
 	return os.Rename(tmp, path)
-}
-
-func Now() string {
-	return time.Now().UTC().Format(time.RFC3339)
 }

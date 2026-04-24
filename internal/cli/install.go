@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -29,11 +30,28 @@ type installJob struct {
 	pinned  bool
 }
 
+func (j installJob) pin() string {
+	if !j.pinned {
+		return "latest"
+	}
+	c, err := config.ParseConstraint(j.version)
+	if err != nil {
+		return "latest"
+	}
+	return c.Level.String()
+}
+
+func (j installJob) key() string {
+	if !j.pinned {
+		return j.name
+	}
+	return j.name + "@" + strings.TrimPrefix(j.version, "v")
+}
+
 type jobWithRelease struct {
-	job        installJob
-	release    gh.Release
-	chosen     gh.Asset
-	binaryName string // set after extraction
+	job     installJob
+	release gh.Release
+	chosen  gh.Asset
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
@@ -42,7 +60,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if cfg.NoVerify {
-		NoVerify = true
+		noVerify = true
 	}
 	manifest, err := config.LoadManifest()
 	if err != nil {
@@ -55,21 +73,21 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	aliases, aliasErr := config.LoadAliases()
-	if aliasErr != nil {
-		color.Yellow("⚠ could not load aliases: %v", aliasErr)
+	tools, toolErr := config.LoadTools()
+	if toolErr != nil {
+		color.Yellow("⚠ could not load tools: %v", toolErr)
 	}
 
 	jobs := make([]installJob, 0, len(args))
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if err := config.ValidateName(name); err != nil {
-			color.Red("✗ %s: %v", arg, err)
+			color.Yellow("⚠ %s: %v", arg, err)
 			continue
 		}
-		source, err := config.ResolveSource(name, ver, manifest, aliases)
+		source, err := config.ResolveSource(name, ver, manifest, tools)
 		if err != nil {
-			color.Red("✗ %s: %v", arg, err)
+			color.Yellow("⚠ %s: %v", arg, err)
 			continue
 		}
 		// Deduplication: warn if this source is already installed under another name
@@ -115,17 +133,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 
-				// Use existing asset_pattern as a hint if reinstalling
-				manifestKey := job.name
-				if job.pinned {
-					manifestKey = job.name + "@" + job.version
-				}
-				var assetHint string
-				if existing, ok := manifest.Packages[manifestKey]; ok {
-					assetHint = existing.AssetPattern
-				}
-
-				chosen, err := asset.SelectAsset(rel.Assets, cfg, assetHint)
+				chosen, err := asset.SelectAsset(rel.Assets, cfg, "")
 				if err != nil {
 					return nil, err
 				}
@@ -139,7 +147,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	var ready []jobWithRelease
 	for _, res := range results {
 		if res.Err != nil {
-			color.Red("✗ %s: %v", res.Name, res.Err)
+			color.Yellow("⚠ %s: %v", res.Name, res.Err)
 			continue
 		}
 		r, ok := res.Value.(jobWithRelease)
@@ -152,7 +160,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if DryRun {
+	if dryRun {
 		for _, r := range ready {
 			fmt.Printf("[dry-run] would install %s %s (asset: %s)\n", r.job.name, r.release.TagName, r.chosen.Name)
 		}
@@ -178,7 +186,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 				if err := gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
 					return nil, err
 				}
-				if !NoVerify {
+				if !noVerify {
 					if err := asset.VerifySHA(owner, repo, r.release.TagName, cacheDir, r.chosen.Name, r.release.Assets); err != nil {
 						return nil, fmt.Errorf("SHA verification failed: %w", err)
 					}
@@ -187,15 +195,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return nil, err
 				}
-				outputName := r.job.name
-				if r.job.pinned {
-					outputName = versionedBinName(r.job.name, r.job.version)
-				}
-				binaryName, err := asset.Extract(cacheDir, r.chosen.Name, binDir, outputName, "")
-				if err != nil {
+				outputName := r.job.key()
+				if _, err := asset.Extract(cacheDir, r.chosen.Name, binDir, outputName, ""); err != nil {
 					return nil, err
 				}
-				r.binaryName = binaryName
 				return r, nil
 			},
 		}
@@ -205,24 +208,18 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	for _, res := range installResults {
 		if res.Err != nil {
-			color.Red("✗ %s: %v", res.Name, res.Err)
+			color.Yellow("⚠ %s: %v", res.Name, res.Err)
 			continue
 		}
 		r, ok := res.Value.(jobWithRelease)
 		if !ok {
 			continue
 		}
-		key := r.job.name
-		if r.job.pinned {
-			key = r.job.name + "@" + r.job.version
-		}
-		manifest.Packages[key] = config.PackageEntry{
-			Source:       r.job.source,
-			Version:      config.NormalizeVersion(r.release.TagName),
-			Versioned:    r.job.pinned,
-			AssetPattern: r.chosen.Name,
-			BinaryName:   r.binaryName,
-			InstalledAt:  config.Now(),
+		key := r.job.key()
+		manifest.Tools[r.job.name] = r.job.source
+		manifest.Installs[key] = config.PackageEntry{
+			Pin:     r.job.pin(),
+			Version: config.NormalizeVersion(r.release.TagName),
 		}
 		color.Green("✓ installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))
 	}
@@ -231,9 +228,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 }
 
 func promptInstall(ready []jobWithRelease) bool {
+	if yes {
+		return true
+	}
 	if len(ready) == 1 {
 		r := ready[0]
-		fmt.Printf("Install %s %s? [y/N] ", r.job.name, r.release.TagName)
+		fmt.Printf("Install %s %s? [Y/n] ", r.job.name, r.release.TagName)
 	} else {
 		fmt.Print("Install ")
 		for i, r := range ready {
@@ -242,7 +242,7 @@ func promptInstall(ready []jobWithRelease) bool {
 			}
 			fmt.Printf("%s %s", r.job.name, r.release.TagName)
 		}
-		fmt.Print("? [y/N] ")
+		fmt.Print("? [Y/n] ")
 	}
 	return readYN()
 }

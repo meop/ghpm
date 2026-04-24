@@ -11,6 +11,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -99,7 +100,25 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		check("settings.json valid JSON", jsonErr == nil, "")
 	}
 
-	// 6. Disk usage of release cache
+	// 6. Stale manifest entries (binary missing from disk)
+	manifest, err := config.LoadManifest()
+	if err == nil && binDir != "" && manifest != nil {
+		var stale []string
+		for key := range manifest.Installs {
+			if _, serr := os.Stat(filepath.Join(binDir, key)); os.IsNotExist(serr) {
+				stale = append(stale, key)
+			}
+		}
+		if len(stale) == 0 {
+			fmt.Printf("  [%s] all installed binaries present on disk\n", pass)
+		} else {
+			for _, key := range stale {
+				fmt.Printf("  [%s] %s — binary missing from disk (run 'ghpm uninstall %s' or reinstall)\n", warn, key, key)
+			}
+		}
+	}
+
+	// 7. Disk usage of release cache
 	releaseDir, err := store.ReleaseBaseDir()
 	if err == nil {
 		size := dirSize(releaseDir)

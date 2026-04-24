@@ -14,24 +14,24 @@ import (
 func newSearchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "search <term> [term...]",
-		Short: "Search cached aliases by name or source",
+		Short: "Search cached tools by name or source",
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runSearch,
 	}
 }
 
-type aliasMatch struct {
+type toolMatch struct {
 	name   string
 	source string
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
-	aliases, err := config.LoadAliases()
+	tools, err := config.LoadTools()
 	if err != nil {
 		return err
 	}
-	if len(aliases) == 0 {
-		fmt.Println("No aliases cached — run 'ghpm update' to fetch them.")
+	if len(tools) == 0 {
+		fmt.Println("No tools cached — run 'ghpm update' to fetch them.")
 		return nil
 	}
 
@@ -44,20 +44,20 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		}
 
 		lower := strings.ToLower(term)
-		var matches []aliasMatch
-		for name, source := range aliases {
+		var matches []toolMatch
+		for name, source := range tools {
 			if strings.Contains(strings.ToLower(name), lower) ||
 				strings.Contains(strings.ToLower(source), lower) {
-				matches = append(matches, aliasMatch{name: name, source: source})
+				matches = append(matches, toolMatch{name: name, source: source})
 			}
 		}
 
 		if len(matches) == 0 {
-			fmt.Printf("no aliases matching %q\n", term)
+			fmt.Printf("no tools matching %q\n", term)
 			continue
 		}
 
-		slices.SortFunc(matches, func(a, b aliasMatch) int {
+		slices.SortFunc(matches, func(a, b toolMatch) int {
 			return cmp.Compare(a.name, b.name)
 		})
 

@@ -74,27 +74,23 @@ case "$OS_TAG" in
   linux)  install_from_release "gh_.*_linux_${ARCH_TAG}.tar.gz" 'gh' "$GHPM_BIN" ;;
   darwin) install_from_release "gh_.*_macOS_${ARCH_TAG}.zip"    'gh' "$GHPM_BIN" ;;
 esac
-echo "Installed gh $GH_TAG"
-
-# Authenticate gh and register it in ghpm manifest
 export PATH="$INSTALL_DIR:$GHPM_BIN:$PATH"
 if ! gh auth status >/dev/null 2>&1; then
   echo 'Authenticating gh...'
   gh auth login </dev/tty
 fi
-echo 'Registering gh in ghpm manifest...'
-ghpm install gh </dev/tty
+ghpm install --yes gh
 
 check_path() {
   case ":$PATH:" in
     *":$1:"*) ;;
     *)
+      echo ''
       echo "NOTE: $1 is not in your PATH."
       echo "  Add it with: export PATH=\"\$PATH:$1\""
       ;;
   esac
 }
 
-echo ''
 check_path "$INSTALL_DIR"
 check_path "$GHPM_BIN"

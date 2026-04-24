@@ -38,9 +38,9 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	var targets []uninstallTarget
 	for _, arg := range args {
-		pkg, ok := manifest.Packages[arg]
+		pkg, ok := manifest.Installs[arg]
 		if !ok {
-			color.Red("✗ %s: not installed", arg)
+			color.Yellow("⚠ %s: not installed", arg)
 			continue
 		}
 		targets = append(targets, uninstallTarget{key: arg, pkg: pkg})
@@ -49,15 +49,9 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	binNameFor := func(t uninstallTarget) string {
-		if t.pkg.Versioned {
-			name, version, _ := config.ParseVersionSuffix(t.key)
-			return versionedBinName(name, version)
-		}
-		return t.key
-	}
+	binNameFor := func(t uninstallTarget) string { return t.key }
 
-	if DryRun {
+	if dryRun {
 		for _, t := range targets {
 			fmt.Printf("[dry-run] would remove %s %s (binary: %s)\n", t.key, t.pkg.Version, filepath.Join(binDir, binNameFor(t)))
 		}
@@ -78,10 +72,22 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	for _, t := range targets {
 		binPath := filepath.Join(binDir, binNameFor(t))
 		if err := os.Remove(binPath); err != nil && !os.IsNotExist(err) {
-			color.Red("✗ %s: could not remove binary: %v", t.key, err)
+			color.Yellow("⚠ %s: could not remove binary: %v", t.key, err)
 			continue
 		}
-		delete(manifest.Packages, t.key)
+		delete(manifest.Installs, t.key)
+		// Remove source entry if no packages with this base name remain
+		baseName, _, _ := config.ParseVersionSuffix(t.key)
+		hasOther := false
+		for k := range manifest.Installs {
+			if n, _, _ := config.ParseVersionSuffix(k); n == baseName {
+				hasOther = true
+				break
+			}
+		}
+		if !hasOther {
+			delete(manifest.Tools, baseName)
+		}
 		color.Green("✓ uninstalled %s", t.key)
 	}
 

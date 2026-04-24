@@ -32,7 +32,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	if all {
-		if DryRun {
+		if dryRun {
 			fmt.Printf("[dry-run] would remove all cached assets in %s\n", releaseDir)
 			return nil
 		}
@@ -55,8 +55,11 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	// Build set of installed (source, version) pairs
 	installed := map[string]bool{}
-	for _, pkg := range manifest.Packages {
-		installed[pkg.Source+"/"+pkg.Version] = true
+	for key, pkg := range manifest.Installs {
+		name, _, _ := config.ParseVersionSuffix(key)
+		if src, ok := manifest.Tools[name]; ok {
+			installed[src+"/"+pkg.Version] = true
+		}
 	}
 
 	var toRemove []string
@@ -93,7 +96,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if DryRun {
+	if dryRun {
 		for _, p := range toRemove {
 			fmt.Printf("[dry-run] would remove %s\n", p)
 		}
@@ -107,7 +110,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	for _, p := range toRemove {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			color.Red("✗ %s: %v", p, err)
+			color.Yellow("⚠ %s: %v", p, err)
 		}
 	}
 	color.Green("✓ cleaned %d file(s)", len(toRemove))

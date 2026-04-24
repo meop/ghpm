@@ -22,6 +22,18 @@ type Constraint struct {
 	Raw   string   // normalised string, v stripped (e.g. "14", "14.1", "14.1.0")
 }
 
+func (l PinLevel) String() string {
+	switch l {
+	case PinMajor:
+		return "major"
+	case PinMinor:
+		return "minor"
+	case PinExact:
+		return "fixed"
+	}
+	return "latest"
+}
+
 // ParseConstraint parses a version string into a Constraint.
 // The v prefix is optional and stripped.
 func ParseConstraint(s string) (Constraint, error) {
