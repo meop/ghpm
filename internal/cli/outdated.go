@@ -86,7 +86,11 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		if res.Value == nil {
 			continue
 		}
-		outdated = append(outdated, res.Value.(outdatedResult))
+		r, ok := res.Value.(outdatedResult)
+		if !ok {
+			continue
+		}
+		outdated = append(outdated, r)
 	}
 
 	if len(outdated) == 0 {

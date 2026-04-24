@@ -116,7 +116,7 @@ func mustGhpmDir() string {
 
 func dirSize(path string) int64 {
 	var total int64
-	filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}

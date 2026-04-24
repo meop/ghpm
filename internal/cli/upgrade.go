@@ -79,7 +79,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, "ghpm", ""); err != nil {
 		return err

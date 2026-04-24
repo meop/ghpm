@@ -142,7 +142,11 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			color.Red("✗ %s: %v", res.Name, res.Err)
 			continue
 		}
-		ready = append(ready, res.Value.(jobWithRelease))
+		r, ok := res.Value.(jobWithRelease)
+		if !ok {
+			continue
+		}
+		ready = append(ready, r)
 	}
 	if len(ready) == 0 {
 		return nil
@@ -204,7 +208,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			color.Red("✗ %s: %v", res.Name, res.Err)
 			continue
 		}
-		r := res.Value.(jobWithRelease)
+		r, ok := res.Value.(jobWithRelease)
+		if !ok {
+			continue
+		}
 		key := r.job.name
 		if r.job.pinned {
 			key = r.job.name + "@" + r.job.version
