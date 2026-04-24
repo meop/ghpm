@@ -82,7 +82,7 @@ Manifest key and binary name both use the constraint as written (e.g., `fzf@14`,
     "windows": ["msvc", "gnu"]
   },
   "no_verify": false,
-  "alias_repos": ["github.com/meop/ghpm-config"]
+  "repo_sources": ["github.com/meop/ghpm-config"]
 }
 ```
 
@@ -91,9 +91,9 @@ Manifest key and binary name both use the constraint as written (e.g., `fzf@14`,
 | `parallelism` | `5` | Max concurrent downloads |
 | `platform_priority` | see above | Preferred toolchain order when multiple assets match |
 | `no_verify` | `false` | Skip SHA256 verification globally |
-| `alias_repos` | `["github.com/meop/ghpm-config"]` | Alias repos to fetch from; all their `aliases.yaml` files are merged |
+| `repo_sources` | `["github.com/meop/ghpm-config"]` | Repo sources to fetch from; all their `repos.yaml` files are merged |
 
-Package aliases resolve simple names like `fzf` to GitHub repos. `ghpm update` refreshes all configured alias repos. If a name isn't found, `ghpm` searches GitHub and prompts you to pick a repo.
+Package repos map simple names like `fzf` to GitHub repos. `ghpm update` refreshes all configured repo sources. If a name isn't found, `ghpm` searches GitHub and prompts you to pick a repo.
 
 ## Build from source
 
@@ -111,7 +111,7 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 
 - All GitHub interaction goes through the `gh` CLI — no GitHub SDK
 - Release assets are cached in `~/.ghpm/releases/github.com/<owner>/<repo>/<version>/`
-- Alias files are cached in `~/.ghpm/aliases/github.com/<owner>/<repo>/aliases.yaml`
+- Repo files are cached in `~/.ghpm/repos/github.com/<owner>/<repo>/repos.yaml`
 - Binaries are installed to `~/.ghpm/bin/`
 - State is tracked in `~/.ghpm/manifest.json`
 - SHA256 verification runs by default when `.sha256` sidecar files are available in the release

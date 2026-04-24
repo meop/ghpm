@@ -14,24 +14,24 @@ import (
 func newSearchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "search <term> [term...]",
-		Short: "Search cached tools by name or source",
+		Short: "Search cached repos by name or source",
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runSearch,
 	}
 }
 
-type toolMatch struct {
+type repoMatch struct {
 	name   string
 	source string
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
-	tools, err := config.LoadTools()
+	repos, err := config.LoadRepos()
 	if err != nil {
 		return err
 	}
-	if len(tools) == 0 {
-		fmt.Println("No tools cached — run 'ghpm update' to fetch them.")
+	if len(repos) == 0 {
+		fmt.Println("No repos cached — run 'ghpm update' to fetch them.")
 		return nil
 	}
 
@@ -44,20 +44,20 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		}
 
 		lower := strings.ToLower(term)
-		var matches []toolMatch
-		for name, source := range tools {
+		var matches []repoMatch
+		for name, source := range repos {
 			if strings.Contains(strings.ToLower(name), lower) ||
 				strings.Contains(strings.ToLower(source), lower) {
-				matches = append(matches, toolMatch{name: name, source: source})
+				matches = append(matches, repoMatch{name: name, source: source})
 			}
 		}
 
 		if len(matches) == 0 {
-			fmt.Printf("no tools matching %q\n", term)
+			fmt.Printf("no repos matching %q\n", term)
 			continue
 		}
 
-		slices.SortFunc(matches, func(a, b toolMatch) int {
+		slices.SortFunc(matches, func(a, b repoMatch) int {
 			return cmp.Compare(a.name, b.name)
 		})
 

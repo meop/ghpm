@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -69,6 +70,54 @@ func TestSelectAsset_PlatformMatch(t *testing.T) {
 	}
 	if chosen.Name != "tool-linux-amd64.tar.gz" {
 		t.Errorf("unexpected choice: %s", chosen.Name)
+	}
+}
+
+func TestTokenize(t *testing.T) {
+	cases := []struct {
+		input string
+		want  []string
+	}{
+		{"claude-win32_x64.zip", []string{"claude", "win32", "x64.zip"}},
+		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"tool", "unknown", "linux", "gnu", "x86", "64.tar.gz"}},
+		{"MyTool Darwin ARM64", []string{"mytool", "darwin", "arm64"}},
+	}
+	for _, c := range cases {
+		got := tokenize(c.input)
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("tokenize(%q) = %v, want %v", c.input, got, c.want)
+		}
+	}
+}
+
+func TestHasTokenPrefix(t *testing.T) {
+	cases := []struct {
+		name     string
+		prefixes []string
+		want     bool
+	}{
+		// darwin must NOT match "win" prefix
+		{"tool-darwin-amd64.tar.gz", []string{"win"}, false},
+		// darwin matches "dar"
+		{"tool-darwin-amd64.tar.gz", []string{"dar", "mac"}, true},
+		// windows matches "win"
+		{"tool-windows-x64.zip", []string{"win"}, true},
+		// linux matches "lin"
+		{"tool-linux-amd64.tar.gz", []string{"lin"}, true},
+		// macos matches "mac"
+		{"tool-macos-arm64.tar.gz", []string{"dar", "mac"}, true},
+		// win32 token matches "win"
+		{"claude-win32_x64.zip", []string{"win"}, true},
+		// x86_64 — "x86" token matches "x86"
+		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"x64", "x86", "amd"}, true},
+		// aarch64 matches "aarch"
+		{"tool-linux-aarch64.tar.gz", []string{"arm", "aarch"}, true},
+	}
+	for _, c := range cases {
+		got := hasTokenPrefix(c.name, c.prefixes)
+		if got != c.want {
+			t.Errorf("hasTokenPrefix(%q, %v) = %v, want %v", c.name, c.prefixes, got, c.want)
+		}
 	}
 }
 

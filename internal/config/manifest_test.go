@@ -11,8 +11,8 @@ func TestLoadManifestMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Tools == nil {
-		t.Error("expected non-nil tools map")
+	if m.Repos == nil {
+		t.Error("expected non-nil repos map")
 	}
 	if m.Installs == nil {
 		t.Error("expected non-nil installs map")
@@ -25,7 +25,7 @@ func TestLoadManifestMissing(t *testing.T) {
 func TestSaveAndLoadManifest(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest.json")
 	m := &Manifest{
-		Tools: map[string]string{
+		Repos: map[string]string{
 			"fzf": "github.com/junegunn/fzf",
 		},
 		Installs: map[string]PackageEntry{
@@ -52,8 +52,8 @@ func TestSaveAndLoadManifest(t *testing.T) {
 	if entry.Pin != "latest" {
 		t.Errorf("unexpected pin: %s", entry.Pin)
 	}
-	if loaded.Tools["fzf"] != "github.com/junegunn/fzf" {
-		t.Errorf("unexpected source: %s", loaded.Tools["fzf"])
+	if loaded.Repos["fzf"] != "github.com/junegunn/fzf" {
+		t.Errorf("unexpected source: %s", loaded.Repos["fzf"])
 	}
 }
 
@@ -62,7 +62,7 @@ func TestAtomicSave(t *testing.T) {
 	path := filepath.Join(dir, "manifest.json")
 
 	m := &Manifest{
-		Tools:  map[string]string{},
+		Repos:  map[string]string{},
 		Installs: map[string]PackageEntry{},
 	}
 	if err := saveManifestFile(m, path); err != nil {

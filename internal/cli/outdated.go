@@ -46,7 +46,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		name, verStr, isPinned := config.ParseVersionSuffix(key)
-		source := manifest.Tools[name]
+		source := manifest.Repos[name]
 		var c config.Constraint
 		if isPinned {
 			parsed, cerr := config.ParseConstraint(verStr)

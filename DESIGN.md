@@ -5,7 +5,7 @@
 ghpm is a Go CLI package manager that installs binaries from GitHub Releases, using `gh` as its primary interface to GitHub.
 
 **Repository**: `github.com/meop/ghpm`
-**Config repo**: `github.com/meop/ghpm-config` (remote aliases, platform priorities)
+**Config repo**: `github.com/meop/ghpm-config` (remote repos, platform priorities)
 
 ---
 
@@ -22,7 +22,7 @@ ghpm/
 │       └── main.go
 ├── internal/
 │   ├── cli/          # cobra command definitions
-│   ├── config/       # manifest, settings, alias resolution
+│   ├── config/       # manifest, settings, repo resolution
 │   ├── gh/           # gh CLI wrapper
 │   ├── asset/        # asset matching, selection, extraction
 │   ├── store/        # download cache, bin management
@@ -42,7 +42,7 @@ ghpm/
 |---|---|
 | `github.com/spf13/cobra` | CLI framework (commands, flags, help, completion) |
 | `github.com/fatih/color` | Terminal color output |
-| `gopkg.in/yaml.v3` | Parse remote aliases.yaml from ghpm-config |
+| `gopkg.in/yaml.v3` | Parse remote repos.yaml from ghpm-config |
 | `encoding/json` | Manifest, settings — stdlib only |
 
 No heavy GitHub SDK — all GitHub interaction goes through `gh` CLI invoked via `os/exec`.
@@ -62,11 +62,11 @@ No heavy GitHub SDK — all GitHub interaction goes through `gh` CLI invoked via
 │           └── <repo>/
 │               └── <version>/
 │                   └── <asset>
-├── aliases/                    # cached alias files per repo
+├── repos/                      # cached repo files per source
 │   └── github.com/
 │       └── <owner>/
 │           └── <repo>/
-│               └── aliases.yaml
+│               └── repos.yaml
 ├── manifest.json               # tracked packages
 └── settings.json               # user preferences (optional, not created by default)
 ```
@@ -113,21 +113,21 @@ Key fields:
     "windows": ["msvc", "gnu"]
   },
   "no_verify": false,
-  "alias_repos": ["github.com/meop/ghpm-config"]
+  "repo_sources": ["github.com/meop/ghpm-config"]
 }
 ```
 
 - **`parallelism`**: max concurrent download/extract operations (default: 5)
 - **`platform_priority`**: when multiple assets match OS+arch, prefer toolchains in this order. Default: Windows → MSVC over GNU; Linux → GNU over Musl.
 - **`no_verify`**: skip SHA verification globally (default: false)
-- **`alias_repos`**: list of GitHub repos to fetch `aliases.yaml` from (default: `["github.com/meop/ghpm-config"]`). Multiple repos are supported; their alias maps are merged (later entries win on conflict).
+- **`repo_sources`**: list of GitHub repos to fetch `repos.yaml` from (default: `["github.com/meop/ghpm-config"]`). Multiple sources are supported; their repo maps are merged (later entries win on conflict).
 
 ### 2.4 Config module (`internal/config/`)
 
 - `LoadManifest() (*Manifest, error)` — read manifest, create if missing
 - `SaveManifest(m *Manifest) error` — atomic write (write to temp, rename)
 - `LoadSettings() (*Settings, error)` — load settings with hardcoded defaults for missing file
-- `EnsureDirs() error` — create `~/.ghpm/{bin,releases,aliases}` if missing
+- `EnsureDirs() error` — create `~/.ghpm/{bin,releases,repos}` if missing
 - Define `PackageEntry`, `Manifest`, `Settings` structs
 
 ---
@@ -186,7 +186,7 @@ Use `runtime.GOOS` and `runtime.GOARCH`. Map to common naming conventions:
 
 | `GOARCH` | Common names in assets |
 |---|---|
-| `amd64` | `amd64`, `x86_64`, `x64`, `64bit` |
+| `amd64` | `amd64`, `x86_64`, `x64` |
 | `arm64` | `arm64`, `aarch64`, `armv8` |
 
 ### 4.2 Matching algorithm
@@ -260,15 +260,15 @@ Users type `ghpm install fzf`, but we need `github.com/junegunn/fzf`.
 
 1. **Manifest lookup**: already installed → use stored `source`
 2. **`@version` parsing**: `fzf@0.70` → split name `fzf` + version `0.70`, then resolve `fzf`
-3. **Local alias cache**: read all `aliases.yaml` files from `~/.ghpm/aliases/` subdirectories (one per configured repo)
+3. **Local repo cache**: read all `repos.yaml` files from `~/.ghpm/repos/` subdirectories (one per configured source)
 4. **GitHub search fallback**: use `gh search repos <name>` to find candidates. Prompt the user to confirm which repo they meant.
 
-### 6.2 Remote aliases format
+### 6.2 Remote repos format
 
-Each alias repo (configurable via `alias_repos` in settings) must have an `aliases.yaml` at its root:
+Each repo source (configurable via `repo_sources` in settings) must have a `repos.yaml` at its root:
 
 ```yaml
-aliases:
+repos:
   fzf: github.com/junegunn/fzf
   ripgrep: github.com/BurntSushi/ripgrep
   rg: github.com/BurntSushi/ripgrep
@@ -277,7 +277,7 @@ aliases:
   lazygit: github.com/jesseduffield/lazygit
 ```
 
-Each repo's file is cached at `~/.ghpm/aliases/github.com/<owner>/<repo>/aliases.yaml`. On load, ghpm walks the entire `~/.ghpm/aliases/` tree and merges all `aliases.yaml` files it finds — later files win on key conflict. Only `ghpm update` fetches fresh copies from remote. All other commands read from the local cache only, avoiding a network roundtrip while keeping aliases up to date during regular updates.
+Each source's file is cached at `~/.ghpm/repos/github.com/<owner>/<repo>/repos.yaml`. On load, ghpm walks the entire `~/.ghpm/repos/` tree and merges all `repos.yaml` files it finds — later files win on key conflict. Only `ghpm update` fetches fresh copies from remote. All other commands read from the local cache only, avoiding a network roundtrip while keeping repos up to date during regular updates.
 
 ### 6.3 `@version` syntax
 
@@ -518,7 +518,7 @@ Ordered to minimize blocking dependencies and deliver a usable tool incrementall
 | 3 | `internal/gh` — gh wrapper (list releases, download asset) | Step 1 |
 | 4 | `internal/asset` — platform matching, extraction, SHA verify | Step 1 |
 | 5 | `internal/parallel` — worker pool with orchestrator | Step 1 |
-| 6 | Package name resolution — aliases fetch, `@version` parsing | Steps 2, 3 |
+| 6 | Package name resolution — repos fetch, `@version` parsing | Steps 2, 3 |
 | 7 | `ghpm install <names>` — end-to-end first install (parallel) | Steps 2–6 |
 | 8 | `ghpm list` | Step 2 |
 | 9 | `ghpm info <names>` | Steps 3, 6 |
@@ -543,9 +543,9 @@ Ordered to minimize blocking dependencies and deliver a usable tool incrementall
 | Version syntax | Homebrew-style `name@version` instead of `--version` flag |
 | Versioned binary naming | `@` separator: `fzf@0.70.0` (not `-`). Consistent with manifest key syntax and avoids ambiguity with hyphenated package names like `lazy-git` |
 | Manifest format | JSON — stdlib only, no comments needed (machine-managed) |
-| Package aliases | One or more alias repos configured via `alias_repos` in settings (default: `github.com/meop/ghpm-config`). Each repo's `aliases.yaml` is cached at `~/.ghpm/aliases/<repo>/aliases.yaml` and merged on load. Refreshed only during `ghpm update`. |
+| Package repos | One or more repo sources configured via `repo_sources` in settings (default: `github.com/meop/ghpm-config`). Each source's `repos.yaml` is cached at `~/.ghpm/repos/<source>/repos.yaml` and merged on load. Refreshed only during `ghpm update`. |
 | Version pinning | Three levels: major (`@14`), minor (`@14.1`), exact (`@14.1.0`). Exact pins never update. Major/minor pins update within their constraint. Manifest key and binary name use the constraint string, not the actual tag. |
-| `settings.json` | Not created by default — ghpm uses hardcoded defaults. User creates it manually to override parallelism, platform priority, SHA verification, or alias repos. |
+| `settings.json` | Not created by default — ghpm uses hardcoded defaults. User creates it manually to override parallelism, platform priority, SHA verification, or repo sources. |
 | Asset selection | Store chosen filename in manifest (`asset_pattern`) for repeatable updates |
 | Platform priorities | Windows: MSVC > GNU; Linux: GNU > Musl. Configurable in `settings.json` |
 | Parallelism | 5 workers default, configurable in `settings.json` |
@@ -567,8 +567,8 @@ Input forms and how they are handled:
 
 | Input | Behavior |
 |---|---|
-| `ghpm install gh` | Look up `gh` in aliases → resolve to `github.com/cli/cli` |
-| `ghpm install fzf@0.70` | Look up `fzf` in aliases → resolve to `github.com/junegunn/fzf`, pin version `0.70` |
+| `ghpm install gh` | Look up `gh` in repos → resolve to `github.com/cli/cli` |
+| `ghpm install fzf@0.70` | Look up `fzf` in repos → resolve to `github.com/junegunn/fzf`, pin version `0.70` |
 | `ghpm install mytool` | No alias match → `gh search repos mysearch` → prompt user to pick a repo |
 | `ghpm install cli/cli` | **Rejected** — not a valid filename. Error: "name must be a simple filename (no slashes)" |
 
@@ -576,7 +576,7 @@ Input forms and how they are handled:
 
 1. **Validate name**: must be a simple filename (no `/`, no spaces, must be usable as a binary name). Reject immediately if invalid.
 2. **Manifest lookup**: already installed → use stored `source` URI.
-3. **Remote aliases**: look up simple name in `aliases.yaml`.
+3. **Remote repos**: look up simple name in `repos.yaml`.
 4. **GitHub search fallback**: if no alias, run `gh search repos <name>`, present results, prompt user to pick one.
 5. **Deduplication check**: before proceeding with install, scan the manifest for any existing entry whose `source` matches the resolved URI. If found, inform the user that this package is already installed under a different name (e.g., `"github.com/cli/cli is already installed as 'gh'"`) and abort or offer to update instead.
 
@@ -629,4 +629,4 @@ When `ghpm update` runs for a package:
 
 - **Install**: if the resolved `source` URI already exists in the manifest under any key, warn and skip (or offer update).
 - **Manifest key is always the simple name**: `gh`, not `cli/cli` or `github.com/cli/cli`.
-- **Same repo, different alias**: if `aliases.yaml` has both `rg` and `ripgrep` mapping to `github.com/BurntSushi/ripgrep`, whichever is installed first wins. The second attempt warns that it's already installed and shows the existing name.
+- **Same repo, different name**: if `repos.yaml` has both `rg` and `ripgrep` mapping to `github.com/BurntSushi/ripgrep`, whichever is installed first wins. The second attempt warns that it's already installed and shows the existing name.

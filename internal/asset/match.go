@@ -15,15 +15,15 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 )
 
-var osNames = map[string][]string{
-	"linux":   {"linux", "Linux", "unknown-linux-gnu", "unknown-linux-musl"},
-	"darwin":  {"macos", "darwin", "Darwin", "apple-darwin"},
-	"windows": {"windows", "Windows", "win"},
+var osPrefixes = map[string][]string{
+	"linux":   {"lin"},
+	"darwin":  {"dar", "mac"},
+	"windows": {"win"},
 }
 
-var archNames = map[string][]string{
-	"amd64": {"amd64", "x86_64", "x64", "64bit"},
-	"arm64": {"arm64", "aarch64", "armv8"},
+var archPrefixes = map[string][]string{
+	"amd64": {"amd", "x64", "x86"},
+	"arm64": {"arm", "aarch"},
 }
 
 var skipSuffixes = []string{
@@ -48,25 +48,35 @@ func isSkipped(name string) bool {
 	return false
 }
 
+func tokenize(name string) []string {
+	return strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return r == '-' || r == '_' || r == ' '
+	})
+}
+
+func hasTokenPrefix(name string, prefixes []string) bool {
+	for _, token := range tokenize(name) {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(token, prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func scoreAsset(name string) int {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 	score := 0
 
-	for _, alias := range osNames[goos] {
-		if strings.Contains(name, alias) {
-			score += 10
-			break
-		}
+	if prefixes, ok := osPrefixes[goos]; ok && hasTokenPrefix(name, prefixes) {
+		score += 10
 	}
-	for _, alias := range archNames[goarch] {
-		if strings.Contains(name, alias) {
-			score += 10
-			break
-		}
+	if prefixes, ok := archPrefixes[goarch]; ok && hasTokenPrefix(name, prefixes) {
+		score += 10
 	}
-	// Windows: exe bonus
-	if goos == "windows" && strings.HasSuffix(name, ".exe") {
+	if goos == "windows" && strings.HasSuffix(strings.ToLower(name), ".exe") {
 		score += 5
 	}
 	return score

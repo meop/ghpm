@@ -16,15 +16,15 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-type toolsFile struct {
-	Tools map[string]string `yaml:"tools"`
+type reposFile struct {
+	Repos map[string]string `yaml:"repos"`
 }
 
-// LoadTools scans ~/.ghpm/tools recursively for tools.yaml files,
+// LoadRepos scans ~/.ghpm/repos recursively for repos.yaml files,
 // loads all of them, and merges into a single map (later entries win on conflict).
-// Returns an empty map (no error) if the tools directory doesn't exist yet.
-func LoadTools() (map[string]string, error) {
-	base, err := store.ToolsBaseDir()
+// Returns an empty map (no error) if the repos directory doesn't exist yet.
+func LoadRepos() (map[string]string, error) {
+	base, err := store.ReposBaseDir()
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func LoadTools() (map[string]string, error) {
 			}
 			return err
 		}
-		if d.IsDir() || d.Name() != "tools.yaml" {
+		if d.IsDir() || d.Name() != "repos.yaml" {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -44,12 +44,12 @@ func LoadTools() (map[string]string, error) {
 			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", path, err)
 			return nil
 		}
-		var tf toolsFile
-		if err := yaml.Unmarshal(data, &tf); err != nil {
+		var rf reposFile
+		if err := yaml.Unmarshal(data, &rf); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: skipping malformed %s: %v\n", path, err)
 			return nil
 		}
-		for k, v := range tf.Tools {
+		for k, v := range rf.Repos {
 			if k == "" || v == "" {
 				continue
 			}
@@ -63,36 +63,36 @@ func LoadTools() (map[string]string, error) {
 	return merged, nil
 }
 
-// RefreshTools fetches tools.yaml from each repo configured in settings
-// (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/tools/.
+// RefreshRepos fetches repos.yaml from each source configured in settings
+// (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/repos/.
 // Called during ghpm update.
-func RefreshTools() (map[string]string, error) {
+func RefreshRepos() (map[string]string, error) {
 	cfg, err := LoadSettings()
 	if err != nil {
 		return nil, err
 	}
-	repos := cfg.ToolRepos
-	if len(repos) == 0 {
-		repos = defaultSettings().ToolRepos
+	sources := cfg.RepoSources
+	if len(sources) == 0 {
+		sources = defaultSettings().RepoSources
 	}
 	var fetchErrs []string
-	for _, repo := range repos {
-		if err := fetchAndCacheTools(repo); err != nil {
-			fetchErrs = append(fetchErrs, fmt.Sprintf("%s: %v", repo, err))
+	for _, source := range sources {
+		if err := fetchAndCacheRepos(source); err != nil {
+			fetchErrs = append(fetchErrs, fmt.Sprintf("%s: %v", source, err))
 		}
 	}
 	if len(fetchErrs) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(fetchErrs, "; "))
 	}
-	return LoadTools()
+	return LoadRepos()
 }
 
-func fetchAndCacheTools(repo string) error {
-	slug := strings.TrimPrefix(repo, "github.com/")
+func fetchAndCacheRepos(source string) error {
+	slug := strings.TrimPrefix(source, "github.com/")
 	if !strings.Contains(slug, "/") {
-		return fmt.Errorf("invalid tool repo %q (want github.com/owner/repo)", repo)
+		return fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
 	}
-	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/tools.yaml", slug)
+	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/repos.yaml", slug)
 	resp, err := http.Get(url) //nolint:noctx
 	if err != nil {
 		return err
@@ -105,15 +105,15 @@ func fetchAndCacheTools(repo string) error {
 	if err != nil {
 		return err
 	}
-	var tf toolsFile
-	if err := yaml.Unmarshal(data, &tf); err != nil {
-		return fmt.Errorf("parsing tools.yaml from %s: %w", repo, err)
+	var rf reposFile
+	if err := yaml.Unmarshal(data, &rf); err != nil {
+		return fmt.Errorf("parsing repos.yaml from %s: %w", source, err)
 	}
-	dir, err := store.ToolDir(repo)
+	dir, err := store.RepoDir(source)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, "tools.yaml")
+	path := filepath.Join(dir, "repos.yaml")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return err
@@ -141,28 +141,28 @@ func ValidateName(name string) error {
 	return nil
 }
 
-// builtinTools maps names that ghpm always knows about without user tools or search.
-var builtinTools = map[string]string{
+// builtinRepos maps names that ghpm always knows about without user repos or search.
+var builtinRepos = map[string]string{
 	"gh": "github.com/cli/cli",
 }
 
-// ResolveSource resolves a simple tool name to a full GitHub URI (github.com/owner/repo).
-// Resolution order: manifest tools → builtin tools → user tools → gh search fallback.
+// ResolveSource resolves a simple name to a full GitHub URI (github.com/owner/repo).
+// Resolution order: manifest repos → builtin repos → user repos → gh search fallback.
 // name must have already been validated by ValidateName.
-func ResolveSource(name, version string, manifest *Manifest, tools map[string]string) (string, error) {
-	// 1. Manifest tools (already-installed)
-	if src, ok := manifest.Tools[name]; ok {
+func ResolveSource(name, version string, manifest *Manifest, repos map[string]string) (string, error) {
+	// 1. Manifest repos (already-installed)
+	if src, ok := manifest.Repos[name]; ok {
 		return src, nil
 	}
 
-	// 2. Builtin tools (well-known)
-	if src, ok := builtinTools[name]; ok {
+	// 2. Builtin repos (well-known)
+	if src, ok := builtinRepos[name]; ok {
 		return src, nil
 	}
 
-	// 3. User tools (from local cache)
-	if tools != nil {
-		if src, ok := tools[name]; ok {
+	// 3. User repos (from local cache)
+	if repos != nil {
+		if src, ok := repos[name]; ok {
 			return normalizeSource(src), nil
 		}
 	}
@@ -171,9 +171,9 @@ func ResolveSource(name, version string, manifest *Manifest, tools map[string]st
 	return searchGitHub(name)
 }
 
-// FindBySource returns the tool name already registered with source.
+// FindBySource returns the name already registered with source.
 func FindBySource(source string, manifest *Manifest) (string, bool) {
-	for name, src := range manifest.Tools {
+	for name, src := range manifest.Repos {
 		if src == source {
 			return name, true
 		}
