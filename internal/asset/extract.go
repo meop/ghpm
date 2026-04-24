@@ -59,7 +59,7 @@ func extractTar(src, destDir, outputName, hint, compression string) (string, str
 	if err != nil {
 		return "", "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var r io.Reader
 	switch compression {
@@ -68,7 +68,7 @@ func extractTar(src, destDir, outputName, hint, compression string) (string, str
 		if err != nil {
 			return "", "", err
 		}
-		defer gr.Close()
+		defer func() { _ = gr.Close() }()
 		r = gr
 	case "bz2":
 		r = bzip2.NewReader(f)
@@ -84,7 +84,7 @@ func extractTarXZ(src, destDir, outputName, hint string) (string, string, error)
 	if err := os.MkdirAll(tmp, 0755); err != nil {
 		return "", "", err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 
 	cmd := exec.Command("tar", "xJf", src, "-C", tmp)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -98,7 +98,7 @@ func extractTarReader(r io.Reader, destDir, outputName, hint string) (string, st
 	if err := os.MkdirAll(tmp, 0755); err != nil {
 		return "", "", err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 
 	tr := tar.NewReader(r)
 	for {
@@ -125,13 +125,13 @@ func extractZip(src, destDir, outputName, hint string) (string, string, error) {
 	if err := os.MkdirAll(tmp, 0755); err != nil {
 		return "", "", err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 
 	zr, err := zip.OpenReader(src)
 	if err != nil {
 		return "", "", err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -144,10 +144,10 @@ func extractZip(src, destDir, outputName, hint string) (string, string, error) {
 			return "", "", err
 		}
 		if err := writeFile(rc, out, f.Mode()); err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return "", "", err
 		}
-		rc.Close()
+		_ = rc.Close()
 	}
 	return findAndMoveBinary(tmp, destDir, outputName, hint)
 }

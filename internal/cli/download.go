@@ -102,7 +102,11 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			color.Red("✗ %s: %v", res.Name, res.Err)
 			continue
 		}
-		ready = append(ready, res.Value.(dlJob))
+		r, ok := res.Value.(dlJob)
+		if !ok {
+			continue
+		}
+		ready = append(ready, r)
 	}
 	if len(ready) == 0 {
 		return nil

@@ -135,7 +135,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  %s is already up to date\n", res.Name)
 			continue
 		}
-		ready = append(ready, res.Value.(updateJob))
+		uj, ok := res.Value.(updateJob)
+		if !ok {
+			continue
+		}
+		ready = append(ready, uj)
 	}
 	if len(ready) == 0 {
 		return nil
@@ -190,7 +194,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			color.Red("✗ %s: %v", res.Name, res.Err)
 			continue
 		}
-		r := res.Value.(updateJob)
+		r, ok := res.Value.(updateJob)
+		if !ok {
+			continue
+		}
 		newVer := config.NormalizeVersion(r.release.TagName)
 		manifest.Packages[r.key] = config.PackageEntry{
 			Source:       r.pkg.Source,
