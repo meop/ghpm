@@ -20,7 +20,7 @@ func newDownloadCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runDownload,
 	}
-	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/release/)")
+	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/releases/)")
 	return cmd
 }
 

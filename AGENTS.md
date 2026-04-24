@@ -45,4 +45,4 @@ make build-all
 - Manifest is read/written by the orchestrator goroutine only (not by parallel workers)
 - Package names must be simple filenames (no slashes) — enforced by `config.ValidateName`
 - Versioned binaries use `@` separator: `fzf@0.70.0`
-- Aliases are cached on disk at `~/.ghpm/aliases.yaml`, refreshed only during `ghpm update`
+- Aliases cached under `~/.ghpm/aliases/github.com/<owner>/<repo>/aliases.yaml`, refreshed only during `ghpm update`
