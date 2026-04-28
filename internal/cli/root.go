@@ -15,9 +15,10 @@ func SetVersion(v string) { version = v }
 
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "ghpm",
-		Short: "GitHub Package Manager — install binaries from GitHub Releases",
-		SilenceUsage: true,
+		Use:           "ghpm",
+		Short:         "GitHub Package Manager — install binaries from GitHub Releases",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	root.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Print what would be done without executing")
@@ -27,24 +28,25 @@ func NewRootCmd() *cobra.Command {
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		v, _ := cmd.Flags().GetBool("version")
 		if v {
-			cmd.Printf("ghpm %s\n", version)
+			cmd.Println(version)
 			return nil
 		}
 		return cmd.Help()
 	}
 
 	root.AddCommand(
+		newCleanCmd(),
+		newDoctorCmd(),
+		newDownloadCmd(),
+		newInfoCmd(),
+		newInitCmd(),
 		newInstallCmd(),
 		newListCmd(),
-		newSearchCmd(),
-		newInfoCmd(),
-		newDownloadCmd(),
 		newOutdatedCmd(),
-		newUpdateCmd(),
+		newSearchCmd(),
 		newUninstallCmd(),
-		newCleanCmd(),
+		newUpdateCmd(),
 		newUpgradeCmd(),
-		newDoctorCmd(),
 	)
 
 	return root

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/asset"
@@ -18,19 +17,28 @@ import (
 func newUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "upgrade",
-		Short: "Upgrade ghpm itself to the latest release",
+		Short: "upgrade ghpm itself to the latest release",
 		Args:  cobra.NoArgs,
 		RunE:  runUpgrade,
 	}
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
+	unlock, err := config.AcquireLock()
+	if err != nil {
+		printFail(nil, "%v", err)
+		return errSilent
+	}
+	defer unlock()
+
 	if err := gh.CheckInstalled(); err != nil {
-		return err
+		printFail(nil, "%v", err)
+		return errSilent
 	}
 	cfg, err := config.LoadSettings()
 	if err != nil {
-		return err
+		printFail(nil, "could not load settings: %v", err)
+		return errSilent
 	}
 	if cfg.NoVerify {
 		noVerify = true
@@ -38,74 +46,89 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	rel, err := gh.GetLatestRelease("meop", "ghpm")
 	if err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
 	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
-		fmt.Printf("ghpm %s is already the latest version.\n", version)
+		printInfo(cfg, "ghpm %s is already the latest version", version)
 		return nil
 	}
 
 	chosen, err := asset.SelectAsset(rel.Assets, cfg, "")
 	if err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
 	if dryRun {
-		fmt.Printf("[dry-run] would upgrade ghpm %s → %s (asset: %s)\n", version, rel.TagName, chosen.Name)
+		fmt.Printf("[dry-run] would upgrade ghpm %s → %s (asset: %s)\n", version, config.NormalizeVersion(rel.TagName), chosen.Name)
 		return nil
 	}
 
-	if !promptConfirm(fmt.Sprintf("Upgrade ghpm %s → %s?", version, rel.TagName)) {
-		fmt.Println("Aborted.")
+	if !promptConfirm(fmt.Sprintf("upgrade ghpm %s → %s", version, config.NormalizeVersion(rel.TagName))) {
+		fmt.Println("aborted")
 		return nil
 	}
 
 	cacheDir, err := store.ReleaseDir("github.com/meop/ghpm", rel.TagName)
 	if err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	if err := gh.DownloadAsset("meop", "ghpm", rel.TagName, chosen.Name, cacheDir); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	if !noVerify {
-		if err := asset.VerifySHA("meop", "ghpm", rel.TagName, cacheDir, chosen.Name, rel.Assets); err != nil {
-			return fmt.Errorf("SHA verification failed: %w", err)
+		verified, err := asset.VerifySHA("meop", "ghpm", rel.TagName, cacheDir, chosen.Name, rel.Assets)
+		if err != nil {
+			printFail(cfg, "SHA verification failed: %v", err)
+			return errSilent
+		}
+		if !verified {
+			printWarn(cfg, "no SHA256 checksum available, verification skipped")
 		}
 	}
 
-	// Extract to a temp location then replace self
 	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
 	if err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, "ghpm", ""); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
 	self, err := os.Executable()
 	if err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	self, err = filepath.EvalSymlinks(self)
 	if err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
 	tmp := self + ".new"
 	if err := copyFile(filepath.Join(tmpDir, "ghpm"), tmp); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	if err := os.Chmod(tmp, 0755); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	if err := os.Rename(tmp, self); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
-	color.Green("✓ upgraded ghpm %s → %s", version, rel.TagName)
+	printPass(cfg, "upgraded ghpm %s → %s", version, config.NormalizeVersion(rel.TagName))
 	return nil
 }
 

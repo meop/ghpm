@@ -26,26 +26,21 @@ var archPrefixes = map[string][]string{
 	"arm64": {"arm", "aarch"},
 }
 
-var skipSuffixes = []string{
-	".sha256", ".sha512", ".sig", ".pem", ".sbom",
-	".deb", ".apk", ".rpm", ".msi", ".pkg",
+var allowedSuffixes = []string{
+	".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip",
 }
-
-var skipPatterns = []string{"src", "source"}
 
 func isSkipped(name string) bool {
 	lower := strings.ToLower(name)
-	for _, suf := range skipSuffixes {
+	if strings.Contains(lower, "src") || strings.Contains(lower, "source") {
+		return true
+	}
+	for _, suf := range allowedSuffixes {
 		if strings.HasSuffix(lower, suf) {
-			return true
+			return false
 		}
 	}
-	for _, pat := range skipPatterns {
-		if strings.Contains(lower, pat) {
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 func tokenize(name string) []string {
@@ -85,7 +80,7 @@ func scoreAsset(name string) int {
 // priorityResolved returns true if a clearly ranks higher than b by priority.
 func priorityResolved(aName, bName string, cfg *config.Settings) bool {
 	goos := runtime.GOOS
-	priorities := cfg.PlatformPriority[goos]
+	priorities := cfg.PlatPriority[goos]
 	aRank, bRank := len(priorities), len(priorities) // default: unranked
 	for i, pri := range priorities {
 		if strings.Contains(strings.ToLower(aName), strings.ToLower(pri)) && i < aRank {
@@ -100,7 +95,7 @@ func priorityResolved(aName, bName string, cfg *config.Settings) bool {
 
 func applyPriority(assets []gh.Asset, cfg *config.Settings) []gh.Asset {
 	goos := runtime.GOOS
-	priorities, ok := cfg.PlatformPriority[goos]
+	priorities, ok := cfg.PlatPriority[goos]
 	if !ok || len(priorities) == 0 {
 		return assets
 	}
@@ -126,11 +121,17 @@ func applyPriority(assets []gh.Asset, cfg *config.Settings) []gh.Asset {
 	return best
 }
 
-// SelectAsset picks the best asset for the current platform.
-// hint is the previously stored asset_pattern (may be "").
-// If multiple candidates exist, it prompts the user.
-func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset, error) {
-	// Filter out non-binaries
+// AssetCandidates holds the result of a non-interactive asset selection.
+type AssetCandidates struct {
+	Chosen     gh.Asset
+	Ambiguous []gh.Asset
+	All       []gh.Asset
+}
+
+// SelectAssetAuto performs asset scoring without prompting.
+// If exactly one candidate is found, Chosen is set.
+// If multiple candidates remain, Ambiguous is set and the caller must prompt.
+func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint string) (AssetCandidates, error) {
 	candidates := make([]gh.Asset, 0, len(assets))
 	for _, a := range assets {
 		if !isSkipped(a.Name) {
@@ -138,19 +139,15 @@ func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset
 		}
 	}
 	if len(candidates) == 0 {
-		return gh.Asset{}, fmt.Errorf("no compatible assets found")
+		return AssetCandidates{}, fmt.Errorf("no compatible assets found")
 	}
 
-	// If we have a hint, try to find an exact or prefix match
 	if hint != "" {
-		for _, a := range candidates {
-			if a.Name == hint {
-				return a, nil
-			}
+		if chosen, ok := matchByHint(candidates, hint); ok {
+			return AssetCandidates{Chosen: chosen, All: candidates}, nil
 		}
 	}
 
-	// Score assets
 	type scored struct {
 		asset gh.Asset
 		score int
@@ -164,11 +161,9 @@ func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset
 	}
 
 	if len(scored_) == 0 {
-		// No OS/arch match — show all and prompt
-		return promptSelect("No auto-matched assets. Select one:", candidates)
+		return AssetCandidates{Ambiguous: candidates, All: candidates}, nil
 	}
 
-	// Find max score
 	maxScore := 0
 	for _, s := range scored_ {
 		if s.score > maxScore {
@@ -182,23 +177,107 @@ func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset
 		}
 	}
 
-	// Apply platform priority to break ties
 	best = applyPriority(best, cfg)
 
 	if len(best) == 1 {
-		return best[0], nil
+		return AssetCandidates{Chosen: best[0], All: candidates}, nil
 	}
 
-	// If priority resolved the tie (first element matches a priority keyword),
-	// auto-select rather than prompting.
-	if priorityResolved(best[0].Name, best[1].Name, cfg) {
-		return best[0], nil
+	if len(best) >= 2 && priorityResolved(best[0].Name, best[1].Name, cfg) {
+		return AssetCandidates{Chosen: best[0], All: candidates}, nil
 	}
 
-	return promptSelect("Multiple candidates found. Select one:", best)
+	return AssetCandidates{Ambiguous: best, All: candidates}, nil
 }
 
-func promptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
+// SelectAsset picks the best asset for the current platform.
+// hint is the previously stored asset name (may be "").
+// If multiple candidates exist, it prompts the user.
+func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset, error) {
+	ac, err := SelectAssetAuto(assets, cfg, hint)
+	if err != nil {
+		return gh.Asset{}, err
+	}
+	if ac.Chosen.Name != "" {
+		return ac.Chosen, nil
+	}
+	if len(ac.Ambiguous) > 0 {
+		return PromptSelect("Multiple candidates found. Select one:", ac.Ambiguous)
+	}
+	return PromptSelect("No auto-matched assets. Select one:", ac.All)
+}
+
+// matchByHint tries to find the asset whose structural tokens match the hint.
+// Tokens that look like version numbers are stripped before comparison.
+func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
+	hintTokens := stripVersionTokens(tokenize(hint))
+	if len(hintTokens) == 0 {
+		return gh.Asset{}, false
+	}
+
+	var match gh.Asset
+	matchCount := 0
+	for _, a := range candidates {
+		candidateTokens := stripVersionTokens(tokenize(a.Name))
+		if tokensMatch(hintTokens, candidateTokens) {
+			match = a
+			matchCount++
+		}
+	}
+	if matchCount == 1 {
+		return match, true
+	}
+	return gh.Asset{}, false
+}
+
+// tokensMatch checks if two token slices are structurally equal (same order, same values).
+func tokensMatch(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// stripVersionTokens removes tokens that look like version numbers or version tags.
+func stripVersionTokens(tokens []string) []string {
+	filtered := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		if isVersionToken(t) {
+			continue
+		}
+		filtered = append(filtered, t)
+	}
+	return filtered
+}
+
+// isVersionToken returns true if the token looks like a version number.
+// Matches "1", "0.56.0", "v1.2.3", "1.2.3.tar.gz", etc.
+func isVersionToken(t string) bool {
+	hasDigit := false
+	for _, r := range t {
+		if r >= '0' && r <= '9' {
+			hasDigit = true
+		}
+	}
+	if !hasDigit {
+		return false
+	}
+	s := t
+	if strings.HasPrefix(s, "v") || strings.HasPrefix(s, "V") {
+		s = s[1:]
+	}
+	if len(s) > 0 && s[0] >= '0' && s[0] <= '9' {
+		return true
+	}
+	return false
+}
+
+func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	fmt.Println(msg)
 	for i, a := range assets {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
@@ -216,7 +295,7 @@ func promptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 
 // VerifySHA downloads the .sha256 file (if present among release assets) and
 // verifies the downloaded binary. owner/repo/tag identify the release for download.
-func VerifySHA(owner, repo, tag, cacheDir, assetName string, assets []gh.Asset) error {
+func VerifySHA(owner, repo, tag, cacheDir, assetName string, assets []gh.Asset) (bool, error) {
 	var shaAssetName string
 	for _, a := range assets {
 		if a.Name == assetName+".sha256" || a.Name == assetName+".sha256sum" {
@@ -225,30 +304,30 @@ func VerifySHA(owner, repo, tag, cacheDir, assetName string, assets []gh.Asset) 
 		}
 	}
 	if shaAssetName == "" {
-		return nil // no SHA file in this release
+		return false, nil
 	}
 
 	shaPath := filepath.Join(cacheDir, shaAssetName)
 	if _, err := os.Stat(shaPath); os.IsNotExist(err) {
 		if err := gh.DownloadAsset(owner, repo, tag, shaAssetName, cacheDir); err != nil {
-			return fmt.Errorf("downloading %s: %w", shaAssetName, err)
+			return false, fmt.Errorf("downloading %s: %w", shaAssetName, err)
 		}
 	}
 
 	expected, err := readSHAFile(shaPath, assetName)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	actual, err := sha256File(filepath.Join(cacheDir, assetName))
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if !strings.EqualFold(expected, actual) {
-		return fmt.Errorf("SHA256 mismatch for %s: expected %s, got %s", assetName, expected, actual)
+		return false, fmt.Errorf("SHA256 mismatch for %s: expected %s, got %s", assetName, expected, actual)
 	}
-	return nil
+	return true, nil
 }
 
 func readSHAFile(path, assetName string) (string, error) {

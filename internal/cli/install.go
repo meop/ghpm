@@ -2,25 +2,31 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/entrypoint"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 )
 
+var forceInstall bool
+var installCfg *config.Settings
+
 func newInstallCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "install <name> [name...]",
-		Short: "Install packages from GitHub Releases",
+		Short: "install packages from GitHub Releases",
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runInstall,
 	}
+	cmd.Flags().BoolVarP(&forceInstall, "force", "f", false, "Reinstall even if already installed")
+	return cmd
 }
 
 type installJob struct {
@@ -52,63 +58,92 @@ type jobWithRelease struct {
 	job     installJob
 	release gh.Release
 	chosen  gh.Asset
+	shaWarn bool
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
+	unlock, err := config.AcquireLock()
+	if err != nil {
+		printFail(nil, "%v", err)
+		return errSilent
+	}
+	defer unlock()
+
 	cfg, err := config.LoadSettings()
 	if err != nil {
-		return err
+		printFail(nil, "could not load settings: %v", err)
+		return errSilent
 	}
+	installCfg = cfg
 	if cfg.NoVerify {
 		noVerify = true
 	}
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		return err
+		printFail(cfg, "could not load manifest: %v", err)
+		return errSilent
 	}
 	if err := config.EnsureDirs(); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	if err := gh.CheckInstalled(); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
 	repos, repoErr := config.LoadRepos()
 	if repoErr != nil {
-		color.Yellow("⚠ could not load repos: %v", repoErr)
+		printInfo(cfg, "could not load repos: %v", repoErr)
 	}
 
 	jobs := make([]installJob, 0, len(args))
+	var hadErrors bool
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if err := config.ValidateName(name); err != nil {
-			color.Yellow("⚠ %s: %v", arg, err)
+			printFail(cfg, "%s: %v", arg, err)
+			hadErrors = true
 			continue
 		}
 		source, err := config.ResolveSource(name, ver, manifest, repos)
 		if err != nil {
-			color.Yellow("⚠ %s: %v", arg, err)
+			printFail(cfg, "%s: %v", arg, err)
+			hadErrors = true
 			continue
 		}
-		// Deduplication: warn if this source is already installed under another name
-		if existing, found := config.FindBySource(source, manifest); found {
-			if existing == name {
-				color.Yellow("⚠ %s is already installed — use 'ghpm update %s' to upgrade", name, name)
-			} else {
-				color.Yellow("⚠ %s (%s) is already installed as %q — skipping", name, source, existing)
-			}
+		jobKey := name
+		if pinned {
+			jobKey = name + "@" + strings.TrimPrefix(ver, "v")
+		}
+		if entry, exists := manifest.Installs[jobKey]; exists && !forceInstall {
+			printInfo(cfg, "%s %s is already installed", jobKey, entry.Version)
 			continue
+		}
+		if !pinned {
+			if existing, found := config.FindBySource(source, manifest); found && existing != name && !forceInstall {
+				printInfo(cfg, "%s (%s) is already installed as %q — skipping", name, source, existing)
+				continue
+			}
 		}
 		jobs = append(jobs, installJob{name: name, source: source, version: ver, pinned: pinned})
 	}
 	if len(jobs) == 0 {
+		if hadErrors {
+			return errSilent
+		}
 		return nil
 	}
 
-	// Resolve releases and pick assets in parallel
-	tasks := make([]parallel.Task, len(jobs))
+	type jobWithAssets struct {
+		job       installJob
+		release   gh.Release
+		candidates asset.AssetCandidates
+	}
+
+	fetchTasks := make([]parallel.Task, len(jobs))
 	for i, job := range jobs {
-		tasks[i] = parallel.Task{
+		fetchTasks[i] = parallel.Task{
 			Name: job.name,
 			Run: func() (any, error) {
 				owner, repo, err := gh.SplitSource(job.source)
@@ -133,51 +168,75 @@ func runInstall(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 
-				chosen, err := asset.SelectAsset(rel.Assets, cfg, "")
+				ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "")
 				if err != nil {
 					return nil, err
 				}
-				return jobWithRelease{job: job, release: rel, chosen: chosen}, nil
+				return jobWithAssets{job: job, release: rel, candidates: ac}, nil
 			},
 		}
 	}
 
-	results := parallel.Run(cmd.Context(), tasks, cfg.Parallelism)
+	fetchResults := parallel.Run(cmd.Context(), fetchTasks, cfg.NumParallel)
 
 	var ready []jobWithRelease
-	for _, res := range results {
+	for _, res := range fetchResults {
 		if res.Err != nil {
-			color.Yellow("⚠ %s: %v", res.Name, res.Err)
+			printFail(cfg, "%s %v", res.Name, res.Err)
+			hadErrors = true
 			continue
 		}
-		r, ok := res.Value.(jobWithRelease)
+		ja, ok := res.Value.(jobWithAssets)
 		if !ok {
 			continue
 		}
-		ready = append(ready, r)
+		var chosen gh.Asset
+		if ja.candidates.Chosen.Name != "" {
+			chosen = ja.candidates.Chosen
+		} else if len(ja.candidates.Ambiguous) > 0 {
+			var err error
+			chosen, err = asset.PromptSelect("Multiple candidates found. Select one:", ja.candidates.Ambiguous)
+			if err != nil {
+				printFail(cfg, "%s %v", ja.job.name, err)
+				hadErrors = true
+				continue
+			}
+		} else {
+			var err error
+			chosen, err = asset.PromptSelect("No auto-matched assets. Select one:", ja.candidates.All)
+			if err != nil {
+				printFail(cfg, "%s %v", ja.job.name, err)
+				hadErrors = true
+				continue
+			}
+		}
+		ready = append(ready, jobWithRelease{job: ja.job, release: ja.release, chosen: chosen})
 	}
 	if len(ready) == 0 {
+		if hadErrors {
+			return errSilent
+		}
 		return nil
 	}
 
 	if dryRun {
 		for _, r := range ready {
-			fmt.Printf("[dry-run] would install %s %s (asset: %s)\n", r.job.name, r.release.TagName, r.chosen.Name)
+			fmt.Printf("[dry-run] would install %s %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
 		}
 		return nil
 	}
 
 	if !promptInstall(ready) {
-		fmt.Println("Aborted.")
+		fmt.Println("aborted")
 		return nil
 	}
 
-	// Download + verify + extract in parallel
 	installTasks := make([]parallel.Task, len(ready))
 	for i, r := range ready {
 		installTasks[i] = parallel.Task{
 			Name: r.job.name,
 			Run: func() (any, error) {
+				fmt.Printf("downloading %s %s...\n", r.job.name, config.NormalizeVersion(r.release.TagName))
 				owner, repo, _ := gh.SplitSource(r.job.source)
 				cacheDir, err := store.ReleaseDir(r.job.source, r.release.TagName)
 				if err != nil {
@@ -187,16 +246,22 @@ func runInstall(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 				if !noVerify {
-					if err := asset.VerifySHA(owner, repo, r.release.TagName, cacheDir, r.chosen.Name, r.release.Assets); err != nil {
+					verified, err := asset.VerifySHA(owner, repo, r.release.TagName, cacheDir, r.chosen.Name, r.release.Assets)
+					if err != nil {
 						return nil, fmt.Errorf("SHA verification failed: %w", err)
 					}
+					if !verified {
+						r.shaWarn = true
+					}
 				}
-				binDir, err := store.BinDir()
+				pkgDir, err := store.PackageDir(r.job.key())
 				if err != nil {
 					return nil, err
 				}
-				outputName := r.job.key()
-				if _, err := asset.Extract(cacheDir, r.chosen.Name, binDir, outputName, ""); err != nil {
+				if err := os.RemoveAll(pkgDir); err != nil {
+					return nil, err
+				}
+				if err := asset.ExtractPackage(cacheDir, r.chosen.Name, pkgDir); err != nil {
 					return nil, err
 				}
 				return r, nil
@@ -204,45 +269,57 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	installResults := parallel.Run(cmd.Context(), installTasks, cfg.Parallelism)
+	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
 
 	for _, res := range installResults {
 		if res.Err != nil {
-			color.Yellow("⚠ %s: %v", res.Name, res.Err)
+			printFail(cfg, "%s: %v", res.Name, res.Err)
+			hadErrors = true
 			continue
 		}
 		r, ok := res.Value.(jobWithRelease)
 		if !ok {
 			continue
 		}
+		if r.shaWarn {
+			printWarn(cfg, "%s: no SHA256 checksum available, verification skipped", r.job.name)
+		}
+		pkgDir, _ := store.PackageDir(r.job.key())
+		paths, binaryName := asset.DiscoverPaths(pkgDir)
 		key := r.job.key()
 		manifest.Repos[r.job.name] = r.job.source
 		manifest.Installs[key] = config.PackageEntry{
-			Pin:     r.job.pin(),
-			Version: config.NormalizeVersion(r.release.TagName),
+			Pin:        r.job.pin(),
+			Version:    config.NormalizeVersion(r.release.TagName),
+			Asset:      r.chosen.Name,
+			Paths:      paths,
+			BinaryName: binaryName,
 		}
-		color.Green("✓ installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))
+		printPass(cfg, "installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))
 	}
 
-	return config.SaveManifest(manifest)
+	if err := config.SaveManifest(manifest); err != nil {
+		printFail(cfg, "could not save manifest: %v", err)
+		return errSilent
+	}
+
+	if _, err := entrypoint.Generate(manifest); err != nil {
+		printWarn(cfg, "could not generate entrypoint: %v", err)
+	}
+
+	if hadErrors {
+		return errSilent
+	}
+	return nil
 }
 
 func promptInstall(ready []jobWithRelease) bool {
-	if yes {
-		return true
+	rows := make([][]string, len(ready))
+	for i, r := range ready {
+		rows[i] = []string{r.job.key(), r.job.pin(), config.NormalizeVersion(r.release.TagName), r.chosen.Name, r.job.source}
 	}
-	if len(ready) == 1 {
-		r := ready[0]
-		fmt.Printf("Install %s %s? [Y/n] ", r.job.name, r.release.TagName)
-	} else {
-		fmt.Print("Install ")
-		for i, r := range ready {
-			if i > 0 {
-				fmt.Print(", ")
-			}
-			fmt.Printf("%s %s", r.job.name, r.release.TagName)
-		}
-		fmt.Print("? [Y/n] ")
-	}
-	return readYN()
+	colors := []func(string) string{nil, nil, colorfn(installCfg, "new"), nil, nil}
+	printTable([]string{"name", "pin", "update", "asset", "repo"}, rows, colors)
+	fmt.Println()
+	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

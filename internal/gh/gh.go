@@ -10,6 +10,10 @@ import (
 	"github.com/meop/ghpm/internal/config"
 )
 
+func IsRateLimited(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "rate limit")
+}
+
 type Asset struct {
 	Name string `json:"name"`
 	Size int64  `json:"size"`
@@ -17,18 +21,30 @@ type Asset struct {
 }
 
 type Release struct {
-	TagName  string  `json:"tagName"`
-	Assets   []Asset `json:"assets"`
-	IsLatest bool    `json:"isLatest"`
+	TagName string  `json:"tagName"`
+	Assets  []Asset `json:"assets"`
+}
+
+// ghBin returns the path to the gh binary, checking PATH first then ~/.ghpm/bin.
+func ghBin() (string, error) {
+	if p, err := exec.LookPath("gh"); err == nil {
+		return p, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	managed := home + "/.ghpm/bin/gh"
+	if _, err := os.Stat(managed); err == nil {
+		return managed, nil
+	}
+	return "", fmt.Errorf("gh CLI not found — install it from https://cli.github.com/")
 }
 
 // CheckInstalled verifies gh is available.
 func CheckInstalled() error {
-	_, err := exec.LookPath("gh")
-	if err != nil {
-		return fmt.Errorf("gh CLI not found — install it from https://cli.github.com/")
-	}
-	return nil
+	_, err := ghBin()
+	return err
 }
 
 // SplitSource splits "github.com/owner/repo" → owner, repo.
@@ -41,7 +57,7 @@ func SplitSource(source string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
-// ListReleases returns all releases for owner/repo (tagName + isLatest only).
+// ListReleases returns all releases for owner/repo (tagName only).
 func ListReleases(owner, repo string) ([]Release, error) {
 	out, err := run("gh", "release", "list",
 		"-R", owner+"/"+repo,
@@ -126,7 +142,7 @@ func DownloadAsset(owner, repo, tag, pattern, dest string) error {
 func getReleaseView(owner, repo, tag string) (Release, error) {
 	out, err := run("gh", "release", "view", tag,
 		"-R", owner+"/"+repo,
-		"--json", "tagName,assets,isLatest",
+		"--json", "tagName,assets",
 	)
 	if err != nil {
 		return Release{}, err
@@ -146,11 +162,19 @@ func alternateVTag(tag string) string {
 }
 
 func run(name string, args ...string) ([]byte, error) {
+	if name == "gh" {
+		if p, err := ghBin(); err == nil {
+			name = p
+		}
+	}
 	cmd := exec.Command(name, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			stderr := strings.TrimSpace(string(ee.Stderr))
+			if strings.Contains(strings.ToLower(stderr), "rate limit") {
+				return nil, fmt.Errorf("%w: %s", ErrRateLimited, stderr)
+			}
 			return nil, fmt.Errorf("%s: %s", name, stderr)
 		}
 		return nil, err

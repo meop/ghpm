@@ -9,7 +9,6 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
-	"github.com/meop/ghpm/internal/parallel"
 )
 
 func newOutdatedCmd() *cobra.Command {
@@ -24,23 +23,28 @@ func newOutdatedCmd() *cobra.Command {
 func runOutdated(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadSettings()
 	if err != nil {
-		return err
+		printFail(nil, "could not load settings: %v", err)
+		return errSilent
 	}
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		return err
+		printFail(cfg, "could not load manifest: %v", err)
+		return errSilent
 	}
 	if err := gh.CheckInstalled(); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
 	type outdatedResult struct {
 		name      string
 		installed string
 		latest    string
+		pin       string
+		source    string
 	}
 
-	tasks := make([]parallel.Task, 0)
+	items := make([]gh.BatchItem, 0)
 	for key, pkg := range manifest.Installs {
 		if pkg.Pin == "fixed" {
 			continue
@@ -55,60 +59,79 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 			}
 			c = parsed
 		}
-		tasks = append(tasks, parallel.Task{
-			Name: key,
-			Run: func() (any, error) {
-				owner, repo, err := gh.SplitSource(source)
-				if err != nil {
-					return nil, err
-				}
-				var rel gh.Release
-				if isPinned {
-					rel, err = gh.FindLatestMatching(owner, repo, c)
-				} else {
-					rel, err = gh.GetLatestRelease(owner, repo)
-				}
-				if err != nil {
-					return nil, err
-				}
-				latest := config.NormalizeVersion(rel.TagName)
-				if config.CompareVersions(latest, pkg.Version) > 0 {
-					return outdatedResult{name: key, installed: pkg.Version, latest: latest}, nil
-				}
-				return nil, nil
-			},
+		items = append(items, gh.BatchItem{
+			Key:    key,
+			Source: source,
+			Pin:    c,
 		})
 	}
 
-	results := parallel.Run(cmd.Context(), tasks, cfg.Parallelism)
+	if len(items) == 0 {
+		printInfo(cfg, "all packages are up to date")
+		return nil
+	}
+
+	results := gh.BatchLatestVersions(items, cfg.CacheTTL)
+
 	var outdated []outdatedResult
+	checked := 0
+	skipped := 0
+	rateLimited := false
+	var hadErrors bool
+
 	for _, res := range results {
 		if res.Err != nil {
-			fmt.Printf("✗ %s: %v\n", res.Name, res.Err)
+			if gh.IsRateLimited(res.Err) {
+				rateLimited = true
+				skipped++
+				printWarn(cfg, "%s: rate limited", res.Key)
+				continue
+			}
+			printFail(cfg, "%s: %v", res.Key, res.Err)
+			hadErrors = true
 			continue
 		}
-		if res.Value == nil {
-			continue
+		checked++
+		pkg := manifest.Installs[res.Key]
+		latest := config.NormalizeVersion(res.LatestTag)
+		if config.CompareVersions(latest, pkg.Version) > 0 {
+			name, _, _ := config.ParseVersionSuffix(res.Key)
+			outdated = append(outdated, outdatedResult{
+				name:      res.Key,
+				installed: pkg.Version,
+				latest:    latest,
+				pin:       pkg.Pin,
+				source:    manifest.Repos[name],
+			})
 		}
-		r, ok := res.Value.(outdatedResult)
-		if !ok {
-			continue
-		}
-		outdated = append(outdated, r)
+	}
+
+	if rateLimited && skipped > 0 {
+		fmt.Printf("\nchecked %d/%d packages (%d skipped due to rate limiting)\n", checked, len(items), skipped)
 	}
 
 	if len(outdated) == 0 {
-		fmt.Println("All packages are up to date.")
+		if !rateLimited {
+			printInfo(cfg, "all packages are up to date")
+		}
+		if hadErrors {
+			return errSilent
+		}
 		return nil
 	}
 
 	slices.SortFunc(outdated, func(a, b outdatedResult) int {
 		return cmp.Compare(a.name, b.name)
 	})
-	fmt.Printf("%-30s %-15s %s\n", "NAME", "INSTALLED", "LATEST")
-	fmt.Printf("%-30s %-15s %s\n", "----", "---------", "------")
-	for _, o := range outdated {
-		fmt.Printf("%-30s %-15s %s\n", o.name, o.installed, o.latest)
+
+	rows := make([][]string, len(outdated))
+	for i, o := range outdated {
+		rows[i] = []string{o.name, o.pin, o.installed, o.latest, "", o.source}
+	}
+	colors := []func(string) string{nil, nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
+	printTable([]string{"name", "pin", "version", "update", "asset", "repo"}, rows, colors)
+	if hadErrors {
+		return errSilent
 	}
 	return nil
 }

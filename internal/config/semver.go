@@ -109,7 +109,7 @@ func CompareVersions(a, b string) int {
 }
 
 func versionParts(v string) []int {
-	v = strings.TrimPrefix(v, "v")
+	v = NormalizeVersion(v)
 	raw := strings.Split(v, ".")
 	parts := make([]int, 0, len(raw))
 	for _, p := range raw {
@@ -122,7 +122,13 @@ func versionParts(v string) []int {
 	return parts
 }
 
-// NormalizeVersion strips the v prefix from a version string.
+// NormalizeVersion strips all leading non-digit characters from a version string.
+// "bun-v1.3.13" → "1.3.13", "v0.71.0" → "0.71.0", "1.2.3" → "1.2.3".
 func NormalizeVersion(v string) string {
-	return strings.TrimPrefix(v, "v")
+	for i, r := range v {
+		if r >= '0' && r <= '9' {
+			return v[i:]
+		}
+	}
+	return v
 }
