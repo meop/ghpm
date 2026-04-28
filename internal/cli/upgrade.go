@@ -97,7 +97,7 @@ func upgradeSelf(cfg *config.Settings) error {
 		return err
 	}
 	if !noVerify {
-		_, _ = asset.VerifySHA("meop", "ghpm", rel.TagName, cacheDir, chosen.Name, rel.Assets)
+		_, _ = asset.Verify("meop", "ghpm", rel.TagName, cacheDir, chosen.Name)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
@@ -194,7 +194,7 @@ func upgradeGh(cfg *config.Settings) error {
 		return err
 	}
 	if !noVerify {
-		_, _ = asset.VerifySHA("cli", "cli", rel.TagName, cacheDir, chosen.Name, rel.Assets)
+		_, _ = asset.Verify("cli", "cli", rel.TagName, cacheDir, chosen.Name)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "ghpm-gh-upgrade-*")

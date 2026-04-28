@@ -2,11 +2,9 @@ package asset
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -77,11 +75,10 @@ func scoreAsset(name string) int {
 	return score
 }
 
-// priorityResolved returns true if a clearly ranks higher than b by priority.
 func priorityResolved(aName, bName string, cfg *config.Settings) bool {
 	goos := runtime.GOOS
 	priorities := cfg.PlatPriority[goos]
-	aRank, bRank := len(priorities), len(priorities) // default: unranked
+	aRank, bRank := len(priorities), len(priorities)
 	for i, pri := range priorities {
 		if strings.Contains(strings.ToLower(aName), strings.ToLower(pri)) && i < aRank {
 			aRank = i
@@ -99,7 +96,6 @@ func applyPriority(assets []gh.Asset, cfg *config.Settings) []gh.Asset {
 	if !ok || len(priorities) == 0 {
 		return assets
 	}
-	// Sort assets by priority: earlier match in priorities list = higher priority
 	best := make([]gh.Asset, 0, len(assets))
 	for _, pri := range priorities {
 		for _, a := range assets {
@@ -108,7 +104,6 @@ func applyPriority(assets []gh.Asset, cfg *config.Settings) []gh.Asset {
 			}
 		}
 	}
-	// Append any that didn't match a priority
 	inBest := map[string]bool{}
 	for _, a := range best {
 		inBest[a.Name] = true
@@ -121,16 +116,12 @@ func applyPriority(assets []gh.Asset, cfg *config.Settings) []gh.Asset {
 	return best
 }
 
-// AssetCandidates holds the result of a non-interactive asset selection.
 type AssetCandidates struct {
 	Chosen     gh.Asset
 	Ambiguous []gh.Asset
 	All       []gh.Asset
 }
 
-// SelectAssetAuto performs asset scoring without prompting.
-// If exactly one candidate is found, Chosen is set.
-// If multiple candidates remain, Ambiguous is set and the caller must prompt.
 func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint string) (AssetCandidates, error) {
 	candidates := make([]gh.Asset, 0, len(assets))
 	for _, a := range assets {
@@ -190,9 +181,6 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint string) (Asse
 	return AssetCandidates{Ambiguous: best, All: candidates}, nil
 }
 
-// SelectAsset picks the best asset for the current platform.
-// hint is the previously stored asset name (may be "").
-// If multiple candidates exist, it prompts the user.
 func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset, error) {
 	ac, err := SelectAssetAuto(assets, cfg, hint)
 	if err != nil {
@@ -207,8 +195,6 @@ func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset
 	return PromptSelect("No auto-matched assets. Select one:", ac.All)
 }
 
-// matchByHint tries to find the asset whose structural tokens match the hint.
-// Tokens that look like version numbers are stripped before comparison.
 func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
 	hintTokens := stripVersionTokens(tokenize(hint))
 	if len(hintTokens) == 0 {
@@ -230,7 +216,6 @@ func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
 	return gh.Asset{}, false
 }
 
-// tokensMatch checks if two token slices are structurally equal (same order, same values).
 func tokensMatch(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -243,7 +228,6 @@ func tokensMatch(a, b []string) bool {
 	return true
 }
 
-// stripVersionTokens removes tokens that look like version numbers or version tags.
 func stripVersionTokens(tokens []string) []string {
 	filtered := make([]string, 0, len(tokens))
 	for _, t := range tokens {
@@ -255,8 +239,6 @@ func stripVersionTokens(tokens []string) []string {
 	return filtered
 }
 
-// isVersionToken returns true if the token looks like a version number.
-// Matches "1", "0.56.0", "v1.2.3", "1.2.3.tar.gz", etc.
 func isVersionToken(t string) bool {
 	hasDigit := false
 	for _, r := range t {
@@ -293,73 +275,19 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	return assets[idx-1], nil
 }
 
-// VerifySHA downloads the .sha256 file (if present among release assets) and
-// verifies the downloaded binary. owner/repo/tag identify the release for download.
-func VerifySHA(owner, repo, tag, cacheDir, assetName string, assets []gh.Asset) (bool, error) {
-	var shaAssetName string
-	for _, a := range assets {
-		if a.Name == assetName+".sha256" || a.Name == assetName+".sha256sum" {
-			shaAssetName = a.Name
-			break
-		}
-	}
-	if shaAssetName == "" {
-		return false, nil
+func Verify(owner, repo, tag, cacheDir, assetName string) (bool, error) {
+	assetPath := filepath.Join(cacheDir, assetName)
+	if _, err := os.Stat(assetPath); os.IsNotExist(err) {
+		return false, fmt.Errorf("asset not found: %s", assetPath)
 	}
 
-	shaPath := filepath.Join(cacheDir, shaAssetName)
-	if _, err := os.Stat(shaPath); os.IsNotExist(err) {
-		if err := gh.DownloadAsset(owner, repo, tag, shaAssetName, cacheDir); err != nil {
-			return false, fmt.Errorf("downloading %s: %w", shaAssetName, err)
-		}
-	}
-
-	expected, err := readSHAFile(shaPath, assetName)
+	cmd := exec.Command("gh", "release", "verify-asset", tag, assetPath, "-R", owner+"/"+repo)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, err
-	}
-
-	actual, err := sha256File(filepath.Join(cacheDir, assetName))
-	if err != nil {
-		return false, err
-	}
-
-	if !strings.EqualFold(expected, actual) {
-		return false, fmt.Errorf("SHA256 mismatch for %s: expected %s, got %s", assetName, expected, actual)
+		if strings.Contains(string(out), "no attestation found") || strings.Contains(string(out), "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("verification failed: %s", string(out))
 	}
 	return true, nil
-}
-
-func readSHAFile(path, assetName string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) >= 1 {
-			// Format: <hash>  <filename> or just <hash>
-			if len(parts) == 1 || strings.Contains(parts[1], assetName) {
-				return parts[0], nil
-			}
-		}
-	}
-	return "", fmt.Errorf("could not find SHA256 for %s in %s", assetName, path)
-}
-
-func sha256File(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
