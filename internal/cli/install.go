@@ -58,7 +58,6 @@ type jobWithRelease struct {
 	job     installJob
 	release gh.Release
 	chosen  gh.Asset
-	shaWarn bool
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
@@ -246,12 +245,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 				if !noVerify {
-					verified, err := asset.VerifySHA(owner, repo, r.release.TagName, cacheDir, r.chosen.Name, r.release.Assets)
+					_, err := asset.Verify(owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
 					if err != nil {
-						return nil, fmt.Errorf("SHA verification failed: %w", err)
-					}
-					if !verified {
-						r.shaWarn = true
+						return nil, fmt.Errorf("verification failed: %w", err)
 					}
 				}
 				pkgDir, err := store.PackageDir(r.job.key())
