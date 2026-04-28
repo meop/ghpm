@@ -1,6 +1,6 @@
 # ghpm
 
-A package manager that installs binaries from GitHub Releases, using `gh` as its primary interface to GitHub.
+A package manager that installs portable apps from GitHub Releases, using `gh` as its primary interface to GitHub.
 
 ## Install
 
@@ -22,11 +22,21 @@ irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubus
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, add `~/.ghpm/bin` to your `PATH` so installed tools are available:
+After installing, activate ghpm by sourcing the entrypoint in your shell config:
 
 ```sh
-export PATH="$PATH:$HOME/.ghpm/bin"
+echo 'source ~/.ghpm/entrypoint.sh' >> ~/.bashrc
+echo 'source ~/.ghpm/entrypoint.sh' >> ~/.zshrc
 ```
+
+Or for Nushell / PowerShell:
+
+```sh
+echo 'source ~/.ghpm/entrypoint.nu' >> $nu.config-path
+Add-Content $PROFILE '. ~/.ghpm/entrypoint.ps1'
+```
+
+Run `ghpm init` to generate the entrypoint files.
 
 ## Usage
 
@@ -36,18 +46,25 @@ ghpm install fzf@14           # install latest fzf 14.x (tracks within major)
 ghpm install fzf@14.1         # install latest fzf 14.1.x (tracks within minor)
 ghpm install fzf@14.1.0       # install exact fzf 14.1.0 (static, never updates)
 ghpm install fzf ripgrep bat  # install multiple in parallel
+ghpm install --force fzf      # reinstall even if already installed
 
 ghpm list                     # show installed packages
+ghpm search fzf               # search cached repos by name or source
 ghpm info fzf                 # show available releases and assets
 ghpm outdated                 # check for updates
 
 ghpm update                   # update all floating and major/minor-pinned packages
 ghpm update fzf               # update specific package
 
+ghpm download fzf             # download release asset to cache without installing
+ghpm download --path /tmp fzf # download release asset to a specific directory
+
 ghpm uninstall fzf            # remove package
-ghpm clean                    # remove unused cached assets
+ghpm clean                    # remove unused cached assets and orphaned package dirs
 ghpm clean --all              # remove all cached assets
 
+ghpm init                     # generate shell entrypoint files
+ghpm init --shell nu          # force generate for a specific shell
 ghpm upgrade                  # upgrade ghpm itself
 ghpm doctor                   # check system health
 ```
@@ -58,6 +75,7 @@ ghpm doctor                   # check system health
 |---|---|
 | `--dry-run` | Print what would be done without executing |
 | `--no-verify` | Skip SHA256 verification |
+| `--yes`, `-y` | Skip confirmation prompts |
 
 ### Version pinning
 
@@ -68,7 +86,13 @@ ghpm doctor                   # check system health
 | `fzf@14.1` | Latest 14.1.x | Yes — within major.minor only |
 | `fzf@14.1.0` | Exact version | Never — static pin |
 
-Manifest key and binary name both use the constraint as written (e.g., `fzf@14`, not `fzf@14.2.1`). The actual installed version is recorded in the manifest.
+Manifest key and directory name both use the constraint as written (e.g., `fzf@14`, not `fzf@14.2.1`). The actual installed version is recorded in the manifest.
+
+### Portable app support
+
+ghpm extracts full archives into `~/.ghpm/packages/<name>/`, preserving directory structure. It discovers `bin/`, `lib/`, `share/`, and other directories automatically and generates shell entrypoint scripts that set up `PATH`, `LD_LIBRARY_PATH`, `MANPATH`, and `XDG_DATA_DIRS` accordingly.
+
+This means ghpm works with both single-binary tools (like `fzf`) and multi-file tools (like editors with `bin/`, `lib/`, `share/`, `runtime/` directories).
 
 ### Configuration
 
@@ -76,21 +100,34 @@ Manifest key and binary name both use the constraint as written (e.g., `fzf@14`,
 
 ```json
 {
-  "parallelism": 5,
-  "platform_priority": {
+  "cache_ttl": "5m",
+  "color": {
+    "fail": "red",
+    "info": "blue",
+    "new": "green",
+    "old": "red",
+    "pass": "green",
+    "warn": "yellow"
+  },
+  "no_color": false,
+  "no_verify": false,
+  "num_parallel": 5,
+  "plat_priority": {
     "linux": ["gnu", "musl"],
     "windows": ["msvc", "gnu"]
   },
-  "no_verify": false,
   "repo_sources": ["github.com/meop/ghpm-config"]
 }
 ```
 
 | Field | Default | Description |
 |---|---|---|
-| `parallelism` | `5` | Max concurrent downloads |
-| `platform_priority` | see above | Preferred toolchain order when multiple assets match |
+| `cache_ttl` | `"5m"` | How long cached version data stays fresh before re-fetching |
+| `color` | see above | Output colors by message type |
+| `no_color` | `false` | Disable colored output |
 | `no_verify` | `false` | Skip SHA256 verification globally |
+| `num_parallel` | `5` | Max concurrent downloads |
+| `plat_priority` | see above | Preferred toolchain order when multiple assets match |
 | `repo_sources` | `["github.com/meop/ghpm-config"]` | Repo sources to fetch from; all their `repos.yaml` files are merged |
 
 Package repos map simple names like `fzf` to GitHub repos. `ghpm update` refreshes all configured repo sources. If a name isn't found, `ghpm` searches GitHub and prompts you to pick a repo.
@@ -111,10 +148,11 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 
 - All GitHub interaction goes through the `gh` CLI — no GitHub SDK
 - Release assets are cached in `~/.ghpm/releases/github.com/<owner>/<repo>/<version>/`
-- Repo files are cached in `~/.ghpm/repos/github.com/<owner>/<repo>/repos.yaml`
-- Binaries are installed to `~/.ghpm/bin/`
+- Packages are extracted to `~/.ghpm/packages/<name>/` with full directory structure
+- Shell entrypoints (`entrypoint.sh`, `entrypoint.nu`, `entrypoint.ps1`) are generated in `~/.ghpm/`
 - State is tracked in `~/.ghpm/manifest.json`
 - SHA256 verification runs by default when `.sha256` sidecar files are available in the release
+- Entrypoints are regenerated after every install/update/uninstall/clean
 
 ## License
 

@@ -6,19 +6,33 @@ import (
 	"path/filepath"
 )
 
-type PlatformPriority map[string][]string
+type PlatPriority map[string][]string
 
 type Settings struct {
-	Parallelism      int              `json:"parallelism"`
-	PlatformPriority PlatformPriority `json:"platform_priority"`
-	NoVerify         bool             `json:"no_verify"`
-	RepoSources      []string         `json:"repo_sources"`
+	CacheTTL     string            `json:"cache_ttl"`
+	Color        map[string]string `json:"color"`
+	NoColor      bool              `json:"no_color"`
+	NoVerify     bool              `json:"no_verify"`
+	NumParallel  int               `json:"num_parallel"`
+	PlatPriority PlatPriority      `json:"plat_priority"`
+	RepoSources  []string          `json:"repo_sources"`
 }
 
 func defaultSettings() *Settings {
 	return &Settings{
-		Parallelism: 5,
-		PlatformPriority: PlatformPriority{
+		Color: map[string]string{
+			"fail": "red",
+			"info": "blue",
+			"new":  "cyan",
+			"old":  "magenta",
+			"pass": "green",
+			"warn": "yellow",
+		},
+		NoColor:     false,
+		NoVerify:    false,
+		NumParallel: 5,
+		CacheTTL:    "5m",
+		PlatPriority: PlatPriority{
 			"linux":   {"gnu", "musl"},
 			"windows": {"msvc", "gnu"},
 		},
@@ -53,7 +67,7 @@ func EnsureDirs() error {
 	}
 	base := filepath.Join(home, ".ghpm")
 	for _, dir := range []string{
-		filepath.Join(base, "bin"),
+		filepath.Join(base, "packages"),
 		filepath.Join(base, "releases"),
 		filepath.Join(base, "repos"),
 	} {

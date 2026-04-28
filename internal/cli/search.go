@@ -31,7 +31,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(repos) == 0 {
-		fmt.Println("No repos cached — run 'ghpm update' to fetch them.")
+		fmt.Println("no repos cached")
 		return nil
 	}
 
@@ -61,11 +61,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			return cmp.Compare(a.name, b.name)
 		})
 
-		fmt.Printf("%-25s %s\n", "NAME", "SOURCE")
-		fmt.Printf("%-25s %s\n", "----", "------")
-		for _, m := range matches {
-			fmt.Printf("%-25s %s\n", m.name, m.source)
+		rows := make([][]string, len(matches))
+		for i, m := range matches {
+			rows[i] = []string{m.name, m.source}
 		}
+		printTable([]string{"name", "repo"}, rows, nil)
 	}
 	return nil
 }

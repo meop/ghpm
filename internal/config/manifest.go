@@ -7,8 +7,11 @@ import (
 )
 
 type PackageEntry struct {
-	Pin     string `json:"pin"`
-	Version string `json:"version"`
+	Pin        string              `json:"pin"`
+	Version    string              `json:"version"`
+	Asset      string              `json:"asset"`
+	Paths      map[string][]string `json:"paths,omitempty"`
+	BinaryName string              `json:"binary_name,omitempty"`
 }
 
 type Manifest struct {

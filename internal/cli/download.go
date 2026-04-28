@@ -3,20 +3,19 @@ package cli
 import (
 	"fmt"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
-	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/store"
 )
 
 func newDownloadCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "download <name> [name...]",
-		Short: "Download release assets without extracting",
+		Short: "download release assets without extracting",
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runDownload,
 	}
@@ -28,21 +27,24 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	destPath, _ := cmd.Flags().GetString("path")
 	cfg, err := config.LoadSettings()
 	if err != nil {
-		return err
+		printFail(nil, "could not load settings: %v", err)
+		return errSilent
 	}
 	if cfg.NoVerify {
 		noVerify = true
 	}
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		return err
+		printFail(cfg, "could not load manifest: %v", err)
+		return errSilent
 	}
 	if err := gh.CheckInstalled(); err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 	repos, repoErr := config.LoadRepos()
 	if repoErr != nil {
-		color.Yellow("⚠ could not load repos: %v", repoErr)
+		printInfo(cfg, "could not load repos: %v", repoErr)
 	}
 
 	type dlJob struct {
@@ -55,15 +57,18 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 
 	tasks := make([]parallel.Task, 0, len(args))
+	var hadErrors bool
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if err := config.ValidateName(name); err != nil {
-			color.Yellow("⚠ %s: %v", arg, err)
+			printFail(cfg, "%s: %v", arg, err)
+			hadErrors = true
 			continue
 		}
 		source, err := config.ResolveSource(name, ver, manifest, repos)
 		if err != nil {
-			color.Yellow("⚠ %s: %v", arg, err)
+			printFail(cfg, "%s: %v", arg, err)
+			hadErrors = true
 			continue
 		}
 		tasks = append(tasks, parallel.Task{
@@ -91,11 +96,12 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	results := parallel.Run(cmd.Context(), tasks, cfg.Parallelism)
+	results := parallel.Run(cmd.Context(), tasks, cfg.NumParallel)
 	var ready []dlJob
 	for _, res := range results {
 		if res.Err != nil {
-			color.Yellow("⚠ %s: %v", res.Name, res.Err)
+			printFail(cfg, "%s: %v", res.Name, res.Err)
+			hadErrors = true
 			continue
 		}
 		r, ok := res.Value.(dlJob)
@@ -105,18 +111,21 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		ready = append(ready, r)
 	}
 	if len(ready) == 0 {
+		if hadErrors {
+			return errSilent
+		}
 		return nil
 	}
 
 	if dryRun {
 		for _, r := range ready {
-			fmt.Printf("[dry-run] would download %s %s (asset: %s)\n", r.name, r.release.TagName, r.chosen.Name)
+			fmt.Printf("[dry-run] would download %s %s (asset: %s)\n", r.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
 		}
 		return nil
 	}
 
-	if !promptConfirm(fmt.Sprintf("Download %d asset(s)?", len(ready))) {
-		fmt.Println("Aborted.")
+	if !promptConfirm(fmt.Sprintf("download %d asset(s)", len(ready))) {
+		fmt.Println("aborted")
 		return nil
 	}
 
@@ -139,12 +148,17 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for _, res := range parallel.Run(cmd.Context(), dlTasks, cfg.Parallelism) {
+	for _, res := range parallel.Run(cmd.Context(), dlTasks, cfg.NumParallel) {
 		if res.Err != nil {
-			color.Yellow("⚠ %s: %v", res.Name, res.Err)
+			printFail(cfg, "%s: %v", res.Name, res.Err)
+			hadErrors = true
 		} else {
-			color.Green("✓ downloaded %s", res.Name)
+			printPass(cfg, "downloaded %s", res.Name)
 		}
+	}
+
+	if hadErrors {
+		return errSilent
 	}
 	return nil
 }

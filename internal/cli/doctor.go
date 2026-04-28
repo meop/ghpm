@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/entrypoint"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -25,14 +25,29 @@ func newDoctorCmd() *cobra.Command {
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	pass := color.New(color.FgGreen).Sprint("PASS")
-	fail := color.New(color.FgRed).Sprint("FAIL")
-	warn := color.New(color.FgYellow).Sprint("WARN")
+	cfg, err := config.LoadSettings()
+	if err != nil {
+		printFail(nil, "could not load settings: %v", err)
+		return errSilent
+	}
+
+	passLabel := "PASS"
+	failLabel := "FAIL"
+	warnLabel := "WARN"
+	if fn := colorfn(cfg, "pass"); fn != nil {
+		passLabel = fn("PASS")
+	}
+	if fn := colorfn(cfg, "fail"); fn != nil {
+		failLabel = fn("FAIL")
+	}
+	if fn := colorfn(cfg, "warn"); fn != nil {
+		warnLabel = fn("WARN")
+	}
 
 	check := func(label string, ok bool, msg string) {
-		status := pass
+		status := passLabel
 		if !ok {
-			status = fail
+			status = failLabel
 		}
 		fmt.Printf("  [%s] %s", status, label)
 		if msg != "" {
@@ -44,11 +59,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	fmt.Println("ghpm doctor")
 	fmt.Println(repeatStr("─", 50))
 
-	// 1. gh installed
 	ghPath, err := exec.LookPath("gh")
 	check("gh installed", err == nil, ghPath)
 
-	// 2. gh authenticated
 	if err == nil {
 		out, authErr := exec.Command("gh", "auth", "status").CombinedOutput()
 		authed := authErr == nil
@@ -62,20 +75,43 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		check("gh authenticated", authed, msg)
 	}
 
-	// 3. ~/.ghpm/bin in PATH
-	binDir, err := store.BinDir()
-	if err == nil {
-		pathEnv := os.Getenv("PATH")
-		inPath := strings.Contains(pathEnv, binDir)
-		msg := binDir
-		if !inPath {
-			msg = binDir + " (add to PATH)"
+	ghpmDir := mustGhpmDir()
+	shells := entrypoint.DetectShells()
+
+	if shells.POSIX {
+		ep := filepath.Join(ghpmDir, "entrypoint.sh")
+		if _, err := os.Stat(ep); os.IsNotExist(err) {
+			check("entrypoint.sh exists", false, "run: ghpm init")
+		} else {
+			check("entrypoint.sh exists", true, ep)
+			sourced := checkSourced(ep, ".bashrc", ".zshrc", ".profile")
+			if !sourced {
+				fmt.Printf("  [%s] entrypoint.sh sourced in shell config — run: echo 'source %s' >> ~/.bashrc\n", warnLabel, ep)
+			} else {
+				fmt.Printf("  [%s] entrypoint.sh sourced in shell config\n", passLabel)
+			}
 		}
-		check("~/.ghpm/bin in PATH", inPath, msg)
 	}
 
-	// 4. manifest valid JSON
-	manifestPath := filepath.Join(mustGhpmDir(), "manifest.json")
+	if shells.Nu {
+		ep := filepath.Join(ghpmDir, "entrypoint.nu")
+		if _, err := os.Stat(ep); os.IsNotExist(err) {
+			check("entrypoint.nu exists", false, "run: ghpm init")
+		} else {
+			check("entrypoint.nu exists", true, ep)
+		}
+	}
+
+	if shells.PWSh {
+		ep := filepath.Join(ghpmDir, "entrypoint.ps1")
+		if _, err := os.Stat(ep); os.IsNotExist(err) {
+			check("entrypoint.ps1 exists", false, "run: ghpm init")
+		} else {
+			check("entrypoint.ps1 exists", true, ep)
+		}
+	}
+
+	manifestPath := filepath.Join(ghpmDir, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if os.IsNotExist(err) {
 		check("manifest.json exists", false, manifestPath+" not found")
@@ -87,11 +123,10 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		check("manifest.json valid JSON", jsonErr == nil, "")
 	}
 
-	// 5. settings valid (if present)
-	settingsPath := filepath.Join(mustGhpmDir(), "settings.json")
+	settingsPath := filepath.Join(ghpmDir, "settings.json")
 	data, err = os.ReadFile(settingsPath)
 	if os.IsNotExist(err) {
-		fmt.Printf("  [%s] settings.json — not present (using defaults)\n", warn)
+		fmt.Printf("  [%s] settings.json — not present (using defaults)\n", warnLabel)
 	} else if err != nil {
 		check("settings.json readable", false, err.Error())
 	} else {
@@ -100,32 +135,49 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		check("settings.json valid JSON", jsonErr == nil, "")
 	}
 
-	// 6. Stale manifest entries (binary missing from disk)
 	manifest, err := config.LoadManifest()
-	if err == nil && binDir != "" && manifest != nil {
+	pkgsDir, pkgsErr := store.PackagesDir()
+	if err == nil && manifest != nil && pkgsErr == nil {
 		var stale []string
 		for key := range manifest.Installs {
-			if _, serr := os.Stat(filepath.Join(binDir, key)); os.IsNotExist(serr) {
+			pkgPath := filepath.Join(pkgsDir, key)
+			if _, serr := os.Stat(pkgPath); os.IsNotExist(serr) {
 				stale = append(stale, key)
 			}
 		}
 		if len(stale) == 0 {
-			fmt.Printf("  [%s] all installed binaries present on disk\n", pass)
+			fmt.Printf("  [%s] all installed packages present on disk\n", passLabel)
 		} else {
 			for _, key := range stale {
-				fmt.Printf("  [%s] %s — binary missing from disk (run 'ghpm uninstall %s' or reinstall)\n", warn, key, key)
+				fmt.Printf("  [%s] %s — package dir missing from disk\n", warnLabel, key)
 			}
 		}
 	}
 
-	// 7. Disk usage of release cache
 	releaseDir, err := store.ReleaseBaseDir()
 	if err == nil {
 		size := dirSize(releaseDir)
-		fmt.Printf("  [%s] cache disk usage — %s (%s)\n", pass, humanBytes(size), releaseDir)
+		fmt.Printf("  [%s] cache disk usage — %s (%s)\n", passLabel, humanBytes(size), releaseDir)
 	}
 
 	return nil
+}
+
+func checkSourced(entrypoint string, rcFiles ...string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	for _, rc := range rcFiles {
+		data, err := os.ReadFile(filepath.Join(home, rc))
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(data), entrypoint) {
+			return true
+		}
+	}
+	return false
 }
 
 func mustGhpmDir() string {

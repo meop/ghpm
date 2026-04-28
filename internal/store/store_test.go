@@ -14,15 +14,29 @@ func withHome(t *testing.T) string {
 	return tmp
 }
 
-func TestBinDir(t *testing.T) {
+func TestPackagesDir(t *testing.T) {
 	home := withHome(t)
-	dir, err := BinDir()
+	dir, err := PackagesDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "bin")
+	want := filepath.Join(home, ".ghpm", "packages")
 	if dir != want {
-		t.Errorf("BinDir() = %q, want %q", dir, want)
+		t.Errorf("PackagesDir() = %q, want %q", dir, want)
+	}
+}
+
+func TestPackageDir_CreatesDir(t *testing.T) {
+	withHome(t)
+	dir, err := PackageDir("fzf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(dir, "fzf") {
+		t.Errorf("unexpected path: %s", dir)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Errorf("PackageDir did not create directory: %v", err)
 	}
 }
 

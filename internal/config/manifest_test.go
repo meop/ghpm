@@ -27,9 +27,11 @@ func TestSaveAndLoadManifest(t *testing.T) {
 	m := &Manifest{
 		Repos: map[string]string{
 			"fzf": "github.com/junegunn/fzf",
+			"bun": "github.com/oven-sh/bun",
 		},
 		Installs: map[string]PackageEntry{
-			"fzf": {Pin: "latest", Version: "0.56.0"},
+			"fzf": {Pin: "latest", Version: "0.56.0", Asset: "fzf-0.56.0-linux_amd64.tar.gz"},
+			"bun": {Pin: "latest", Version: "1.3.13", Asset: "bun-linux-x64.zip"},
 		},
 	}
 
@@ -52,8 +54,16 @@ func TestSaveAndLoadManifest(t *testing.T) {
 	if entry.Pin != "latest" {
 		t.Errorf("unexpected pin: %s", entry.Pin)
 	}
+	if entry.Asset != "fzf-0.56.0-linux_amd64.tar.gz" {
+		t.Errorf("unexpected asset: %s", entry.Asset)
+	}
 	if loaded.Repos["fzf"] != "github.com/junegunn/fzf" {
 		t.Errorf("unexpected source: %s", loaded.Repos["fzf"])
+	}
+
+	bunEntry := loaded.Installs["bun"]
+	if bunEntry.Asset != "bun-linux-x64.zip" {
+		t.Errorf("unexpected bun asset: %s", bunEntry.Asset)
 	}
 }
 

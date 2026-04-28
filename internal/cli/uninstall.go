@@ -5,30 +5,44 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/entrypoint"
 	"github.com/meop/ghpm/internal/store"
 )
 
 func newUninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall <name> [name...]",
-		Short: "Remove installed packages",
+		Short: "remove installed packages",
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runUninstall,
 	}
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
+	unlock, err := config.AcquireLock()
+	if err != nil {
+		printFail(nil, "%v", err)
+		return errSilent
+	}
+	defer unlock()
+
+	cfg, err := config.LoadSettings()
+	if err != nil {
+		printFail(nil, "could not load settings: %v", err)
+		return errSilent
+	}
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		return err
+		printFail(cfg, "could not load manifest: %v", err)
+		return errSilent
 	}
-	binDir, err := store.BinDir()
+	pkgsDir, err := store.PackagesDir()
 	if err != nil {
-		return err
+		printFail(cfg, "%v", err)
+		return errSilent
 	}
 
 	type uninstallTarget struct {
@@ -40,7 +54,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		pkg, ok := manifest.Installs[arg]
 		if !ok {
-			color.Yellow("⚠ %s: not installed", arg)
+			printInfo(cfg, "%s: not installed", arg)
 			continue
 		}
 		targets = append(targets, uninstallTarget{key: arg, pkg: pkg})
@@ -49,34 +63,35 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	binNameFor := func(t uninstallTarget) string { return t.key }
-
 	if dryRun {
 		for _, t := range targets {
-			fmt.Printf("[dry-run] would remove %s %s (binary: %s)\n", t.key, t.pkg.Version, filepath.Join(binDir, binNameFor(t)))
+			fmt.Printf("[dry-run] would remove %s %s (package dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key))
 		}
 		return nil
 	}
 
-	var msg string
-	if len(targets) == 1 {
-		msg = fmt.Sprintf("Uninstall %s %s?", targets[0].key, targets[0].pkg.Version)
-	} else {
-		msg = fmt.Sprintf("Uninstall %d packages?", len(targets))
+	rows := make([][]string, len(targets))
+	for i, t := range targets {
+		baseName, _, _ := config.ParseVersionSuffix(t.key)
+		rows[i] = []string{t.key, t.pkg.Pin, t.pkg.Version, t.pkg.Asset, manifest.Repos[baseName]}
 	}
-	if !promptConfirm(msg) {
-		fmt.Println("Aborted.")
+	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
+	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
+	fmt.Println()
+	if !promptConfirm(fmt.Sprintf("uninstall %d package(s)", len(targets))) {
+		fmt.Println("aborted")
 		return nil
 	}
 
+	var hadErrors bool
 	for _, t := range targets {
-		binPath := filepath.Join(binDir, binNameFor(t))
-		if err := os.Remove(binPath); err != nil && !os.IsNotExist(err) {
-			color.Yellow("⚠ %s: could not remove binary: %v", t.key, err)
+		pkgPath := filepath.Join(pkgsDir, t.key)
+		if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
+			printFail(cfg, "%s: could not remove package dir: %v", t.key, err)
+			hadErrors = true
 			continue
 		}
 		delete(manifest.Installs, t.key)
-		// Remove source entry if no packages with this base name remain
 		baseName, _, _ := config.ParseVersionSuffix(t.key)
 		hasOther := false
 		for k := range manifest.Installs {
@@ -88,8 +103,20 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		if !hasOther {
 			delete(manifest.Repos, baseName)
 		}
-		color.Green("✓ uninstalled %s", t.key)
+		printPass(cfg, "uninstalled %s", t.key)
 	}
 
-	return config.SaveManifest(manifest)
+	if err := config.SaveManifest(manifest); err != nil {
+		printFail(cfg, "could not save manifest: %v", err)
+		return errSilent
+	}
+
+	if _, err := entrypoint.Generate(manifest); err != nil {
+		printWarn(cfg, "could not generate entrypoint: %v", err)
+	}
+
+	if hadErrors {
+		return errSilent
+	}
+	return nil
 }

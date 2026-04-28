@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,8 +63,15 @@ func LoadRepos() (map[string]string, error) {
 
 // RefreshRepos fetches repos.yaml from each source configured in settings
 // (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/repos/.
+// SyncResult holds the outcome of syncing a single repo source.
+type SyncResult struct {
+	Source string
+	Count  int
+	Err    error
+}
+
 // Called during ghpm update.
-func RefreshRepos() (map[string]string, error) {
+func RefreshRepos() ([]SyncResult, error) {
 	cfg, err := LoadSettings()
 	if err != nil {
 		return nil, err
@@ -75,50 +80,51 @@ func RefreshRepos() (map[string]string, error) {
 	if len(sources) == 0 {
 		sources = defaultSettings().RepoSources
 	}
+	results := make([]SyncResult, 0, len(sources))
 	var fetchErrs []string
 	for _, source := range sources {
-		if err := fetchAndCacheRepos(source); err != nil {
+		count, err := fetchAndCacheRepos(source)
+		results = append(results, SyncResult{Source: source, Count: count, Err: err})
+		if err != nil {
 			fetchErrs = append(fetchErrs, fmt.Sprintf("%s: %v", source, err))
 		}
 	}
 	if len(fetchErrs) > 0 {
-		return nil, fmt.Errorf("%s", strings.Join(fetchErrs, "; "))
+		return results, fmt.Errorf("%s", strings.Join(fetchErrs, "; "))
 	}
-	return LoadRepos()
+	return results, nil
 }
 
-func fetchAndCacheRepos(source string) error {
+func fetchAndCacheRepos(source string) (int, error) {
 	slug := strings.TrimPrefix(source, "github.com/")
 	if !strings.Contains(slug, "/") {
-		return fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
+		return 0, fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
 	}
-	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/repos.yaml", slug)
-	resp, err := http.Get(url) //nolint:noctx
+	cmd := exec.Command("gh", "api", //nolint:gosec
+		fmt.Sprintf("repos/%s/contents/repos.yaml", slug),
+		"--header", "Accept: application/vnd.github.raw+json",
+	)
+	data, err := cmd.Output()
 	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, url)
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+		if ee, ok := err.(*exec.ExitError); ok {
+			return 0, fmt.Errorf("gh api: %s", strings.TrimSpace(string(ee.Stderr)))
+		}
+		return 0, err
 	}
 	var rf reposFile
 	if err := yaml.Unmarshal(data, &rf); err != nil {
-		return fmt.Errorf("parsing repos.yaml from %s: %w", source, err)
+		return 0, fmt.Errorf("parsing repos.yaml from %s: %w", source, err)
 	}
 	dir, err := store.RepoDir(source)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	path := filepath.Join(dir, "repos.yaml")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return err
+		return 0, err
 	}
-	return os.Rename(tmp, path)
+	return len(rf.Repos), os.Rename(tmp, path)
 }
 
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).
@@ -195,7 +201,7 @@ func searchGitHub(name string) (string, error) {
 		return "", fmt.Errorf("no results found for %q", name)
 	}
 
-	fmt.Printf("No entry for %q. GitHub search results:\n", name)
+	fmt.Printf("no entry for %q.. github search results:\n", name)
 	for i, r := range repos {
 		fmt.Printf("  %d) %s\n", i+1, r.FullName)
 	}

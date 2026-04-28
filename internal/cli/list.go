@@ -19,12 +19,16 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
+	cfg, err := config.LoadSettings()
+	if err != nil {
+		return err
+	}
 	manifest, err := config.LoadManifest()
 	if err != nil {
 		return err
 	}
 	if len(manifest.Installs) == 0 {
-		fmt.Println("No packages installed.")
+		fmt.Println("no packages installed")
 		return nil
 	}
 
@@ -34,13 +38,13 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 	slices.Sort(keys)
 
-	fmt.Printf("%-30s %-15s %-10s %s\n", "NAME", "VERSION", "PIN", "SOURCE")
-	fmt.Printf("%-30s %-15s %-10s %s\n", "----", "-------", "---", "------")
-	for _, k := range keys {
+	rows := make([][]string, len(keys))
+	for i, k := range keys {
 		p := manifest.Installs[k]
 		baseName, _, _ := config.ParseVersionSuffix(k)
-		src := manifest.Repos[baseName]
-		fmt.Printf("%-30s %-15s %-10s %s\n", k, p.Version, p.Pin, src)
+		rows[i] = []string{k, p.Pin, p.Version, p.Asset, manifest.Repos[baseName]}
 	}
+	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
+	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
 	return nil
 }
