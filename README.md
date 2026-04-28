@@ -22,21 +22,23 @@ irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubus
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, activate ghpm by sourcing the entrypoint in your shell config:
+After installing, activate ghpm by adding `~/.ghpm/bin` to PATH and sourcing the env script:
 
 ```sh
-echo 'source ~/.ghpm/entrypoint.sh' >> ~/.bashrc
-echo 'source ~/.ghpm/entrypoint.sh' >> ~/.zshrc
+export PATH="$HOME/.ghpm/bin:$PATH"
+echo 'source ~/.ghpm/scripts/env.sh' >> ~/.bashrc
+echo 'source ~/.ghpm/scripts/env.sh' >> ~/.zshrc
 ```
 
 Or for Nushell / PowerShell:
 
 ```sh
-echo 'source ~/.ghpm/entrypoint.nu' >> $nu.config-path
-Add-Content $PROFILE '. ~/.ghpm/entrypoint.ps1'
+$env.PATH = ($env.PATH | prepend ~/.ghpm/bin)
+# Add to your nu.config: source ~/.ghpm/scripts/env.nu
+Add-Content $PROFILE '$env:PATH = "$env:USERPROFILE\.ghpm\bin;$env:PATH"; . ~/.ghpm/scripts/env.ps1'
 ```
 
-Run `ghpm init` to generate the entrypoint files.
+Run `ghpm init` to generate the env script files.
 
 ## Usage
 
@@ -63,9 +65,9 @@ ghpm uninstall fzf            # remove package
 ghpm clean                    # remove unused cached assets and orphaned package dirs
 ghpm clean --all              # remove all cached assets
 
-ghpm init                     # generate shell entrypoint files
+ghpm init                     # generate shell env scripts
 ghpm init --shell nu          # force generate for a specific shell
-ghpm upgrade                  # upgrade ghpm itself
+ghpm upgrade                  # upgrade ghpm itself and managed gh
 ghpm doctor                   # check system health
 ```
 
@@ -90,7 +92,7 @@ Manifest key and directory name both use the constraint as written (e.g., `fzf@1
 
 ### Portable app support
 
-ghpm extracts full archives into `~/.ghpm/packages/<name>/`, preserving directory structure. It discovers `bin/`, `lib/`, `share/`, and other directories automatically and generates shell entrypoint scripts that set up `PATH`, `LD_LIBRARY_PATH`, `MANPATH`, and `XDG_DATA_DIRS` accordingly.
+ghpm extracts full archives into `~/.ghpm/packages/<name>/`, preserving directory structure. It discovers `bin/`, `lib/`, `share/`, and other directories automatically and generates shell env scripts that set up `PATH`, `LD_LIBRARY_PATH`, `MANPATH`, and `XDG_DATA_DIRS` accordingly. Env scripts always prepend `~/.ghpm/bin/` to PATH so both `ghpm` and `gh` are available.
 
 This means ghpm works with both single-binary tools (like `fzf`) and multi-file tools (like editors with `bin/`, `lib/`, `share/`, `runtime/` directories).
 
@@ -149,10 +151,10 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 - All GitHub interaction goes through the `gh` CLI — no GitHub SDK
 - Release assets are cached in `~/.ghpm/releases/github.com/<owner>/<repo>/<version>/`
 - Packages are extracted to `~/.ghpm/packages/<name>/` with full directory structure
-- Shell entrypoints (`entrypoint.sh`, `entrypoint.nu`, `entrypoint.ps1`) are generated in `~/.ghpm/`
+- Shell env scripts (`env.sh`, `env.nu`, `env.ps1`) are generated in `~/.ghpm/scripts/`
 - State is tracked in `~/.ghpm/manifest.json`
 - SHA256 verification runs by default when `.sha256` sidecar files are available in the release
-- Entrypoints are regenerated after every install/update/uninstall/clean
+- Env scripts are regenerated after every install/update/uninstall/clean
 
 ## License
 

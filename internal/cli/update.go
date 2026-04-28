@@ -241,9 +241,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
-		if r.shaWarn {
-			printWarn(cfg, "%s: no SHA256 checksum available, verification skipped", r.key)
-		}
 		pkgDir, _ := store.PackageDir(r.key)
 		paths, binaryName := asset.DiscoverPaths(pkgDir)
 		newVer := config.NormalizeVersion(r.release.TagName)

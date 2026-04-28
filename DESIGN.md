@@ -22,10 +22,10 @@ ghpm/
 │   ├── asset/        # asset matching, selection, extraction, SHA verification, path discovery
 │   ├── cli/          # cobra command definitions
 │   ├── config/       # manifest, settings, repo resolution, version normalization, process lock
-│   ├── entrypoint/   # shell entrypoint generation (sh, nu, ps1)
+│   ├── entrypoint/   # shell env script generation (sh, nu, ps1) → ~/.ghpm/scripts/env.*
 │   ├── gh/           # gh CLI wrapper, GraphQL batch queries, rate limit detection
 │   ├── parallel/     # worker pool orchestration
-│   └── store/        # download cache, package dir management
+│   └── store/        # path helpers: BinDir, ScriptsDir, PackagesDir, PackageDir for ~/.ghpm/
 ├── install.sh
 ├── install.ps1
 ├── go.mod
@@ -55,10 +55,10 @@ No heavy GitHub SDK — all GitHub interaction goes through `gh` CLI invoked via
 ```
 ~/.ghpm/
 ├── .lock                       # process lock (flock)
-├── entrypoint.sh               # generated for bash/zsh (POSIX)
-├── entrypoint.nu               # generated for nushell
-├── entrypoint.ps1              # generated for PowerShell
-├── manifest.json               # tracked packages
+├── bin/
+│   ├── gh                      # gh CLI (bootstrap dependency, managed by ghpm upgrade)
+│   └── ghpm                    # ghpm itself (managed by ghpm upgrade)
+├── manifest.json               # tracked packages (gh is NOT in the manifest)
 ├── packages/                   # installed packages (full archive extracts)
 │   ├── fzf/
 │   │   └── fzf                 # single binary
@@ -74,7 +74,11 @@ No heavy GitHub SDK — all GitHub interaction goes through `gh` CLI invoked via
 │   └── github.com/<owner>/<repo>/<version>/<asset>
 ├── repos/                      # cached repo files per source
 │   └── github.com/<owner>/<repo>/repos.yaml
-└── settings.json               # user preferences (optional, not created by default)
+├── scripts/
+│   ├── env.sh                  # generated for bash/zsh (POSIX)
+│   ├── env.nu                  # generated for nushell
+│   └── env.ps1                 # generated for PowerShell
+├── settings.json               # user preferences (optional, not created by default)
 ```
 
 ### Manifest (`manifest.json`)
@@ -158,7 +162,7 @@ Fields:
 ### Config module (`internal/config/`)
 
 - `AcquireLock() (func(), error)` — acquire exclusive process lock via `flock`
-- `EnsureDirs() error` — create `~/.ghpm/{packages,releases,repos}` if missing
+- `EnsureDirs() error` — create `~/.ghpm/{bin,packages,releases,repos,scripts}` if missing
 - `LoadManifest() (*Manifest, error)` — read manifest, create if missing
 - `LoadSettings() (*Settings, error)` — load settings with hardcoded defaults for missing file
 - `NormalizeVersion(v string) string` — strip all leading non-digit chars from tag
@@ -279,26 +283,29 @@ After downloading, if a `<asset>.sha256` (or `.sha256sum`) file exists among the
 2. Compute SHA256 of the downloaded asset
 3. Compare; error on mismatch
 4. Skip verification if `--no-verify` flag or `settings.no_verify` is set
+5. If no sidecar file is found, silently skip (no warning)
 
 ---
 
-## Shell Entrypoints (`internal/entrypoint/`)
+## Shell Env Scripts (`internal/entrypoint/`)
 
-ghpm generates static shell entrypoint files that users `source` from their shell config. These prepend PATH and other environment variables so installed tools are discoverable.
+ghpm generates static shell env scripts that users `source` from their shell config. These prepend PATH and other environment variables so installed tools are discoverable. The `internal/entrypoint/` package generates these files to `~/.ghpm/scripts/env.*`.
 
 ### Shell detection
 
 On `ghpm init` or after any install/update/uninstall, ghpm detects which shells are available in PATH:
 
-- `sh`/`bash`/`zsh` found → generate `entrypoint.sh`
-- `nu` found → generate `entrypoint.nu`
-- `pwsh` found → generate `entrypoint.ps1`
+- `sh`/`bash`/`zsh` found → generate `scripts/env.sh`
+- `nu` found → generate `scripts/env.nu`
+- `pwsh` found → generate `scripts/env.ps1`
 
-Only entrypoints for detected shells are generated. Stale entrypoint files for undetected shells are removed.
+Only env scripts for detected shells are generated. Stale env script files for undetected shells are removed.
+
+`ghpm init` prints source hints for **all** detected shells (zsh, bash, nu, pwsh), not just the current shell.
 
 ### Regeneration
 
-Entrypoints are regenerated from scratch after every:
+Env scripts are regenerated from scratch after every:
 - `ghpm install`
 - `ghpm update`
 - `ghpm uninstall`
@@ -307,12 +314,16 @@ Entrypoints are regenerated from scratch after every:
 
 This is safe because the process lock prevents concurrent ghpm runs.
 
-### Generated entrypoint examples
+### Generated env script examples
 
-**entrypoint.sh** (POSIX sh, works for bash/zsh):
+**env.sh** (POSIX sh, works for bash/zsh):
 ```sh
 # generated by ghpm — do not edit
-GHPM_PKGS="/home/user/.ghpm/packages"
+GHPM_HOME="/home/user/.ghpm"
+GHPM_PKGS="$GHPM_HOME/packages"
+
+# PATH: gh (managed by ghpm)
+export PATH="$GHPM_HOME/bin${PATH:+:$PATH}"
 
 # fzf
 export PATH="$GHPM_PKGS/fzf:${PATH:+:$PATH}"
@@ -320,47 +331,65 @@ export PATH="$GHPM_PKGS/fzf:${PATH:+:$PATH}"
 # helix
 export PATH="$GHPM_PKGS/helix/helix-24.3/helix-24.3/bin:${PATH:+:$PATH}"
 export LD_LIBRARY_PATH="$GHPM_PKGS/helix/helix-24.3/helix-24.3/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export MANPATH="$GHPM_PKGS/helix/helix-24.3/helix-24.3/share/man${MANPATH:+:$MANPATH}"
 
-unset GHPM_PKGS
+unset GHPM_HOME GHPM_PKGS
 ```
 
-**entrypoint.nu** (Nushell):
+**env.nu** (Nushell):
 ```nu
 # generated by ghpm — do not edit
-let ghpm_pkgs = "/home/user/.ghpm/packages"
+let ghpm_home = "/home/user/.ghpm"
+let ghpm_pkgs = $"($ghpm_home)/packages"
+
+# PATH: gh (managed by ghpm)
+$env.PATH = ($env.PATH | prepend $"($ghpm_home)/bin")
 
 # fzf
 $env.PATH = ($env.PATH | prepend $"($ghpm_pkgs)/fzf")
 
 # helix
 $env.PATH = ($env.PATH | prepend $"($ghpm_pkgs)/helix/helix-24.3/helix-24.3/bin")
+$env.LD_LIBRARY_PATH = ($env.LD_LIBRARY_PATH? | default [] | prepend $"($ghpm_pkgs)/helix/helix-24.3/helix-24.3/lib")
+$env.MANPATH = ($env.MANPATH? | default [] | prepend $"($ghpm_pkgs)/helix/helix-24.3/helix-24.3/share/man")
 ```
 
-**entrypoint.ps1** (PowerShell):
+**env.ps1** (PowerShell):
 ```powershell
 # generated by ghpm — do not edit
-$ghpm = "C:\Users\user\.ghpm\packages"
+$ghpm_home = "/home/user/.ghpm"
+$ghpm_pkgs = "$ghpm_home\packages"
+
+# PATH: gh (managed by ghpm)
+$env:PATH = "$ghpm_home\bin;$env:PATH"
 
 # fzf
-$env:PATH = "$ghpm\fzf;$env:PATH"
+$env:PATH = "$ghpm_pkgs\fzf;$env:PATH"
 
 # helix
-$env:PATH = "$ghpm\helix\helix-24.3\helix-24.3\bin;$env:PATH"
+$env:PATH = "$ghpm_pkgs\helix\helix-24.3\helix-24.3\bin;$env:PATH"
+$env:LD_LIBRARY_PATH = "$ghpm_pkgs\helix\helix-24.3\helix-24.3\lib;$env:LD_LIBRARY_PATH"
+$env:MANPATH = "$ghpm_pkgs\helix\helix-24.3\helix-24.3\share\man;$env:MANPATH"
 ```
+
+On Linux, `MANPATH` and `LD_LIBRARY_PATH` are set in **all** shell env scripts (sh, nu, ps1). On non-Linux platforms these variables are omitted.
 
 ### User setup
 
 After installing ghpm, users add one line to their shell config:
 
 ```sh
-# bash/zsh
-echo 'source ~/.ghpm/entrypoint.sh' >> ~/.bashrc
+# bash
+echo 'source ~/.ghpm/scripts/env.sh' >> ~/.bashrc
+
+# zsh
+echo 'source ~/.ghpm/scripts/env.sh' >> ~/.zshrc
 
 # nushell
-echo 'source ~/.ghpm/entrypoint.nu' >> $nu.config-path
+echo 'source ~/.ghpm/scripts/env.nu' >> $nu.config-path
 
 # PowerShell
-Add-Content $PROFILE '. ~/.ghpm/entrypoint.ps1'
+Add-Content $PROFILE '. ~/.ghpm/scripts/env.ps1'
 ```
 
 ---
@@ -387,7 +416,7 @@ func Run(ctx context.Context, tasks []Task, workers int) []Result
 
 ### Process lock
 
-To prevent concurrent ghpm processes from corrupting the manifest or entrypoint files:
+To prevent concurrent ghpm processes from corrupting the manifest or env scripts:
 
 - `AcquireLock()` acquires an exclusive `flock` on `~/.ghpm/.lock` via `gofrs/flock`
 - Cross-platform: `flock(2)` on Linux/macOS, `LockFileEx` on Windows
@@ -506,8 +535,8 @@ All commands that accept package names accept **multiple names** and process the
 
 1. Default: scan `~/.ghpm/releases/`, compare against manifest, remove assets for versions not currently installed
 2. Scan `~/.ghpm/packages/`, remove dirs not matching any manifest key
-3. Regenerate entrypoint files
-4. `--all`: remove entire `~/.ghpm/releases/` contents + orphaned packages + regenerate entrypoints
+3. Regenerate env scripts
+4. `--all`: remove entire `~/.ghpm/releases/` contents + orphaned packages + regenerate env scripts
 5. Prompt before deleting
 
 #### `ghpm doctor`
@@ -515,8 +544,8 @@ All commands that accept package names accept **multiple names** and process the
 Diagnostic command — checks system health:
 
 1. `gh` installed? Authenticated? (`gh auth status`)
-2. Entrypoint files exist for detected shells?
-3. Entrypoint sourced in user's shell rc file(s)?
+2. Env script files exist for detected shells?
+3. Env script sourced in user's shell rc file(s)?
 4. Manifest file valid JSON?
 5. Settings file valid (if present)?
 6. All installed packages present on disk?
@@ -538,8 +567,8 @@ Diagnostic command — checks system health:
 #### `ghpm init [--shell <shell>]`
 
 1. Detect available shells in PATH
-2. Generate entrypoint files for detected shells (or only `--shell` if specified)
-3. Print instructions for adding `source` line to shell config
+2. Generate env script files for detected shells (or only `--shell` if specified)
+3. Print source instructions for **all** detected shells (zsh, bash, nu, pwsh)
 4. Supported shells: `sh`/`bash`/`zsh`, `nu`, `pwsh`
 
 #### `ghpm install <names>`
@@ -551,7 +580,7 @@ Diagnostic command — checks system health:
 5. Download + verify SHA + extract full archive to `~/.ghpm/packages/<key>/` (parallel)
 6. Discover paths in extracted tree
 7. Update manifest (store version, asset, paths, binary_name)
-8. Regenerate entrypoint files
+8. Regenerate env scripts
 
 #### `ghpm list`
 
@@ -570,7 +599,7 @@ Diagnostic command — checks system health:
 2. Prompt with table
 3. Remove `~/.ghpm/packages/<key>/` directory
 4. Remove entry from manifest
-5. Regenerate entrypoint files
+5. Regenerate env scripts
 6. Leave cached release assets (cleaned by `ghpm clean`)
 
 #### `ghpm update [names]`
@@ -581,7 +610,7 @@ Diagnostic command — checks system health:
 4. For packages with new versions: use stored `asset` for token-based matching, fetch asset details, download, extract
 5. Remove old `packages/<key>/`, re-extract, rediscover paths
 6. Prompt before updating
-7. Regenerate entrypoint files
+7. Regenerate env scripts
 8. Refreshes all configured alias repos before checking for updates
 
 #### `ghpm upgrade`
@@ -589,7 +618,8 @@ Diagnostic command — checks system health:
 1. Fetch latest release of ghpm from `github.com/meop/ghpm`
 2. Compare with current version
 3. If newer, download + extract single binary + replace running binary in-place
-4. If already latest, print current version and exit
+4. Also check and upgrade the managed `gh` copy at `~/.ghpm/bin/gh` by fetching the latest release of `cli/cli`
+5. If both already latest, print current versions and exit
 
 ---
 
@@ -622,18 +652,18 @@ Use [goreleaser/goreleaser](https://github.com/goreleaser/goreleaser) to automat
 | Asset selection | Store chosen filename in manifest (`asset` field). Token-based structural matching on update: strip version-like tokens, compare remaining tokens. Auto-select if exactly one candidate matches. |
 | Batch release checks | GraphQL batch queries via `gh api graphql` with `--cache`. Groups of 50 repos per call. Two-phase update: batch version check → individual asset fetch for changed packages only. |
 | Binary naming | `@` separator for versioned packages: `fzf@0.70.0` (not `-`). Consistent with manifest key syntax, avoids ambiguity with hyphenated package names. |
-| Entrypoint generation | Static files regenerated by ghpm after every mutation. Shell-aware: only generates for shells detected in PATH. |
-| Extraction model | All archives extracted as-is into `packages/<key>/`. Path discovery finds bin/lib/share dirs. No `~/.ghpm/bin/` directory. |
+| Entrypoint generation | Static env scripts in `~/.ghpm/scripts/env.*` regenerated by ghpm after every mutation. Shell-aware: only generates for shells detected in PATH. |
+| Extraction model | All archives extracted as-is into `packages/<key>/`. Path discovery finds bin/lib/share dirs. `~/.ghpm/bin/` holds `ghpm` and `gh` (not in manifest, managed by `ghpm upgrade`). |
 | Manifest concurrency | Orchestrator goroutine owns all reads/writes. Workers communicate via channels. |
 | Manifest format | JSON — stdlib only, no comments needed (machine-managed). Keyed by simple package name. |
 | Multiple binaries in archive | Full archive preserved. All executables discoverable via path discovery. |
 | Package names | Must be simple filenames (no slashes). No `owner/repo` shorthand. Resolution: manifest → builtins → repos.yaml → `gh search repos`. |
 | Parallelism | 5 workers default, configurable via `settings.num_parallel`. |
-| PATH management | Users `source` the generated entrypoint file from their shell config. `ghpm init` prints instructions. |
+| PATH management | Users add `~/.ghpm/bin/` to PATH and `source` the generated env script (`~/.ghpm/scripts/env.*`) from their shell config. `ghpm init` prints source instructions for all detected shells. Env scripts always prepend `~/.ghpm/bin/` to PATH (for `ghpm` and `gh`). |
 | Platform priorities | Windows: MSVC > GNU; Linux: GNU > Musl. Configurable in `settings.json`. |
 | Process locking | Exclusive `flock` on `~/.ghpm/.lock` via `gofrs/flock`. Acquired by all mutating commands. Read-only commands skip the lock. |
 | Rate limiting | Detect `"rate limit"` in `gh` stderr, return `ErrRateLimited`. Fail-fast: report skipped packages and counts. No auto-retry. |
 | Repo sources | One or more configured via `repo_sources`. Cached locally, refreshed only during `ghpm update`. |
 | SHA verification | On by default, skip with `--no-verify` or `settings.no_verify`. |
-| Shell detection | `exec.LookPath` for sh/bash/zsh, nu, pwsh. Only generate entrypoints for detected shells. |
+| Shell detection | `exec.LookPath` for sh/bash/zsh, nu, pwsh. Only generate env scripts for detected shells. `ghpm init` prints source hints for all detected shells. |
 | Version normalization | Strip all leading non-digit characters from GitHub tags. Handles `v1.2.3`, `bun-v1.3.13`, `release-0.1.0`. |

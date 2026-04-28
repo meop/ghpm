@@ -19,6 +19,10 @@ type Manifest struct {
 	Installs map[string]PackageEntry `json:"installs"`
 }
 
+func HomeDir() (string, error) {
+	return os.UserHomeDir()
+}
+
 func manifestPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -76,38 +77,50 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	ghpmDir := mustGhpmDir()
+	scriptsDir := filepath.Join(ghpmDir, "scripts")
 	shells := entrypoint.DetectShells()
 
+	binDir, _ := store.BinDir()
+	if binDir != "" {
+		ghBin := filepath.Join(binDir, "gh")
+		if runtime.GOOS == "windows" {
+			ghBin += ".exe"
+		}
+		if _, err := os.Stat(ghBin); err == nil {
+			check("gh managed in ~/.ghpm/bin", true, ghBin)
+		}
+	}
+
 	if shells.POSIX {
-		ep := filepath.Join(ghpmDir, "entrypoint.sh")
+		ep := filepath.Join(scriptsDir, "env.sh")
 		if _, err := os.Stat(ep); os.IsNotExist(err) {
-			check("entrypoint.sh exists", false, "run: ghpm init")
+			check("scripts/env.sh exists", false, "run: ghpm init")
 		} else {
-			check("entrypoint.sh exists", true, ep)
+			check("scripts/env.sh exists", true, ep)
 			sourced := checkSourced(ep, ".bashrc", ".zshrc", ".profile")
 			if !sourced {
-				fmt.Printf("  [%s] entrypoint.sh sourced in shell config — run: echo 'source %s' >> ~/.bashrc\n", warnLabel, ep)
+				fmt.Printf("  [%s] scripts/env.sh sourced in shell config — run: echo 'source %s' >> ~/.bashrc\n", warnLabel, ep)
 			} else {
-				fmt.Printf("  [%s] entrypoint.sh sourced in shell config\n", passLabel)
+				fmt.Printf("  [%s] scripts/env.sh sourced in shell config\n", passLabel)
 			}
 		}
 	}
 
 	if shells.Nu {
-		ep := filepath.Join(ghpmDir, "entrypoint.nu")
+		ep := filepath.Join(scriptsDir, "env.nu")
 		if _, err := os.Stat(ep); os.IsNotExist(err) {
-			check("entrypoint.nu exists", false, "run: ghpm init")
+			check("scripts/env.nu exists", false, "run: ghpm init")
 		} else {
-			check("entrypoint.nu exists", true, ep)
+			check("scripts/env.nu exists", true, ep)
 		}
 	}
 
 	if shells.PWSh {
-		ep := filepath.Join(ghpmDir, "entrypoint.ps1")
+		ep := filepath.Join(scriptsDir, "env.ps1")
 		if _, err := os.Stat(ep); os.IsNotExist(err) {
-			check("entrypoint.ps1 exists", false, "run: ghpm init")
+			check("scripts/env.ps1 exists", false, "run: ghpm init")
 		} else {
-			check("entrypoint.ps1 exists", true, ep)
+			check("scripts/env.ps1 exists", true, ep)
 		}
 	}
 

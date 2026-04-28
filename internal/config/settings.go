@@ -67,9 +67,11 @@ func EnsureDirs() error {
 	}
 	base := filepath.Join(home, ".ghpm")
 	for _, dir := range []string{
+		filepath.Join(base, "bin"),
 		filepath.Join(base, "packages"),
 		filepath.Join(base, "releases"),
 		filepath.Join(base, "repos"),
+		filepath.Join(base, "scripts"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err

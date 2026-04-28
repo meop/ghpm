@@ -14,6 +14,14 @@ func ghpmDir() (string, error) {
 	return filepath.Join(home, ".ghpm"), nil
 }
 
+func BinDir() (string, error) {
+	base, err := ghpmDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "bin"), nil
+}
+
 func PackagesDir() (string, error) {
 	base, err := ghpmDir()
 	if err != nil {
@@ -28,6 +36,15 @@ func PackageDir(key string) (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(base, key)
+	return dir, os.MkdirAll(dir, 0755)
+}
+
+func ScriptsDir() (string, error) {
+	base, err := ghpmDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "scripts")
 	return dir, os.MkdirAll(dir, 0755)
 }
 
