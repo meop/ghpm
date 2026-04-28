@@ -3,7 +3,7 @@ set -e
 
 GHPM_REPO='meop/ghpm'
 GH_REPO='cli/cli'
-INSTALL_DIR="${GHPM_INSTALL_DIR:-$HOME/.local/bin}"
+GHPM_BIN="$HOME/.ghpm/bin"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
@@ -111,8 +111,7 @@ echo "Fetching latest ghpm release: github.com/$GHPM_REPO"
 fetch_release "$GHPM_REPO"
 GHPM_TAG=$(release_tag)
 echo "  version: $GHPM_TAG"
-install_from_release "ghpm-.*-${OS_TAG}-${ARCH_TAG}.tar.gz" 'ghpm' "$INSTALL_DIR"
-echo "Installed ghpm $GHPM_TAG"
+install_from_release "ghpm-.*-${OS_TAG}-${ARCH_TAG}.tar.gz" 'ghpm' "$GHPM_BIN"
 
 # Install gh (bootstrap — ghpm needs it to operate)
 echo "Fetching latest gh release: github.com/$GH_REPO"
@@ -120,17 +119,17 @@ fetch_release "$GH_REPO"
 GH_TAG=$(release_tag)
 echo "  version: $GH_TAG"
 case "$OS_TAG" in
-  linux)  install_from_release "gh_.*_linux_${ARCH_TAG}.tar.gz" 'gh' "$INSTALL_DIR" ;;
-  darwin) install_from_release "gh_.*_macOS_${ARCH_TAG}.zip"    'gh' "$INSTALL_DIR" ;;
+  linux)  install_from_release "gh_.*_linux_${ARCH_TAG}.tar.gz" 'gh' "$GHPM_BIN" ;;
+  darwin) install_from_release "gh_.*_macOS_${ARCH_TAG}.zip"    'gh' "$GHPM_BIN" ;;
 esac
-export PATH="$INSTALL_DIR:$PATH"
+export PATH="$GHPM_BIN:$PATH"
 if ! gh auth status >/dev/null 2>&1; then
   echo 'Authenticating gh...'
   gh auth login </dev/tty
 fi
-ghpm install --yes gh
 
 echo ''
-echo 'To activate ghpm, add to your shell config:'
-echo "  echo 'source ~/.ghpm/entrypoint.sh' >> ~/.bashrc"
-echo "  echo 'source ~/.ghpm/entrypoint.sh' >> ~/.zshrc"
+echo 'To activate ghpm, add ~/.ghpm/bin to PATH and source the env script:'
+echo '  nu:   $env.PATH = ($env.PATH | prepend ~/.ghpm/bin); source ~/.ghpm/scripts/env.nu'
+echo '  pwsh: $env:PATH = "$HOME\.ghpm\bin;$env:PATH"; . ~/.ghpm/scripts/env.ps1'
+echo '  sh:   export PATH="$HOME/.ghpm/bin:$PATH" && . ~/.ghpm/scripts/env.sh'

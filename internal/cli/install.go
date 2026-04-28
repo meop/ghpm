@@ -281,9 +281,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
-		if r.shaWarn {
-			printWarn(cfg, "%s: no SHA256 checksum available, verification skipped", r.job.name)
-		}
 		pkgDir, _ := store.PackageDir(r.job.key())
 		paths, binaryName := asset.DiscoverPaths(pkgDir)
 		key := r.job.key()
@@ -319,6 +316,7 @@ func promptInstall(ready []jobWithRelease) bool {
 		rows[i] = []string{r.job.key(), r.job.pin(), config.NormalizeVersion(r.release.TagName), r.chosen.Name, r.job.source}
 	}
 	colors := []func(string) string{nil, nil, colorfn(installCfg, "new"), nil, nil}
+	fmt.Println()
 	printTable([]string{"name", "pin", "update", "asset", "repo"}, rows, colors)
 	fmt.Println()
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))

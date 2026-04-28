@@ -1,13 +1,12 @@
 #Requires -Version 5.1
 [CmdletBinding()]
-param(
-  [string]$InstallDir = "$env:USERPROFILE\.local\bin"
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 
 $GhpmRepo = 'meop/ghpm'
-$GhRepo   = 'cli/cli'
+$GhRepo = 'cli/cli'
+$GhpmBin = "$env:USERPROFILE\.ghpm\bin"
 
 $Arch = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq
   [System.Runtime.InteropServices.Architecture]::Arm64) { 'arm64' } else { 'amd64' }
@@ -72,22 +71,21 @@ function Install-Binary($Release, $Pattern, $Binary, $Dest) {
 Write-Host "Fetching latest ghpm release: github.com/$GhpmRepo"
 $GhpmRelease = Get-LatestRelease $GhpmRepo
 Write-Host "  version: $($GhpmRelease.tag_name)"
-Install-Binary $GhpmRelease "ghpm-.*-windows-$Arch\.zip$" 'ghpm.exe' $InstallDir
-Write-Host "Installed ghpm $($GhpmRelease.tag_name)" -ForegroundColor Green
+Install-Binary $GhpmRelease "ghpm-.*-windows-$Arch\.zip$" 'ghpm.exe' $GhpmBin
 
 # Install gh (bootstrap — ghpm needs it to operate)
 Write-Host "Fetching latest gh release: github.com/$GhRepo"
 $GhRelease = Get-LatestRelease $GhRepo
 Write-Host "  version: $($GhRelease.tag_name)"
-Install-Binary $GhRelease "gh_.*_windows_$Arch\.zip$" 'gh.exe' $InstallDir
-$env:PATH = "$InstallDir;$env:PATH"
-& "$InstallDir\gh.exe" auth status 2>$null
+Install-Binary $GhRelease "gh_.*_windows_$Arch\.zip$" 'gh.exe' $GhpmBin
+$env:PATH = "$GhpmBin;$env:PATH"
+& "$GhpmBin\gh.exe" auth status 2>$null
 if ($LASTEXITCODE -ne 0) {
   Write-Host 'Authenticating gh...'
-  & "$InstallDir\gh.exe" auth login
+  & "$GhpmBin\gh.exe" auth login
 }
-& "$InstallDir\ghpm.exe" install --yes gh
 
 Write-Host ''
-Write-Host 'To activate ghpm, add to your PowerShell profile:'
-Write-Host "  Add-Content `$PROFILE '. $env:USERPROFILE\.ghpm\entrypoint.ps1'"
+Write-Host 'To activate ghpm, add ~/.ghpm/bin to PATH and source the env script:'
+Write-Host '  nu:     $env.PATH = ($env.PATH | prepend ~/.ghpm/bin); source ~/.ghpm/scripts/env.nu'
+Write-Host '  pwsh:   $env:PATH = "$env:USERPROFILE\.ghpm\bin;$env:PATH"; . ~/.ghpm/scripts/env.ps1'

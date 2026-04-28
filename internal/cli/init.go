@@ -2,20 +2,19 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/entrypoint"
+	"github.com/meop/ghpm/internal/store"
 )
 
 func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "generate shell entrypoint scripts",
+		Short: "generate shell env scripts",
 		Args:  cobra.NoArgs,
 		RunE:  runInit,
 	}
@@ -49,7 +48,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		for _, p := range generated {
 			printPass(cfg, "generated %s", p)
 		}
-		printShellInstructions(cfg, forceShell)
+		printShellHints(cfg)
 		return nil
 	}
 
@@ -68,35 +67,24 @@ func runInit(cmd *cobra.Command, args []string) error {
 		printPass(cfg, "generated %s", p)
 	}
 
-	shells := entrypoint.DetectShells()
-	if shells.POSIX {
-		printShellInstructions(cfg, "sh")
-	}
-	if shells.Nu {
-		printShellInstructions(cfg, "nu")
-	}
-	if shells.PWSh {
-		printShellInstructions(cfg, "pwsh")
-	}
-
+	printShellHints(cfg)
 	return nil
 }
 
-func printShellInstructions(cfg *config.Settings, shell string) {
-	home, _ := os.UserHomeDir()
-	switch strings.ToLower(shell) {
-	case "sh", "bash", "zsh":
-		fmt.Println()
-		printInfo(cfg, "add to your shell config:")
-		fmt.Printf("  echo 'source %s/.ghpm/entrypoint.sh' >> ~/.bashrc\n", home)
-		fmt.Printf("  echo 'source %s/.ghpm/entrypoint.sh' >> ~/.zshrc\n", home)
-	case "nu", "nushell":
-		fmt.Println()
-		printInfo(cfg, "add to your nushell config:")
-		fmt.Printf("  echo 'source %s/.ghpm/entrypoint.nu' >> $\"($env.XDG_CONFIG_HOME | default ($env.HOME | path join '.config'))/nushell/config.nu\"\n", home)
-	case "pwsh", "powershell":
-		fmt.Println()
-		printInfo(cfg, "add to your PowerShell profile:")
-		fmt.Printf("  Add-Content $PROFILE '. %s\\.ghpm\\entrypoint.ps1'\n", filepath.FromSlash(home))
+func printShellHints(cfg *config.Settings) {
+	scriptsDir, _ := store.ScriptsDir()
+	shells := entrypoint.DetectShells()
+
+	fmt.Println()
+	printInfo(cfg, "add to your shell config:")
+
+	if shells.POSIX {
+		fmt.Printf("  zsh/bash:  echo 'source %s/env.sh' >> ~/.zshrc\n", scriptsDir)
+	}
+	if shells.Nu {
+		fmt.Printf("  nushell:   source '%s/env.nu' from your config.nu\n", scriptsDir)
+	}
+	if shells.PWSh {
+		fmt.Printf("  pwsh:      Add-Content $PROFILE '. %s\\env.ps1'\n", filepath.FromSlash(scriptsDir))
 	}
 }
