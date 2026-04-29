@@ -16,7 +16,7 @@ func SetVersion(v string) { version = v }
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "ghpm",
-		Short:         "GitHub Package Manager — install binaries from GitHub Releases",
+		Short:         "GitHub Package Manager — Releases Tags Assets",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -34,16 +34,18 @@ func NewRootCmd() *cobra.Command {
 		return cmd.Help()
 	}
 
+	root.SetHelpCommand(&cobra.Command{Use: "help", Hidden: true})
+
 	root.AddCommand(
 		newCleanCmd(),
 		newDoctorCmd(),
 		newDownloadCmd(),
-		newInfoCmd(),
 		newInitCmd(),
 		newInstallCmd(),
 		newListCmd(),
 		newOutdatedCmd(),
 		newSearchCmd(),
+		newShowCmd(),
 		newUninstallCmd(),
 		newUpdateCmd(),
 		newUpgradeCmd(),

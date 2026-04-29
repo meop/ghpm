@@ -9,7 +9,7 @@ import (
 
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/entrypoint"
+	"github.com/meop/ghpm/internal/env"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
@@ -21,7 +21,7 @@ var installCfg *config.Settings
 func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <name> [name...]",
-		Short: "install packages from GitHub Releases",
+		Short: "Install packages from GitHub Releases",
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runInstall,
 	}
@@ -115,7 +115,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		if pinned {
 			jobKey = name + "@" + strings.TrimPrefix(ver, "v")
 		}
-		if entry, exists := manifest.Installs[jobKey]; exists && !forceInstall {
+		if entry, exists := manifest.Extracts[jobKey]; exists && !forceInstall {
 			printInfo(cfg, "%s %s is already installed", jobKey, entry.Version)
 			continue
 		}
@@ -247,10 +247,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 				if !noVerify {
 					_, err := asset.Verify(owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
 					if err != nil {
-						return nil, fmt.Errorf("verification failed: %w", err)
+						return nil, err
 					}
 				}
-				pkgDir, err := store.PackageDir(r.job.key())
+				pkgDir, err := store.ExtractDir(r.job.key())
 				if err != nil {
 					return nil, err
 				}
@@ -277,16 +277,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
-		pkgDir, _ := store.PackageDir(r.job.key())
-		paths, binaryName := asset.DiscoverPaths(pkgDir)
+		pkgDir, _ := store.ExtractDir(r.job.key())
+		binPath, binaryName := asset.DiscoverPaths(pkgDir)
 		key := r.job.key()
 		manifest.Repos[r.job.name] = r.job.source
-		manifest.Installs[key] = config.PackageEntry{
+		manifest.Extracts[key] = config.PackageEntry{
 			Pin:        r.job.pin(),
 			Version:    config.NormalizeVersion(r.release.TagName),
-			Asset:      r.chosen.Name,
-			Paths:      paths,
-			BinaryName: binaryName,
+			AssetName:      r.chosen.Name,
+			BinDir:    binPath,
+			BinName: binaryName,
 		}
 		printPass(cfg, "installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))
 	}
@@ -296,8 +296,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 
-	if _, err := entrypoint.Generate(manifest); err != nil {
-		printWarn(cfg, "could not generate entrypoint: %v", err)
+	if _, err := env.Generate(manifest); err != nil {
+		printWarn(cfg, "could not generate env files: %v", err)
 	}
 
 	if hadErrors {

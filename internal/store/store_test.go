@@ -14,21 +14,21 @@ func withHome(t *testing.T) string {
 	return tmp
 }
 
-func TestPackagesDir(t *testing.T) {
+func TestExtractsDir(t *testing.T) {
 	home := withHome(t)
-	dir, err := PackagesDir()
+	dir, err := ExtractsDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "packages")
+	want := filepath.Join(home, ".ghpm", "extracts")
 	if dir != want {
-		t.Errorf("PackagesDir() = %q, want %q", dir, want)
+		t.Errorf("ExtractsDir() = %q, want %q", dir, want)
 	}
 }
 
-func TestPackageDir_CreatesDir(t *testing.T) {
+func TestExtractDir_CreatesDir(t *testing.T) {
 	withHome(t)
-	dir, err := PackageDir("fzf")
+	dir, err := ExtractDir("fzf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestPackageDir_CreatesDir(t *testing.T) {
 		t.Errorf("unexpected path: %s", dir)
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		t.Errorf("PackageDir did not create directory: %v", err)
+		t.Errorf("ExtractDir did not create directory: %v", err)
 	}
 }
 

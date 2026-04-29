@@ -19,7 +19,7 @@ import (
 func newUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "upgrade",
-		Short: "upgrade ghpm and gh to their latest releases",
+		Short: "Upgrade ghpm and gh to their latest releases",
 		Args:  cobra.NoArgs,
 		RunE:  runUpgrade,
 	}
@@ -148,10 +148,9 @@ func upgradeGh(cfg *config.Settings) error {
 	if info, err := os.Stat(ghPath); err == nil && info.Mode()&0111 != 0 {
 		out, err := exec.Command(ghPath, "--version").Output()
 		if err == nil {
-			fields := strings.Fields(strings.TrimSpace(string(out)))
-			for _, f := range fields {
-				if strings.HasPrefix(f, "v") || (len(f) > 0 && f[0] >= '0' && f[0] <= '9') {
-					currentVer = strings.TrimPrefix(f, "v")
+			for _, tok := range asset.Tokenize(strings.TrimSpace(string(out))) {
+				if asset.IsVersionToken(tok) {
+					currentVer = strings.TrimPrefix(tok, "v")
 					break
 				}
 			}

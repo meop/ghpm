@@ -15,7 +15,7 @@ import (
 func newDownloadCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "download <name> [name...]",
-		Short: "download release assets without extracting",
+		Short: "Download release assets without extracting",
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runDownload,
 	}

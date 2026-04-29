@@ -68,7 +68,7 @@ func EnsureDirs() error {
 	base := filepath.Join(home, ".ghpm")
 	for _, dir := range []string{
 		filepath.Join(base, "bin"),
-		filepath.Join(base, "packages"),
+		filepath.Join(base, "extracts"),
 		filepath.Join(base, "releases"),
 		filepath.Join(base, "repos"),
 		filepath.Join(base, "scripts"),

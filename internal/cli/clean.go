@@ -9,14 +9,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/entrypoint"
+	"github.com/meop/ghpm/internal/env"
 	"github.com/meop/ghpm/internal/store"
 )
 
 func newCleanCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
-		Short: "remove cached release assets and orphaned package dirs",
+		Short: "Remove cached release assets and orphaned package dirs",
 		Args:  cobra.NoArgs,
 		RunE:  runClean,
 	}
@@ -72,16 +72,14 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	cleanOrphanedPackages(cfg, manifest)
 
-	if _, err := entrypoint.Generate(manifest); err != nil {
-		printWarn(cfg, "could not generate entrypoint: %v", err)
-	}
+	regenerateEnvFiles(cfg, manifest)
 
 	return nil
 }
 
 func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *config.Manifest) {
 	installed := map[string]bool{}
-	for key, pkg := range manifest.Installs {
+	for key, pkg := range manifest.Extracts {
 		name, _, _ := config.ParseVersionSuffix(key)
 		if src, ok := manifest.Repos[name]; ok {
 			installed[src+"/"+pkg.Version] = true
@@ -139,8 +137,18 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	printPass(cfg, "cleaned %d cached file(s)", len(toRemove))
 }
 
+func regenerateEnvFiles(cfg *config.Settings, manifest *config.Manifest) {
+	if dryRun {
+		fmt.Println("[dry-run] would regenerate env files")
+		return
+	}
+	if _, err := env.Generate(manifest); err != nil {
+		printFail(cfg, "could not regenerate env files: %v", err)
+	}
+}
+
 func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
-	pkgsDir, err := store.PackagesDir()
+	pkgsDir, err := store.ExtractsDir()
 	if err != nil {
 		return
 	}
@@ -158,7 +166,7 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 		if !e.IsDir() {
 			continue
 		}
-		if _, ok := manifest.Installs[e.Name()]; !ok {
+		if _, ok := manifest.Extracts[e.Name()]; !ok {
 			orphaned = append(orphaned, e.Name())
 		}
 	}
@@ -169,7 +177,7 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 
 	fmt.Println()
 	for _, name := range orphaned {
-		fmt.Printf("packages/%s\n", name)
+		fmt.Printf("extracts/%s\n", name)
 	}
 
 	if dryRun {

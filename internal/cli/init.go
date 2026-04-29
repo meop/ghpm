@@ -2,89 +2,78 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/entrypoint"
-	"github.com/meop/ghpm/internal/store"
 )
 
 func newInitCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "generate shell env scripts",
-		Args:  cobra.NoArgs,
+	return &cobra.Command{
+		Use:   "init [shell]",
+		Short: "Output shell hook for eval (sources path script + defines ghpm wrapper with reload)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  runInit,
 	}
-	cmd.Flags().String("shell", "", "force generation for a specific shell (sh, nu, pwsh)")
-	return cmd
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	cfg, err := config.LoadSettings()
-	if err != nil {
+	if _, err := config.LoadSettings(); err != nil {
 		printFail(nil, "could not load settings: %v", err)
 		return errSilent
 	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
-		return errSilent
-	}
-	if err := config.EnsureDirs(); err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
 
-	forceShell, _ := cmd.Flags().GetString("shell")
-	if forceShell != "" {
-		generated, err := entrypoint.GenerateFor(forceShell, manifest)
-		if err != nil {
-			printFail(cfg, "%v", err)
-			return errSilent
-		}
-		for _, p := range generated {
-			printPass(cfg, "generated %s", p)
-		}
-		printShellHints(cfg)
-		return nil
+	shell := ""
+	if len(args) > 0 {
+		shell = args[0]
 	}
-
-	generated, err := entrypoint.Generate(manifest)
-	if err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
-
-	if len(generated) == 0 {
-		printInfo(cfg, "no supported shells detected in PATH")
-		return nil
-	}
-
-	for _, p := range generated {
-		printPass(cfg, "generated %s", p)
-	}
-
-	printShellHints(cfg)
+	fmt.Print(envHook(shell))
 	return nil
 }
 
-func printShellHints(cfg *config.Settings) {
-	scriptsDir, _ := store.ScriptsDir()
-	shells := entrypoint.DetectShells()
+func envHook(shell string) string {
+	switch strings.ToLower(shell) {
+	case "nu", "nushell":
+		return nuHook()
+	case "pwsh", "powershell":
+		return ps1Hook()
+	default:
+		return shHook()
+	}
+}
 
-	fmt.Println()
-	printInfo(cfg, "add to your shell config:")
+func shHook() string {
+	return `ghpm() {
+  case "$1" in
+    reload) [ -f "$HOME/.ghpm/scripts/path.sh" ] && source "$HOME/.ghpm/scripts/path.sh" ;;
+    *) command ghpm "$@" ;;
+  esac
+}
+ghpm reload
+`
+}
 
-	if shells.POSIX {
-		fmt.Printf("  zsh/bash:  echo 'source %s/env.sh' >> ~/.zshrc\n", scriptsDir)
-	}
-	if shells.Nu {
-		fmt.Printf("  nushell:   source '%s/env.nu' from your config.nu\n", scriptsDir)
-	}
-	if shells.PWSh {
-		fmt.Printf("  pwsh:      Add-Content $PROFILE '. %s\\env.ps1'\n", filepath.FromSlash(scriptsDir))
-	}
+func nuHook() string {
+	return `def --env --wrapped ghpm [...args] {
+  if ($args | length) > 0 and $args.0 == "reload" {
+    if ("~/.ghpm/scripts/path.nu" | path expand | path exists) { source-env ("~/.ghpm/scripts/path.nu" | path expand) }
+  } else {
+    ^ghpm ...$args
+  }
+}
+ghpm reload
+`
+}
+
+func ps1Hook() string {
+	return `function ghpm {
+  if ($args.Count -gt 0 -and $args[0] -eq "reload") {
+    if (Test-Path "${env:HOME}/.ghpm/scripts/path.ps1") { . "${env:HOME}/.ghpm/scripts/path.ps1" }
+  } else {
+    & (Get-Command ghpm -CommandType Application).Source @args
+  }
+}
+ghpm reload
+`
 }

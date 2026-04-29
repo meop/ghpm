@@ -22,23 +22,24 @@ irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubus
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, activate ghpm by adding `~/.ghpm/bin` to PATH and sourcing the env script:
+After installing, add the shell hook to your config:
 
+**zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
 ```sh
-export PATH="$HOME/.ghpm/bin:$PATH"
-echo 'source ~/.ghpm/scripts/env.sh' >> ~/.bashrc
-echo 'source ~/.ghpm/scripts/env.sh' >> ~/.zshrc
+eval "$(ghpm init)"
 ```
 
-Or for Nushell / PowerShell:
-
-```sh
-$env.PATH = ($env.PATH | prepend ~/.ghpm/bin)
-# Add to your nu.config: source ~/.ghpm/scripts/env.nu
-Add-Content $PROFILE '$env:PATH = "$env:USERPROFILE\.ghpm\bin;$env:PATH"; . ~/.ghpm/scripts/env.ps1'
+**Nushell** — add to `~/.config/nushell/config.nu`:
+```nu
+ghpm init nu | save -f ([$NU_VENDOR_DATA_DIR, 'ghpm.nu'] | path join)
 ```
 
-Run `ghpm init` to generate the env script files.
+**PowerShell / pwsh** — add to `$PROFILE`:
+```powershell
+Invoke-Expression (ghpm init powershell)
+```
+
+The hook sources the generated env file and defines a `ghpm reload` alias for refreshing your PATH after installs.
 
 ## Usage
 
@@ -52,7 +53,7 @@ ghpm install --force fzf      # reinstall even if already installed
 
 ghpm list                     # show installed packages
 ghpm search fzf               # search cached repos by name or source
-ghpm info fzf                 # show available releases and assets
+ghpm show fzf                 # show available releases and assets
 ghpm outdated                 # check for updates
 
 ghpm update                   # update all floating and major/minor-pinned packages
@@ -65,8 +66,8 @@ ghpm uninstall fzf            # remove package
 ghpm clean                    # remove unused cached assets and orphaned package dirs
 ghpm clean --all              # remove all cached assets
 
-ghpm init                     # generate shell env scripts
-ghpm init --shell nu          # force generate for a specific shell
+ghpm init                     # output posix shell hook for eval
+ghpm init nu                  # output shell hook for eval (nu/nushell/pwsh/powershell, else posix)
 ghpm upgrade                  # upgrade ghpm itself and managed gh
 ghpm doctor                   # check system health
 ```
@@ -92,9 +93,7 @@ Manifest key and directory name both use the constraint as written (e.g., `fzf@1
 
 ### Portable app support
 
-ghpm extracts full archives into `~/.ghpm/packages/<name>/`, preserving directory structure. It discovers `bin/`, `lib/`, `share/`, and other directories automatically and generates shell env scripts that set up `PATH`, `LD_LIBRARY_PATH`, `MANPATH`, and `XDG_DATA_DIRS` accordingly. Env scripts always prepend `~/.ghpm/bin/` to PATH so both `ghpm` and `gh` are available.
-
-This means ghpm works with both single-binary tools (like `fzf`) and multi-file tools (like editors with `bin/`, `lib/`, `share/`, `runtime/` directories).
+ghpm extracts archives into `~/.ghpm/extracts/<name>/` and discovers the bin directory automatically. Env scripts add each package's bin directory to `PATH`. GitHub releases are portable apps — binaries locate their own resources via paths relative to the executable, so no other env vars are needed.
 
 ### Configuration
 
@@ -150,11 +149,11 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 
 - All GitHub interaction goes through the `gh` CLI — no GitHub SDK
 - Release assets are cached in `~/.ghpm/releases/github.com/<owner>/<repo>/<version>/`
-- Packages are extracted to `~/.ghpm/packages/<name>/` with full directory structure
-- Shell env scripts (`env.sh`, `env.nu`, `env.ps1`) are generated in `~/.ghpm/scripts/`
+- Packages are extracted to `~/.ghpm/extracts/<name>/` with full directory structure
+- Path scripts (`path.sh`, `path.nu`, `path.ps1`) are generated in `~/.ghpm/scripts/`
 - State is tracked in `~/.ghpm/manifest.json`
 - SHA256 verification runs by default when `.sha256` sidecar files are available in the release
-- Env scripts are regenerated after every install/update/uninstall/clean
+- Path scripts are regenerated after every install/update/uninstall/clean
 
 ## License
 
