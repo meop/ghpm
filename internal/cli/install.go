@@ -250,7 +250,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 						return nil, err
 					}
 				}
-				pkgDir, err := store.ExtractDir(r.job.key())
+				version := config.NormalizeVersion(r.release.TagName)
+				pkgDir, err := store.ExtractDir(r.job.key(), version)
 				if err != nil {
 					return nil, err
 				}
@@ -258,6 +259,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 				if err := asset.ExtractPackage(cacheDir, r.chosen.Name, pkgDir); err != nil {
+					_ = os.RemoveAll(pkgDir)
 					return nil, err
 				}
 				return r, nil
@@ -277,8 +279,13 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
-		pkgDir, _ := store.ExtractDir(r.job.key())
-		binPath, binaryName := asset.DiscoverPaths(pkgDir)
+		pkgDir, _ := store.ExtractDir(r.job.key(), config.NormalizeVersion(r.release.TagName))
+		binPath, binaryName := asset.DiscoverPaths(pkgDir, r.job.name)
+		if binaryName == "" {
+			printFail(cfg, "%s: no binary found in %s", r.job.name, r.chosen.Name)
+			hadErrors = true
+			continue
+		}
 		key := r.job.key()
 		manifest.Repos[r.job.name] = r.job.source
 		manifest.Extracts[key] = config.PackageEntry{

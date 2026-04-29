@@ -30,12 +30,20 @@ func ExtractsDir() (string, error) {
 	return filepath.Join(base, "extracts"), nil
 }
 
-func ExtractDir(key string) (string, error) {
+func ExtractBaseDir(key string) (string, error) {
 	base, err := ExtractsDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, key)
+	return filepath.Join(base, key), nil
+}
+
+func ExtractDir(key, version string) (string, error) {
+	base, err := ExtractBaseDir(key)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, version)
 	return dir, os.MkdirAll(dir, 0755)
 }
 
