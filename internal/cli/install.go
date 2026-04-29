@@ -295,7 +295,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			BinDir:    binPath,
 			BinName:   binaryName,
 		}
-		if err := shim.Create(r.job.name, pkgDir, binPath); err != nil {
+		if err := shim.Create(key, binaryName, pkgDir, binPath); err != nil {
 			printWarn(cfg, "%s: could not create shim: %v", r.job.name, err)
 		}
 		printPass(cfg, "installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))

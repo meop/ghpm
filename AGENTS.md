@@ -36,6 +36,7 @@ make build-all
 - `internal/config/` — manifest, settings, name resolution, semver, locking
 - `internal/gh/` — gh CLI wrapper (all GitHub interaction via `os/exec`)
 - `internal/asset/` — asset matching, extraction, SHA verification
+- `internal/shim/` — shim creation/removal (symlink on Unix, .cmd on Windows)
 - `internal/store/` — path helpers for ~/.ghpm/ directories
 - `internal/parallel/` — bounded worker pool
 

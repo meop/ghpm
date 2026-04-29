@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
-
-	"runtime"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/store"
@@ -150,17 +149,16 @@ func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
 		return
 	}
 
-	// Build set of expected shim names from manifest
+	// Build set of expected shim names from manifest keys
 	expected := map[string]bool{}
 	for key, pkg := range manifest.Extracts {
 		if pkg.BinName == "" {
 			continue
 		}
-		name, _, _ := config.ParseVersionSuffix(key)
 		if runtime.GOOS == "windows" {
-			expected[name+".cmd"] = true
+			expected[key+".cmd"] = true
 		} else {
-			expected[name] = true
+			expected[key] = true
 		}
 	}
 
