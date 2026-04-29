@@ -129,7 +129,4 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 echo ''
-echo 'To activate ghpm, add ~/.ghpm/bin to PATH and source the env script:'
-echo '  nu:   $env.PATH = ($env.PATH | prepend ~/.ghpm/bin); source ~/.ghpm/scripts/env.nu'
-echo '  pwsh: $env:PATH = "$HOME\.ghpm\bin;$env:PATH"; . ~/.ghpm/scripts/env.ps1'
-echo '  sh:   export PATH="$HOME/.ghpm/bin:$PATH" && . ~/.ghpm/scripts/env.sh'
+echo 'Refer to the project README for how to activate ghpm in your shell.'

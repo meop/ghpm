@@ -360,7 +360,7 @@ func findAndMoveBinary(tmp, destDir, outputName, hint string) (string, string, e
 	for i, c := range candidates {
 		fmt.Printf("  %d) %s\n", i+1, filepath.Base(c))
 	}
-	fmt.Print("Enter number: ")
+	fmt.Print("enter number: ")
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 	var idx int

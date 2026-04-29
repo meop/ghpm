@@ -119,7 +119,7 @@ func applyPriority(assets []gh.Asset, cfg *config.Settings) []gh.Asset {
 }
 
 type AssetCandidates struct {
-	Chosen     gh.Asset
+	Chosen    gh.Asset
 	Ambiguous []gh.Asset
 	All       []gh.Asset
 }
@@ -192,9 +192,9 @@ func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset
 		return ac.Chosen, nil
 	}
 	if len(ac.Ambiguous) > 0 {
-		return PromptSelect("Multiple candidates found. Select one:", ac.Ambiguous)
+		return PromptSelect("choose from ambiguous candidates:", ac.Ambiguous)
 	}
-	return PromptSelect("No auto-matched assets. Select one:", ac.All)
+	return PromptSelect("choose from all candidates:", ac.All)
 }
 
 func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
@@ -268,7 +268,7 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	for i, a := range assets {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	fmt.Print("Enter number: ")
+	fmt.Print("enter number: ")
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
