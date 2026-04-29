@@ -71,44 +71,44 @@ func Generate(manifest *config.Manifest) ([]string, error) {
 	var generated []string
 
 	if shells.POSIX {
-		path := filepath.Join(scriptsDir, "path.sh")
+		path := filepath.Join(scriptsDir, "paths.sh")
 		if err := os.WriteFile(path, []byte(shContent(keys, manifest)), 0644); err != nil {
-			return generated, fmt.Errorf("writing path.sh: %w", err)
+			return generated, fmt.Errorf("writing paths.sh: %w", err)
 		}
 		generated = append(generated, path)
 	} else {
-		_ = os.Remove(filepath.Join(scriptsDir, "path.sh"))
+		_ = os.Remove(filepath.Join(scriptsDir, "paths.sh"))
 	}
 
 	if shells.Nu {
-		path := filepath.Join(scriptsDir, "path.nu")
+		path := filepath.Join(scriptsDir, "paths.nu")
 		if err := os.WriteFile(path, []byte(nuContent(keys, manifest)), 0644); err != nil {
-			return generated, fmt.Errorf("writing path.nu: %w", err)
+			return generated, fmt.Errorf("writing paths.nu: %w", err)
 		}
 		generated = append(generated, path)
 	} else {
-		_ = os.Remove(filepath.Join(scriptsDir, "path.nu"))
+		_ = os.Remove(filepath.Join(scriptsDir, "paths.nu"))
 	}
 
 	if shells.PWSh {
-		path := filepath.Join(scriptsDir, "path.ps1")
+		path := filepath.Join(scriptsDir, "paths.ps1")
 		if err := os.WriteFile(path, []byte(ps1Content(keys, manifest)), 0644); err != nil {
-			return generated, fmt.Errorf("writing path.ps1: %w", err)
+			return generated, fmt.Errorf("writing paths.ps1: %w", err)
 		}
 		generated = append(generated, path)
 	} else {
-		_ = os.Remove(filepath.Join(scriptsDir, "path.ps1"))
+		_ = os.Remove(filepath.Join(scriptsDir, "paths.ps1"))
 	}
 
 	return generated, nil
 }
 
 
-func extractSubpath(key, binDir string) string {
-	if binDir == "" {
-		return key
+func extractSubpath(key string, pkg config.PackageEntry) string {
+	if pkg.BinDir == "" {
+		return fmt.Sprintf("%s/%s", key, pkg.Version)
 	}
-	return key + "/" + binDir
+	return fmt.Sprintf("%s/%s/%s", key, pkg.Version, pkg.BinDir)
 }
 
 func shContent(keys []string, manifest *config.Manifest) string {
@@ -117,7 +117,10 @@ func shContent(keys []string, manifest *config.Manifest) string {
 
 	for _, key := range keys {
 		pkg := manifest.Extracts[key]
-		writeShPath(&b, fmt.Sprintf("$HOME/.ghpm/extracts/%s", extractSubpath(key, pkg.BinDir)))
+		if pkg.BinName == "" {
+			continue
+		}
+		writeShPath(&b, fmt.Sprintf("$HOME/.ghpm/extracts/%s", extractSubpath(key, pkg)))
 	}
 
 	return b.String()
@@ -138,7 +141,10 @@ func nuContent(keys []string, manifest *config.Manifest) string {
 
 	for _, key := range keys {
 		pkg := manifest.Extracts[key]
-		writeNuPath(&b, fmt.Sprintf(`$env.HOME + "/.ghpm/extracts/%s"`, extractSubpath(key, pkg.BinDir)))
+		if pkg.BinName == "" {
+			continue
+		}
+		writeNuPath(&b, fmt.Sprintf(`$env.HOME + "/.ghpm/extracts/%s"`, extractSubpath(key, pkg)))
 	}
 
 	return b.String()
@@ -154,8 +160,11 @@ func ps1Content(keys []string, manifest *config.Manifest) string {
 
 	for _, key := range keys {
 		pkg := manifest.Extracts[key]
+		if pkg.BinName == "" {
+			continue
+		}
 		writePS1Path(&b, fmt.Sprintf("$env:HOME%[1]s.ghpm%[1]sextracts%[1]s%s",
-			string(filepath.Separator), filepath.FromSlash(extractSubpath(key, pkg.BinDir))))
+			string(filepath.Separator), filepath.FromSlash(extractSubpath(key, pkg))))
 	}
 
 	return b.String()

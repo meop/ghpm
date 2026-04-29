@@ -27,13 +27,14 @@ func TestExtractsDir(t *testing.T) {
 }
 
 func TestExtractDir_CreatesDir(t *testing.T) {
-	withHome(t)
-	dir, err := ExtractDir("fzf")
+	home := withHome(t)
+	dir, err := ExtractDir("fzf", "0.58.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(dir, "fzf") {
-		t.Errorf("unexpected path: %s", dir)
+	want := filepath.Join(home, ".ghpm", "extracts", "fzf", "0.58.0")
+	if dir != want {
+		t.Errorf("ExtractDir = %q, want %q", dir, want)
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		t.Errorf("ExtractDir did not create directory: %v", err)

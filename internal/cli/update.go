@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -212,14 +213,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 						return nil, err
 					}
 				}
-				pkgDir, err := store.ExtractDir(r.key)
+				newVersion := config.NormalizeVersion(r.release.TagName)
+				newPkgDir, err := store.ExtractDir(r.key, newVersion)
 				if err != nil {
 					return nil, err
 				}
-				if err := os.RemoveAll(pkgDir); err != nil {
-					return nil, err
-				}
-				if err := asset.ExtractPackage(cacheDir, r.chosen.Name, pkgDir); err != nil {
+				if err := asset.ExtractPackage(cacheDir, r.chosen.Name, newPkgDir); err != nil {
+					// leave newPkgDir for ghpm clean — old version dir is untouched
 					return nil, err
 				}
 				return r, nil
@@ -237,15 +237,28 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
-		pkgDir, _ := store.ExtractDir(r.key)
-		binPath, binaryName := asset.DiscoverPaths(pkgDir)
 		newVer := config.NormalizeVersion(r.release.TagName)
+		newPkgDir, _ := store.ExtractDir(r.key, newVer)
+		name, _, _ := config.ParseVersionSuffix(r.key)
+		binPath, binaryName := asset.DiscoverPaths(newPkgDir, name)
+		if binaryName == "" {
+			printFail(cfg, "%s: no binary found in %s", r.key, r.chosen.Name)
+			hadErrors = true
+			continue
+		}
+		// Remove old version dir now that new one is verified good
+		if oldBase, err := store.ExtractBaseDir(r.key); err == nil {
+			oldPkgDir := filepath.Join(oldBase, r.pkg.Version)
+			if err := os.RemoveAll(oldPkgDir); err != nil {
+				printWarn(cfg, "%s: could not remove old extract dir: %v", r.key, err)
+			}
+		}
 		manifest.Extracts[r.key] = config.PackageEntry{
-			Pin:        r.pkg.Pin,
-			Version:    newVer,
-			AssetName:      r.chosen.Name,
+			Pin:       r.pkg.Pin,
+			Version:   newVer,
+			AssetName: r.chosen.Name,
 			BinDir:    binPath,
-			BinName: binaryName,
+			BinName:   binaryName,
 		}
 		printPass(cfg, "updated %s %s → %s", r.key, r.pkg.Version, newVer)
 	}

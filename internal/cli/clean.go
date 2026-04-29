@@ -153,7 +153,7 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 		return
 	}
 
-	entries, err := os.ReadDir(pkgsDir)
+	keyEntries, err := os.ReadDir(pkgsDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			printFail(cfg, "%v", err)
@@ -161,13 +161,27 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 		return
 	}
 
+	// orphaned is a list of paths relative to pkgsDir to remove
 	var orphaned []string
-	for _, e := range entries {
+	for _, e := range keyEntries {
 		if !e.IsDir() {
 			continue
 		}
-		if _, ok := manifest.Extracts[e.Name()]; !ok {
-			orphaned = append(orphaned, e.Name())
+		key := e.Name()
+		pkg, inManifest := manifest.Extracts[key]
+		if !inManifest {
+			orphaned = append(orphaned, key)
+			continue
+		}
+		// Key is in manifest — check for stale version subdirs (e.g. from failed updates)
+		verEntries, err := os.ReadDir(filepath.Join(pkgsDir, key))
+		if err != nil {
+			continue
+		}
+		for _, ve := range verEntries {
+			if ve.IsDir() && ve.Name() != pkg.Version {
+				orphaned = append(orphaned, filepath.Join(key, ve.Name()))
+			}
 		}
 	}
 
@@ -193,6 +207,14 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 		p := filepath.Join(pkgsDir, name)
 		if err := os.RemoveAll(p); err != nil {
 			printFail(cfg, "%s: %v", name, err)
+			continue
+		}
+		// Clean up empty key dirs left behind after removing version subdirs
+		parent := filepath.Dir(p)
+		if parent != pkgsDir {
+			if entries, err := os.ReadDir(parent); err == nil && len(entries) == 0 {
+				_ = os.Remove(parent)
+			}
 		}
 	}
 	printPass(cfg, "cleaned %d orphaned package dir(s)", len(orphaned))

@@ -46,7 +46,7 @@ func envHook(shell string) string {
 func shHook() string {
 	return `ghpm() {
   case "$1" in
-    reload) [ -f "$HOME/.ghpm/scripts/path.sh" ] && source "$HOME/.ghpm/scripts/path.sh" ;;
+    reload) [ -f "$HOME/.ghpm/scripts/paths.sh" ] && source "$HOME/.ghpm/scripts/paths.sh" ;;
     *) command ghpm "$@" ;;
   esac
 }
@@ -57,7 +57,7 @@ ghpm reload
 func nuHook() string {
 	return `def --env --wrapped ghpm [...args] {
   if ($args | length) > 0 and $args.0 == "reload" {
-    if ("~/.ghpm/scripts/path.nu" | path expand | path exists) { source-env ("~/.ghpm/scripts/path.nu" | path expand) }
+    if ("~/.ghpm/scripts/paths.nu" | path expand | path exists) { source-env ("~/.ghpm/scripts/paths.nu" | path expand) }
   } else {
     ^ghpm ...$args
   }
@@ -69,7 +69,7 @@ ghpm reload
 func ps1Hook() string {
 	return `function ghpm {
   if ($args.Count -gt 0 -and $args[0] -eq "reload") {
-    if (Test-Path "${env:HOME}/.ghpm/scripts/path.ps1") { . "${env:HOME}/.ghpm/scripts/path.ps1" }
+    if (Test-Path "${env:HOME}/.ghpm/scripts/paths.ps1") { . "${env:HOME}/.ghpm/scripts/paths.ps1" }
   } else {
     & (Get-Command ghpm -CommandType Application).Source @args
   }

@@ -65,7 +65,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, t := range targets {
-			fmt.Printf("[dry-run] would remove %s %s (extract dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key))
+			fmt.Printf("[dry-run] would remove %s %s (extract dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
 		}
 		return nil
 	}
@@ -85,11 +85,16 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	var hadErrors bool
 	for _, t := range targets {
-		pkgPath := filepath.Join(pkgsDir, t.key)
+		pkgPath := filepath.Join(pkgsDir, t.key, t.pkg.Version)
 		if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
 			printFail(cfg, "%s: could not remove extract dir: %v", t.key, err)
 			hadErrors = true
 			continue
+		}
+		// Remove base dir if now empty (no other version dirs remain)
+		baseDir := filepath.Join(pkgsDir, t.key)
+		if entries, err := os.ReadDir(baseDir); err == nil && len(entries) == 0 {
+			_ = os.Remove(baseDir)
 		}
 		delete(manifest.Extracts, t.key)
 		baseName, _, _ := config.ParseVersionSuffix(t.key)
