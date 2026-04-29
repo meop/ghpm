@@ -110,18 +110,23 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	pkgsDir, pkgsErr := store.ExtractsDir()
 	if manifestErr == nil && manifest != nil && pkgsErr == nil {
 		var stale []string
-		for key := range manifest.Extracts {
-			if _, serr := os.Stat(filepath.Join(pkgsDir, key)); os.IsNotExist(serr) {
+		for key, pkg := range manifest.Extracts {
+			if _, serr := os.Stat(filepath.Join(pkgsDir, key, pkg.Version)); os.IsNotExist(serr) {
 				stale = append(stale, key)
 			}
 		}
 		if len(stale) == 0 {
-			pass("installed packages", "present")
+			pass("installed packages", fmt.Sprintf("%d installed", len(manifest.Extracts)))
 		} else {
 			for _, key := range stale {
-				warn("installed packages", key+" — not present")
+				warn("installed packages", key+" — extract dir missing")
 			}
 		}
+	}
+
+	if binDir, err := store.BinDir(); err == nil {
+		entries, _ := os.ReadDir(binDir)
+		pass("shims", fmt.Sprintf("%d in %s", len(entries), binDir))
 	}
 
 	if releaseDir, err := store.ReleaseBaseDir(); err == nil {
