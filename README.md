@@ -22,33 +22,24 @@ irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubus
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, add the shell hook to your config:
+After installing, add `~/.ghpm/bin` to your PATH:
 
 **zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
 ```sh
-if [[ -d "${HOME}/.ghpm/bin" ]]; then
-  export PATH="${HOME}/.ghpm/bin:${PATH}"
-  eval "$(ghpm init)"
-fi
+eval "$(ghpm init)"
 ```
 
-**Nushell** — add to `~/.config/nushell/config.nu`:
+**Nushell** — add to `~/.config/nushell/env.nu`:
 ```nu
-if ("~/.ghpm/bin" | path expand | path exists) {
-  $env.PATH = ($env.PATH | prepend ($env.HOME + "/.ghpm/bin"))
-  ghpm init nu | save -f ([$NU_VENDOR_DATA_DIR, 'ghpm.nu'] | path join)
-}
+$env.PATH = ($env.PATH | prepend ($env.HOME + "/.ghpm/bin") | uniq)
 ```
 
 **PowerShell / pwsh** — add to `$PROFILE`:
 ```powershell
-if (Test-Path "${env:HOME}/.ghpm/bin") {
-  $env:PATH = "${env:HOME}/.ghpm/bin" + [IO.Path]::PathSeparator + $env:PATH
-  Invoke-Expression (ghpm init pwsh)
-}
+Invoke-Expression (ghpm init pwsh)
 ```
 
-The hook sources the generated path script and defines a `ghpm reload` alias for refreshing your PATH after installs.
+Each installed binary gets a shim in `~/.ghpm/bin/` — a symlink on Linux/macOS, a `.cmd` wrapper on Windows. Adding that single directory to PATH is all that's needed; no reload required after installs.
 
 ## Usage
 
@@ -75,8 +66,8 @@ ghpm uninstall fzf            # remove package
 ghpm clean                    # remove unused cached assets and orphaned package dirs
 ghpm clean --all              # remove all cached assets
 
-ghpm init                     # output posix shell hook for eval
-ghpm init nu                  # output shell hook for eval (nu/nushell/pwsh/powershell, else posix)
+ghpm init                     # output PATH snippet for ~/.ghpm/bin (posix sh)
+ghpm init nu                  # same for nushell (pwsh/powershell for PowerShell, else posix)
 ghpm upgrade                  # upgrade ghpm itself and managed gh
 ghpm doctor                   # check system health
 ```
@@ -102,7 +93,7 @@ Manifest key and directory name both use the constraint as written (e.g., `fzf@1
 
 ### Portable app support
 
-ghpm extracts archives into `~/.ghpm/extracts/<name>/` and discovers the bin directory automatically. Env scripts add each package's bin directory to `PATH`. GitHub releases are portable apps — binaries locate their own resources via paths relative to the executable, so no other env vars are needed.
+ghpm extracts archives into `~/.ghpm/extracts/<key>/<version>/` and discovers the binary automatically. A shim is created in `~/.ghpm/bin/` pointing at the real binary inside the extract dir — a symlink on Linux/macOS, a `.cmd` wrapper on Windows. GitHub releases are portable apps — binaries locate their own resources via paths relative to the executable, so no other env vars are needed.
 
 ### Configuration
 
@@ -158,11 +149,10 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 
 - All GitHub interaction goes through the `gh` CLI — no GitHub SDK
 - Release assets are cached in `~/.ghpm/releases/github.com/<owner>/<repo>/<version>/`
-- Packages are extracted to `~/.ghpm/extracts/<name>/` with full directory structure
-- Path scripts (`path.sh`, `path.nu`, `path.ps1`) are generated in `~/.ghpm/scripts/`
+- Packages are extracted to `~/.ghpm/extracts/<key>/<version>/` with full directory structure
+- A shim in `~/.ghpm/bin/` points at the binary in each package's extract dir
 - State is tracked in `~/.ghpm/manifest.json`
 - SHA256 verification runs by default when `.sha256` sidecar files are available in the release
-- Path scripts are regenerated after every install/update/uninstall/clean
 
 ## License
 

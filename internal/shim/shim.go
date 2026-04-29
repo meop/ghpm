@@ -9,9 +9,10 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-// Create installs a shim for name pointing at the binary inside pkgDir/binSubdir.
+// Create installs a shim named shimName (the manifest key, e.g. "fzf" or "fzf@0.58")
+// pointing at binaryName inside pkgDir/binSubdir.
 // On Unix this is a symlink; on Windows a .cmd wrapper.
-func Create(name, pkgDir, binSubdir string) error {
+func Create(shimName, binaryName, pkgDir, binSubdir string) error {
 	binDir, err := store.BinDir()
 	if err != nil {
 		return err
@@ -21,31 +22,32 @@ func Create(name, pkgDir, binSubdir string) error {
 	}
 
 	if runtime.GOOS == "windows" {
-		target := filepath.Join(pkgDir, binSubdir, name+".exe")
-		shimPath := filepath.Join(binDir, name+".cmd")
+		target := filepath.Join(pkgDir, binSubdir, binaryName+".exe")
+		shimPath := filepath.Join(binDir, shimName+".cmd")
 		content := fmt.Sprintf("@\"%s\" %%*\r\n", target)
 		return os.WriteFile(shimPath, []byte(content), 0644)
 	}
 
-	target := filepath.Join(pkgDir, binSubdir, name)
-	shimPath := filepath.Join(binDir, name)
+	target := filepath.Join(pkgDir, binSubdir, binaryName)
+	shimPath := filepath.Join(binDir, shimName)
 	_ = os.Remove(shimPath)
 	return os.Symlink(target, shimPath)
 }
 
-// Remove deletes the shim for name from ~/.ghpm/bin/.
-func Remove(name string) error {
+// Remove deletes the shim for shimName from ~/.ghpm/bin/.
+func Remove(shimName string) error {
 	binDir, err := store.BinDir()
 	if err != nil {
 		return err
 	}
+	var err2 error
 	if runtime.GOOS == "windows" {
-		err = os.Remove(filepath.Join(binDir, name+".cmd"))
+		err2 = os.Remove(filepath.Join(binDir, shimName+".cmd"))
 	} else {
-		err = os.Remove(filepath.Join(binDir, name))
+		err2 = os.Remove(filepath.Join(binDir, shimName))
 	}
-	if os.IsNotExist(err) {
+	if os.IsNotExist(err2) {
 		return nil
 	}
-	return err
+	return err2
 }

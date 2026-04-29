@@ -218,8 +218,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return nil, err
 				}
+				if err := os.RemoveAll(newPkgDir); err != nil {
+					return nil, err
+				}
 				if err := asset.ExtractPackage(cacheDir, r.chosen.Name, newPkgDir); err != nil {
-					// leave newPkgDir for ghpm clean — old version dir is untouched
+					_ = os.RemoveAll(newPkgDir)
 					return nil, err
 				}
 				return r, nil
@@ -260,7 +263,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			BinDir:    binPath,
 			BinName:   binaryName,
 		}
-		if err := shim.Create(name, newPkgDir, binPath); err != nil {
+		if err := shim.Create(r.key, binaryName, newPkgDir, binPath); err != nil {
 			printWarn(cfg, "%s: could not update shim: %v", r.key, err)
 		}
 		printPass(cfg, "updated %s %s → %s", r.key, r.pkg.Version, newVer)

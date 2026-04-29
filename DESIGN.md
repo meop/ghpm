@@ -22,10 +22,10 @@ ghpm/
 │   ├── asset/        # asset matching, selection, extraction, SHA verification, path discovery
 │   ├── cli/          # cobra command definitions
 │   ├── config/       # manifest, settings, repo resolution, version normalization, process lock
-│   ├── entrypoint/   # shell env script generation (sh, nu, ps1) → ~/.ghpm/scripts/env.*
 │   ├── gh/           # gh CLI wrapper, GraphQL batch queries, rate limit detection
 │   ├── parallel/     # worker pool orchestration
-│   └── store/        # path helpers: BinDir, ScriptsDir, PackagesDir, PackageDir for ~/.ghpm/
+│   ├── shim/         # shim creation/removal (symlink on Unix, .cmd on Windows)
+│   └── store/        # path helpers for ~/.ghpm/ subdirectories
 ├── install.sh
 ├── install.ps1
 ├── go.mod
@@ -57,28 +57,31 @@ No heavy GitHub SDK — all GitHub interaction goes through `gh` CLI invoked via
 ├── .lock                       # process lock (flock)
 ├── bin/
 │   ├── gh                      # gh CLI (bootstrap dependency, managed by ghpm upgrade)
-│   └── ghpm                    # ghpm itself (managed by ghpm upgrade)
-├── manifest.json               # tracked packages (gh is NOT in the manifest)
-├── packages/                   # installed packages (full archive extracts)
+│   ├── ghpm                    # ghpm itself (managed by ghpm upgrade)
+│   ├── fzf -> ../extracts/fzf/0.58.0/fzf          # shim: symlink (Unix)
+│   ├── fzf@0.57 -> ../extracts/fzf@0.57/0.57.3/fzf # shim: versioned
+│   └── nvim.cmd                # shim: .cmd wrapper (Windows)
+├── extracts/                   # installed packages (full archive extracts)
 │   ├── fzf/
-│   │   └── fzf                 # single binary
+│   │   └── 0.58.0/             # versioned extract dir
+│   │       └── fzf             # single binary
 │   ├── helix/
-│   │   └── helix-24.3-x86_64-linux/
-│   │       └── helix-24.3/
-│   │           ├── bin/hx
-│   │           ├── lib/
-│   │           ├── share/
-│   │           └── runtime/
-│   └── ...
+│   │   └── 24.3/
+│   │       └── helix-24.3-x86_64-linux/
+│   │           └── helix-24.3/
+│   │               ├── bin/hx
+│   │               ├── lib/
+│   │               ├── share/
+│   │               └── runtime/
+│   └── fzf@0.57/
+│       └── 0.57.3/
+│           └── fzf
+├── manifest.json               # tracked packages (gh is NOT in the manifest)
 ├── releases/                   # cached release assets
 │   └── github.com/<owner>/<repo>/<version>/<asset>
 ├── repos/                      # cached repo files per source
 │   └── github.com/<owner>/<repo>/repos.yaml
-├── scripts/
-│   ├── env.sh                  # generated for bash/zsh (POSIX)
-│   ├── env.nu                  # generated for nushell
-│   └── env.ps1                 # generated for PowerShell
-├── settings.json               # user preferences (optional, not created by default)
+└── settings.json               # user preferences (optional, not created by default)
 ```
 
 ### Manifest (`manifest.json`)
@@ -91,36 +94,27 @@ Plain JSON, fully managed by ghpm:
     "bun": "github.com/oven-sh/bun",
     "fzf": "github.com/junegunn/fzf"
   },
-  "installs": {
+  "extracts": {
     "bun": {
       "pin": "latest",
       "version": "1.3.13",
-      "asset": "bun-linux-x64.zip",
-      "paths": {
-        "bin": ["."]
-      },
-      "binary_name": "bun"
+      "asset_name": "bun-linux-x64.zip",
+      "bin_dir": "",
+      "bin_name": "bun"
     },
     "helix": {
       "pin": "latest",
       "version": "24.3",
-      "asset": "helix-24.3-x86_64-linux.tar.xz",
-      "paths": {
-        "bin": ["helix-24.3-x86_64-linux/helix-24.3/bin"],
-        "lib": ["helix-24.3-x86_64-linux/helix-24.3/lib"],
-        "share": ["helix-24.3-x86_64-linux/helix-24.3/share"],
-        "man": ["helix-24.3-x86_64-linux/helix-24.3/share/man"]
-      },
-      "binary_name": "hx"
+      "asset_name": "helix-24.3-x86_64-linux.tar.xz",
+      "bin_dir": "helix-24.3-x86_64-linux/helix-24.3/bin",
+      "bin_name": "hx"
     },
-    "fzf@0.70": {
+    "fzf@0.57": {
       "pin": "minor",
-      "version": "0.70.0",
-      "asset": "fzf-0.70.0-linux_amd64.tar.gz",
-      "paths": {
-        "bin": ["."]
-      },
-      "binary_name": "fzf"
+      "version": "0.57.3",
+      "asset_name": "fzf-0.57.3-linux_amd64.tar.gz",
+      "bin_dir": "",
+      "bin_name": "fzf"
     }
   }
 }
@@ -130,9 +124,9 @@ Fields:
 
 - **`pin`**: `"latest"`, `"major"`, `"minor"`, or `"fixed"`. Floating packages track the newest release; pinned packages update within their constraint; exact pins never update.
 - **`version`**: installed version, normalized by stripping all leading non-digit characters from the GitHub tag (e.g., `"bun-v1.3.13"` → `"1.3.13"`, `"v0.71.0"` → `"0.71.0"`).
-- **`asset`**: the exact asset filename chosen during install. On `update`, ghpm tokenizes both the stored and candidate asset names, strips version-like tokens, and matches on the remaining structural tokens. If exactly one candidate matches, it is auto-selected without prompting.
-- **`paths`**: discovered directory paths (relative to `packages/<key>/`) categorized by type. `"bin"` entries are added to `PATH`, `"lib"` to `LD_LIBRARY_PATH`, `"share"` to `XDG_DATA_DIRS`, `"man"` to `MANPATH`.
-- **`binary_name`**: the primary executable found in the archive, used for informational purposes.
+- **`asset_name`**: the exact asset filename chosen during install. On `update`, ghpm tokenizes both the stored and candidate asset names, strips version-like tokens, and matches on the remaining structural tokens. If exactly one candidate matches, it is auto-selected without prompting.
+- **`bin_dir`**: subdirectory within the extract dir where the binary lives (relative to `extracts/<key>/<version>/`). Empty string means the binary is at the extract root.
+- **`bin_name`**: the primary executable name (without `.exe`). Used to construct the shim target path.
 
 ### Settings (`settings.json`, optional)
 
@@ -162,7 +156,7 @@ Fields:
 ### Config module (`internal/config/`)
 
 - `AcquireLock() (func(), error)` — acquire exclusive process lock via `flock`
-- `EnsureDirs() error` — create `~/.ghpm/{bin,packages,releases,repos,scripts}` if missing
+- `EnsureDirs() error` — create `~/.ghpm/{bin,extracts,releases,repos,scripts}` if missing
 - `LoadManifest() (*Manifest, error)` — read manifest, create if missing
 - `LoadSettings() (*Settings, error)` — load settings with hardcoded defaults for missing file
 - `NormalizeVersion(v string) string` — strip all leading non-digit chars from tag
@@ -230,7 +224,7 @@ Use `runtime.GOOS` and `runtime.GOARCH`. Map to common naming conventions:
 ### Matching algorithm
 
 1. **Filter out non-binaries**: `.sha256`, `.sha512`, `.sig`, `.pem`, `.sbom`, source archives (containing `src` or `source`), `.deb`, `.apk`, `.rpm`, `.msi`, `.pkg`
-2. **Hint matching**: if the package was previously installed, tokenize the stored `asset` name and candidate names, strip version-like tokens, and compare structural tokens. If exactly one candidate matches, auto-select.
+2. **Hint matching**: if the package was previously installed, tokenize the stored `asset_name` and candidate names, strip version-like tokens, and compare structural tokens. If exactly one candidate matches, auto-select.
 3. **Score remaining assets** by matching OS and arch keywords
 4. **Apply platform priority** from settings to break ties
 5. **Prompt**: if multiple plausible matches remain, prompt user to pick from numbered list
@@ -247,9 +241,9 @@ ghpm-0.1.7-darwin-amd64-extra.tar.gz  →  ["ghpm", "darwin", "amd64", "extra.ta
 
 ### Extraction
 
-#### `ExtractPackage()` — full archive extraction (primary)
+#### `ExtractPackage()` — full archive extraction
 
-Extracts the complete archive into `~/.ghpm/packages/<key>/` preserving directory structure:
+Extracts the complete archive into `~/.ghpm/extracts/<key>/<version>/` preserving directory structure:
 
 | File type | Strategy |
 |---|---|
@@ -257,23 +251,20 @@ Extracts the complete archive into `~/.ghpm/packages/<key>/` preserving director
 | `.tar.bz2` | Go `archive/tar` + `compress/bzip2` — same |
 | `.tar.xz` | `tar xJf` — shell out to system tar |
 | `.zip` | Go `archive/zip` — preserve all files and dirs |
-| No extension / raw binary | `chmod +x` and copy directly into package dir |
+| No extension / raw binary | `chmod +x` and copy directly into extract dir |
 
-After extraction, `DiscoverPaths()` walks the directory tree to find bin/lib/share/etc dirs and records them in the manifest.
-
-#### `Extract()` — single-binary extraction (used only for `ghpm upgrade`)
-
-The older extraction method that picks one binary from the archive. Kept for self-upgrade only.
+After extraction, `DiscoverPaths()` finds the binary by name.
 
 ### Path discovery (`internal/asset/discover.go`)
 
-After `ExtractPackage()` extracts the full archive, `DiscoverPaths(pkgDir)` walks the tree:
+`DiscoverPaths(pkgDir, name string)` finds the binary using name-based lookup with magic-byte verification:
 
-1. Look for directories named `bin`, `lib`, `share`
-2. Under `share/`, look for `man/` subdirectory
-3. If no `bin/` dir found, look for directories containing executables (including the package root itself)
-4. Record the primary executable name as `binary_name`
-5. Skip noise: `__MACOSX`, `.DS_Store`, `.git`
+1. Look for a file named exactly `name` (or `name.exe` on Windows) in: root, `bin/`, each top-level subdir, and `<subdir>/bin/`
+2. Verify the file is a real binary via magic bytes: ELF (`\x7fELF`) on Linux, Mach-O variants on macOS, file existence on Windows
+3. Returns `(binDir, binaryName)` — `binDir` is the subdirectory path relative to `pkgDir`, empty string if binary is at root
+4. Calls `ensureExecutable` to set the execute bit if missing
+
+This avoids false positives from scripts or data files that happen to be executable.
 
 ### SHA verification
 
@@ -287,110 +278,44 @@ After downloading, if a `<asset>.sha256` (or `.sha256sum`) file exists among the
 
 ---
 
-## Shell Env Scripts (`internal/entrypoint/`)
+## Shims (`internal/shim/`)
 
-ghpm generates static shell env scripts that users `source` from their shell config. These prepend PATH and other environment variables so installed tools are discoverable. The `internal/entrypoint/` package generates these files to `~/.ghpm/scripts/env.*`.
+Each installed binary gets a shim in `~/.ghpm/bin/` pointing at the real binary inside its versioned extract dir. Adding `~/.ghpm/bin` to PATH is all the shell setup required.
 
-### Shell detection
+### Shim types
 
-On `ghpm init` or after any install/update/uninstall, ghpm detects which shells are available in PATH:
+- **Unix (Linux/macOS)**: a symlink — `~/.ghpm/bin/<key>` → `~/.ghpm/extracts/<key>/<version>/<binDir>/<binaryName>`
+- **Windows**: a `.cmd` wrapper — `~/.ghpm/bin/<key>.cmd` containing `@"<absolute-path-to-binary.exe>" %*`
 
-- `sh`/`bash`/`zsh` found → generate `scripts/env.sh`
-- `nu` found → generate `scripts/env.nu`
-- `pwsh` found → generate `scripts/env.ps1`
+Symlinks are resolved by the kernel before exec, so the real binary sees its own location via `/proc/self/exe` (Linux) or `_NSGetExecutablePath` (macOS). Portable tools that locate runtime data relative to their own path (e.g., `nvim` finding `../share/nvim/runtime`) work correctly.
 
-Only env scripts for detected shells are generated. Stale env script files for undetected shells are removed.
+### Shim lifecycle
 
-`ghpm init` prints source hints for **all** detected shells (zsh, bash, nu, pwsh), not just the current shell.
+- **Install**: `shim.Create(key, binaryName, pkgDir, binSubdir)` — creates or overwrites the shim
+- **Update**: same call after extracting the new version — shim is atomically replaced to point at the new path
+- **Uninstall**: `shim.Remove(key)` — removes the shim file
+- **Clean**: `cleanOrphanedShims` scans `~/.ghpm/bin/` and removes any file not backed by a manifest entry
 
-### Regeneration
+### Multiple versions alongside each other
 
-Env scripts are regenerated from scratch after every:
-- `ghpm install`
-- `ghpm update`
-- `ghpm uninstall`
-- `ghpm clean`
-- `ghpm init`
+Each manifest key gets its own shim: `fzf`, `fzf@0`, `fzf@1.2.3` → `~/.ghpm/bin/fzf`, `~/.ghpm/bin/fzf@0`, `~/.ghpm/bin/fzf@1.2.3`. They coexist without conflict.
 
-This is safe because the process lock prevents concurrent ghpm runs.
+### Shell setup
 
-### Generated env script examples
-
-**env.sh** (POSIX sh, works for bash/zsh):
-```sh
-# generated by ghpm — do not edit
-GHPM_HOME="/home/user/.ghpm"
-GHPM_PKGS="$GHPM_HOME/packages"
-
-# PATH: gh (managed by ghpm)
-export PATH="$GHPM_HOME/bin${PATH:+:$PATH}"
-
-# fzf
-export PATH="$GHPM_PKGS/fzf:${PATH:+:$PATH}"
-
-# helix
-export PATH="$GHPM_PKGS/helix/helix-24.3/helix-24.3/bin:${PATH:+:$PATH}"
-export LD_LIBRARY_PATH="$GHPM_PKGS/helix/helix-24.3/helix-24.3/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export MANPATH="$GHPM_PKGS/helix/helix-24.3/helix-24.3/share/man${MANPATH:+:$MANPATH}"
-
-unset GHPM_HOME GHPM_PKGS
-```
-
-**env.nu** (Nushell):
-```nu
-# generated by ghpm — do not edit
-let ghpm_home = "/home/user/.ghpm"
-let ghpm_pkgs = $"($ghpm_home)/packages"
-
-# PATH: gh (managed by ghpm)
-$env.PATH = ($env.PATH | prepend $"($ghpm_home)/bin")
-
-# fzf
-$env.PATH = ($env.PATH | prepend $"($ghpm_pkgs)/fzf")
-
-# helix
-$env.PATH = ($env.PATH | prepend $"($ghpm_pkgs)/helix/helix-24.3/helix-24.3/bin")
-$env.LD_LIBRARY_PATH = ($env.LD_LIBRARY_PATH? | default [] | prepend $"($ghpm_pkgs)/helix/helix-24.3/helix-24.3/lib")
-$env.MANPATH = ($env.MANPATH? | default [] | prepend $"($ghpm_pkgs)/helix/helix-24.3/helix-24.3/share/man")
-```
-
-**env.ps1** (PowerShell):
-```powershell
-# generated by ghpm — do not edit
-$ghpm_home = "/home/user/.ghpm"
-$ghpm_pkgs = "$ghpm_home\packages"
-
-# PATH: gh (managed by ghpm)
-$env:PATH = "$ghpm_home\bin;$env:PATH"
-
-# fzf
-$env:PATH = "$ghpm_pkgs\fzf;$env:PATH"
-
-# helix
-$env:PATH = "$ghpm_pkgs\helix\helix-24.3\helix-24.3\bin;$env:PATH"
-$env:LD_LIBRARY_PATH = "$ghpm_pkgs\helix\helix-24.3\helix-24.3\lib;$env:LD_LIBRARY_PATH"
-$env:MANPATH = "$ghpm_pkgs\helix\helix-24.3\helix-24.3\share\man;$env:MANPATH"
-```
-
-On Linux, `MANPATH` and `LD_LIBRARY_PATH` are set in **all** shell env scripts (sh, nu, ps1). On non-Linux platforms these variables are omitted.
-
-### User setup
-
-After installing ghpm, users add one line to their shell config:
+Users add one line to their shell config:
 
 ```sh
-# bash
-echo 'source ~/.ghpm/scripts/env.sh' >> ~/.bashrc
+# bash/zsh (~/.bashrc or ~/.zshrc)
+eval "$(ghpm init)"
 
-# zsh
-echo 'source ~/.ghpm/scripts/env.sh' >> ~/.zshrc
+# nushell (~/.config/nushell/env.nu)
+$env.PATH = ($env.PATH | prepend ($env.HOME + "/.ghpm/bin") | uniq)
 
-# nushell
-echo 'source ~/.ghpm/scripts/env.nu' >> $nu.config-path
-
-# PowerShell
-Add-Content $PROFILE '. ~/.ghpm/scripts/env.ps1'
+# PowerShell ($PROFILE)
+Invoke-Expression (ghpm init pwsh)
 ```
+
+`ghpm init [shell]` outputs the appropriate static PATH snippet. Supported shell arguments: `nu`/`nushell`, `pwsh`/`powershell`; anything else (including no argument) outputs POSIX sh.
 
 ---
 
@@ -416,13 +341,13 @@ func Run(ctx context.Context, tasks []Task, workers int) []Result
 
 ### Process lock
 
-To prevent concurrent ghpm processes from corrupting the manifest or env scripts:
+To prevent concurrent ghpm processes from corrupting the manifest:
 
 - `AcquireLock()` acquires an exclusive `flock` on `~/.ghpm/.lock` via `gofrs/flock`
 - Cross-platform: `flock(2)` on Linux/macOS, `LockFileEx` on Windows
 - Non-blocking try with 3 retries at 1s intervals
 - Mutating commands (`install`, `update`, `uninstall`, `clean`, `upgrade`) acquire the lock
-- Read-only commands (`list`, `outdated`, `info`, `search`, `doctor`) skip the lock
+- Read-only commands (`list`, `outdated`, `show`, `search`, `doctor`) skip the lock
 
 ### GraphQL batched release checking
 
@@ -456,7 +381,7 @@ Users type `ghpm install fzf`, but we need `github.com/junegunn/fzf`.
 
 ### Name constraints
 
-Package names must be simple, filesystem-safe strings with no slashes or spaces. This name becomes the directory name in `~/.ghpm/packages/`. Names like `cli/cli` or `github.com/cli/cli` are rejected — only simple names like `gh`, `fzf`, `ripgrep`.
+Package names must be simple, filesystem-safe strings with no slashes or spaces. This name becomes part of the directory path in `~/.ghpm/extracts/`. Names like `cli/cli` or `github.com/cli/cli` are rejected — only simple names like `gh`, `fzf`, `ripgrep`.
 
 | Input | Behavior |
 |---|---|
@@ -495,10 +420,10 @@ Each source's file is cached at `~/.ghpm/repos/github.com/<owner>/<repo>/repos.y
 ### `@version` syntax
 
 ```
-ghpm install fzf              # latest, dir → packages/fzf/
-ghpm install fzf@14           # latest 14.x, dir → packages/fzf@14/
-ghpm install fzf@14.1         # latest 14.1.x, dir → packages/fzf@14.1/
-ghpm install fzf@14.1.0       # exact, dir → packages/fzf@14.1.0/ (never updates)
+ghpm install fzf              # latest, extracts → extracts/fzf/<version>/
+ghpm install fzf@14           # latest 14.x, extracts → extracts/fzf@14/<version>/
+ghpm install fzf@14.1         # latest 14.1.x, extracts → extracts/fzf@14.1/<version>/
+ghpm install fzf@14.1.0       # exact, extracts → extracts/fzf@14.1.0/<version>/ (never updates)
 ghpm update fzf@14 ripgrep    # updates fzf@14 within major, and ripgrep to latest
 ghpm uninstall fzf@14         # removes only the major-pinned copy
 ```
@@ -534,23 +459,22 @@ All commands that accept package names accept **multiple names** and process the
 #### `ghpm clean [--all]`
 
 1. Default: scan `~/.ghpm/releases/`, compare against manifest, remove assets for versions not currently installed
-2. Scan `~/.ghpm/packages/`, remove dirs not matching any manifest key
-3. Regenerate env scripts
-4. `--all`: remove entire `~/.ghpm/releases/` contents + orphaned packages + regenerate env scripts
-5. Prompt before deleting
+2. Scan `~/.ghpm/extracts/`, remove stale version subdirs and dirs not matching any manifest key
+3. Scan `~/.ghpm/bin/`, remove shims not backed by a manifest entry
+4. `--all`: remove entire `~/.ghpm/releases/` contents, then run orphan cleanup
+5. Prompt before deleting each category
 
 #### `ghpm doctor`
 
 Diagnostic command — checks system health:
 
 1. `gh` installed? Authenticated? (`gh auth status`)
-2. Env script files exist for detected shells?
-3. Env script sourced in user's shell rc file(s)?
-4. Manifest file valid JSON?
-5. Settings file valid (if present)?
-6. All installed packages present on disk?
-7. Disk usage of `~/.ghpm/releases/` cache
-8. Print summary with PASS/FAIL/WARN per check
+2. Manifest file valid JSON?
+3. Settings file valid (if present)?
+4. All installed packages present on disk (extract dir exists)?
+5. Shim count in `~/.ghpm/bin/`
+6. Disk usage of `~/.ghpm/releases/` cache
+7. Print summary with PASS/FAIL/WARN per check
 
 #### `ghpm download <names> [--path <dir>]`
 
@@ -558,18 +482,15 @@ Diagnostic command — checks system health:
 2. Download to cache by default, or `--path` if given
 3. Prompt before downloading
 
-#### `ghpm info <names>`
+#### `ghpm show <names>`
 
 1. Resolve name → source
 2. Fetch release list (or specific release)
 3. Print: source repo, available versions (last 10), asset list for selected version
 
-#### `ghpm init [--shell <shell>]`
+#### `ghpm init [shell]`
 
-1. Detect available shells in PATH
-2. Generate env script files for detected shells (or only `--shell` if specified)
-3. Print source instructions for **all** detected shells (zsh, bash, nu, pwsh)
-4. Supported shells: `sh`/`bash`/`zsh`, `nu`, `pwsh`
+Output a static PATH snippet for `~/.ghpm/bin` suitable for eval in a shell config file. Supported shell arguments: `nu`/`nushell`, `pwsh`/`powershell`; anything else (or no argument) outputs POSIX sh.
 
 #### `ghpm install <names>`
 
@@ -577,10 +498,13 @@ Diagnostic command — checks system health:
 2. Fetch release info for each (parallel)
 3. Run asset matcher for each (parallel)
 4. Prompt with table showing what will be installed
-5. Download + verify SHA + extract full archive to `~/.ghpm/packages/<key>/` (parallel)
-6. Discover paths in extracted tree
-7. Update manifest (store version, asset, paths, binary_name)
-8. Regenerate env scripts
+5. Pre-remove existing extract dir (clean slate for `--force` reinstall)
+6. Download + verify SHA + extract full archive to `~/.ghpm/extracts/<key>/<version>/` (parallel)
+7. On extraction failure, remove partial extract dir immediately
+8. Discover binary via name-based lookup + magic bytes
+9. If binary not found, leave extract dir for `ghpm clean` (hadErrors = true)
+10. Create shim in `~/.ghpm/bin/<key>`
+11. Update manifest
 
 #### `ghpm list`
 
@@ -597,9 +521,9 @@ Diagnostic command — checks system health:
 
 1. Load manifest, find entries
 2. Prompt with table
-3. Remove `~/.ghpm/packages/<key>/` directory
-4. Remove entry from manifest
-5. Regenerate env scripts
+3. Remove `~/.ghpm/extracts/<key>/<version>/` directory; remove base dir if now empty
+4. Remove shim `~/.ghpm/bin/<key>`
+5. Remove entry from manifest (and from `repos` if no other version of same base name remains)
 6. Leave cached release assets (cleaned by `ghpm clean`)
 
 #### `ghpm update [names]`
@@ -607,11 +531,14 @@ Diagnostic command — checks system health:
 1. If no names given, update all floating and major/minor-pinned packages (exact pins are skipped)
 2. If names given, update only those (exact pins warn and skip)
 3. Batch-check versions via GraphQL
-4. For packages with new versions: use stored `asset` for token-based matching, fetch asset details, download, extract
-5. Remove old `packages/<key>/`, re-extract, rediscover paths
-6. Prompt before updating
-7. Regenerate env scripts
-8. Refreshes all configured alias repos before checking for updates
+4. For packages with new versions: use stored `asset_name` for token-based matching, fetch asset details
+5. Pre-remove new version extract dir (clean re-extract if retrying)
+6. Download + verify SHA + extract to `~/.ghpm/extracts/<key>/<newVersion>/`
+7. On extraction failure, remove partial dir immediately; old version dir untouched
+8. Discover binary; on failure leave new dir for `ghpm clean`, old version dir untouched
+9. On success: remove old version dir, update shim, update manifest
+10. Prompt before updating
+11. Refreshes all configured alias repos before checking for updates
 
 #### `ghpm upgrade`
 
@@ -649,21 +576,20 @@ Use [goreleaser/goreleaser](https://github.com/goreleaser/goreleaser) to automat
 |---|---|
 | `@version` syntax | Homebrew-style `name@version`. Three pin levels: major (`@14`), minor (`@14.1`), exact (`@14.1.0`). Exact pins never update. |
 | `gh` auth | Public repos need no auth. ghpm warns if `gh` not authenticated for private repos. |
-| Asset selection | Store chosen filename in manifest (`asset` field). Token-based structural matching on update: strip version-like tokens, compare remaining tokens. Auto-select if exactly one candidate matches. |
+| Asset selection | Store chosen filename in manifest (`asset_name` field). Token-based structural matching on update: strip version-like tokens, compare remaining tokens. Auto-select if exactly one candidate matches. |
 | Batch release checks | GraphQL batch queries via `gh api graphql` with `--cache`. Groups of 50 repos per call. Two-phase update: batch version check → individual asset fetch for changed packages only. |
-| Binary naming | `@` separator for versioned packages: `fzf@0.70.0` (not `-`). Consistent with manifest key syntax, avoids ambiguity with hyphenated package names. |
-| Entrypoint generation | Static env scripts in `~/.ghpm/scripts/env.*` regenerated by ghpm after every mutation. Shell-aware: only generates for shells detected in PATH. |
-| Extraction model | All archives extracted as-is into `packages/<key>/`. Path discovery finds bin/lib/share dirs. `~/.ghpm/bin/` holds `ghpm` and `gh` (not in manifest, managed by `ghpm upgrade`). |
+| Binary naming | `@` separator for versioned packages: `fzf@0.70` (not `-`). Consistent with manifest key syntax, avoids ambiguity with hyphenated package names. |
+| Extraction model | Full archives extracted to `extracts/<key>/<version>/`. Versioned dirs enable atomic updates: extract new → verify binary → remove old. Failed extracts leave the partial dir for `ghpm clean`. |
 | Manifest concurrency | Orchestrator goroutine owns all reads/writes. Workers communicate via channels. |
-| Manifest format | JSON — stdlib only, no comments needed (machine-managed). Keyed by simple package name. |
-| Multiple binaries in archive | Full archive preserved. All executables discoverable via path discovery. |
-| Package names | Must be simple filenames (no slashes). No `owner/repo` shorthand. Resolution: manifest → builtins → repos.yaml → `gh search repos`. |
+| Manifest format | JSON — stdlib only, no comments needed (machine-managed). Keyed by package name (with optional `@version` suffix). |
+| Multiple versions alongside | Each manifest key (`fzf`, `fzf@0`, `fzf@1.2.3`) gets its own shim. They coexist in `~/.ghpm/bin/` without conflict. |
+| PATH management | Single `~/.ghpm/bin/` directory in PATH. Each installed binary gets a shim there (symlink on Unix, `.cmd` on Windows). `ghpm init [shell]` outputs the static PATH snippet for the user's shell config. No reload or regeneration needed after installs. |
 | Parallelism | 5 workers default, configurable via `settings.num_parallel`. |
-| PATH management | Users add `~/.ghpm/bin/` to PATH and `source` the generated env script (`~/.ghpm/scripts/env.*`) from their shell config. `ghpm init` prints source instructions for all detected shells. Env scripts always prepend `~/.ghpm/bin/` to PATH (for `ghpm` and `gh`). |
+| Path discovery | Name-based lookup: search `pkgDir` for a file named exactly `binaryName` (or `binaryName.exe` on Windows), verified via magic bytes (ELF/Mach-O). Avoids false positives from scripts with execute bits. |
 | Platform priorities | Windows: MSVC > GNU; Linux: GNU > Musl. Configurable in `settings.json`. |
 | Process locking | Exclusive `flock` on `~/.ghpm/.lock` via `gofrs/flock`. Acquired by all mutating commands. Read-only commands skip the lock. |
 | Rate limiting | Detect `"rate limit"` in `gh` stderr, return `ErrRateLimited`. Fail-fast: report skipped packages and counts. No auto-retry. |
 | Repo sources | One or more configured via `repo_sources`. Cached locally, refreshed only during `ghpm update`. |
 | SHA verification | On by default, skip with `--no-verify` or `settings.no_verify`. |
-| Shell detection | `exec.LookPath` for sh/bash/zsh, nu, pwsh. Only generate env scripts for detected shells. `ghpm init` prints source hints for all detected shells. |
+| Shim design | Symlinks on Linux/macOS: OS resolves them before exec, so the binary sees its real path and relative data dirs work. `.cmd` wrappers on Windows: call the binary with its absolute path, no `cmd.exe` Ctrl+C issues since the console is inherited directly. |
 | Version normalization | Strip all leading non-digit characters from GitHub tags. Handles `v1.2.3`, `bun-v1.3.13`, `release-0.1.0`. |
