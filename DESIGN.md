@@ -266,15 +266,14 @@ After extraction, `DiscoverPaths()` finds the binary by name.
 
 This avoids false positives from scripts or data files that happen to be executable.
 
-### SHA verification
+### Verification
 
-After downloading, if a `<asset>.sha256` (or `.sha256sum`) file exists among the release assets:
+After downloading, ghpm runs `gh release verify-asset` (Sigstore attestation) against the downloaded file:
 
-1. Download the `.sha256` file
-2. Compute SHA256 of the downloaded asset
-3. Compare; error on mismatch
-4. Skip verification if `--no-verify` flag or `settings.no_verify` is set
-5. If no sidecar file is found, silently skip (no warning)
+1. Run `gh release verify-asset <tag> <asset-path> -R owner/repo`
+2. If attestation is not found or not published, skip silently (returns false, nil)
+3. If verification fails for any other reason, return an error
+4. Skip entirely if `--no-verify` flag or `settings.no_verify` is set
 
 ---
 
@@ -590,6 +589,6 @@ Use [goreleaser/goreleaser](https://github.com/goreleaser/goreleaser) to automat
 | Process locking | Exclusive `flock` on `~/.ghpm/.lock` via `gofrs/flock`. Acquired by all mutating commands. Read-only commands skip the lock. |
 | Rate limiting | Detect `"rate limit"` in `gh` stderr, return `ErrRateLimited`. Fail-fast: report skipped packages and counts. No auto-retry. |
 | Repo sources | One or more configured via `repo_sources`. Cached locally, refreshed only during `ghpm update`. |
-| SHA verification | On by default, skip with `--no-verify` or `settings.no_verify`. |
+| Verification | `gh release verify-asset` (Sigstore attestation). Silently skipped if no attestation exists. Skip entirely with `--no-verify` or `settings.no_verify`. |
 | Shim design | Symlinks on Linux/macOS: OS resolves them before exec, so the binary sees its real path and relative data dirs work. `.cmd` wrappers on Windows: call the binary with its absolute path, no `cmd.exe` Ctrl+C issues since the console is inherited directly. |
 | Version normalization | Strip all leading non-digit characters from GitHub tags. Handles `v1.2.3`, `bun-v1.3.13`, `release-0.1.0`. |

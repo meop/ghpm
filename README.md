@@ -77,7 +77,7 @@ ghpm doctor                   # check system health
 | Flag | Description |
 |---|---|
 | `--dry-run` | Print what would be done without executing |
-| `--no-verify` | Skip SHA256 verification |
+| `--no-verify` | Skip Sigstore attestation verification |
 | `--yes`, `-y` | Skip confirmation prompts |
 
 ### Version pinning
@@ -126,24 +126,12 @@ ghpm extracts archives into `~/.ghpm/extracts/<key>/<version>/` and discovers th
 | `cache_ttl` | `"5m"` | How long cached version data stays fresh before re-fetching |
 | `color` | see above | Output colors by message type |
 | `no_color` | `false` | Disable colored output |
-| `no_verify` | `false` | Skip SHA256 verification globally |
+| `no_verify` | `false` | Skip Sigstore attestation verification globally |
 | `num_parallel` | `5` | Max concurrent downloads |
 | `plat_priority` | see above | Preferred toolchain order when multiple assets match |
 | `repo_sources` | `["github.com/meop/ghpm-config"]` | Repo sources to fetch from; all their `repos.yaml` files are merged |
 
 Package repos map simple names like `fzf` to GitHub repos. `ghpm update` refreshes all configured repo sources. If a name isn't found, `ghpm` searches GitHub and prompts you to pick a repo.
-
-## Build from source
-
-```sh
-make build          # build for current platform
-make build-all      # cross-compile for all platforms
-make test           # run tests
-make lint           # run golangci-lint
-make install        # install to $GOPATH/bin
-```
-
-Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions on tag push.
 
 ## How it works
 
@@ -152,7 +140,7 @@ Releases are built with [GoReleaser](https://goreleaser.com/) via GitHub Actions
 - Packages are extracted to `~/.ghpm/extracts/<key>/<version>/` with full directory structure
 - A shim in `~/.ghpm/bin/` points at the binary in each package's extract dir
 - State is tracked in `~/.ghpm/manifest.json`
-- SHA256 verification runs by default when `.sha256` sidecar files are available in the release
+- Sigstore attestation verification runs by default via `gh release verify-asset`; silently skipped if no attestation exists
 
 ## License
 

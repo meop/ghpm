@@ -61,9 +61,10 @@ func hasELFMagic(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
 	var b [4]byte
-	if _, err := io.ReadFull(f, b[:]); err != nil {
+	_, err = io.ReadFull(f, b[:])
+	_ = f.Close()
+	if err != nil {
 		return false
 	}
 	return b[0] == 0x7f && b[1] == 'E' && b[2] == 'L' && b[3] == 'F'
@@ -74,9 +75,10 @@ func hasMachOMagic(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
 	var b [4]byte
-	if _, err := io.ReadFull(f, b[:]); err != nil {
+	_, err = io.ReadFull(f, b[:])
+	_ = f.Close()
+	if err != nil {
 		return false
 	}
 	// FAT universal, LE 32-bit, LE 64-bit, BE 32-bit/64-bit
