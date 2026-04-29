@@ -26,20 +26,29 @@ After installing, add the shell hook to your config:
 
 **zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
 ```sh
-eval "$(ghpm init)"
+if [[ -d "${HOME}/.ghpm/bin" ]]; then
+  export PATH="${HOME}/.ghpm/bin:${PATH}"
+  eval "$(ghpm init)"
+fi
 ```
 
 **Nushell** — add to `~/.config/nushell/config.nu`:
 ```nu
-ghpm init nu | save -f ([$NU_VENDOR_DATA_DIR, 'ghpm.nu'] | path join)
+if ("~/.ghpm/bin" | path expand | path exists) {
+  $env.PATH = ($env.PATH | prepend ($env.HOME + "/.ghpm/bin"))
+  ghpm init nu | save -f ([$NU_VENDOR_DATA_DIR, 'ghpm.nu'] | path join)
+}
 ```
 
 **PowerShell / pwsh** — add to `$PROFILE`:
 ```powershell
-Invoke-Expression (ghpm init powershell)
+if (Test-Path "${env:HOME}/.ghpm/bin") {
+  $env:PATH = "${env:HOME}/.ghpm/bin" + [IO.Path]::PathSeparator + $env:PATH
+  Invoke-Expression (ghpm init pwsh)
+}
 ```
 
-The hook sources the generated env file and defines a `ghpm reload` alias for refreshing your PATH after installs.
+The hook sources the generated path script and defines a `ghpm reload` alias for refreshing your PATH after installs.
 
 ## Usage
 

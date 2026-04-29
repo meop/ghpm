@@ -10,7 +10,7 @@ import (
 func DiscoverPaths(pkgDir string) (binPath string, binaryName string) {
 	binPath = findBinDir(pkgDir)
 	binaryName = findFirstExecutable(filepath.Join(pkgDir, binPath))
-	if binaryName == "" && binPath != "." {
+	if binaryName == "" && binPath != "" {
 		binaryName = findFirstExecutable(pkgDir)
 	}
 	return binPath, binaryName
@@ -19,7 +19,7 @@ func DiscoverPaths(pkgDir string) (binPath string, binaryName string) {
 func findBinDir(pkgDir string) string {
 	entries, err := os.ReadDir(pkgDir)
 	if err != nil {
-		return "."
+		return ""
 	}
 
 	for _, e := range entries {
@@ -37,7 +37,7 @@ func findBinDir(pkgDir string) string {
 			continue
 		}
 		if isExecutableFile(info, e.Name()) {
-			return "."
+			return ""
 		}
 	}
 
@@ -51,7 +51,7 @@ func findBinDir(pkgDir string) string {
 		}
 	}
 
-	return "."
+	return ""
 }
 
 func dirHasExecutables(dir string) bool {

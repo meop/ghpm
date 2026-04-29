@@ -86,6 +86,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ''
-Write-Host 'To activate ghpm, add ~/.ghpm/bin to PATH and source the env script:'
-Write-Host '  nu:     $env.PATH = ($env.PATH | prepend ~/.ghpm/bin); source ~/.ghpm/scripts/env.nu'
-Write-Host '  pwsh:   $env:PATH = "$env:USERPROFILE\.ghpm\bin;$env:PATH"; . ~/.ghpm/scripts/env.ps1'
+Write-Host 'Refer to the project README for how to activate ghpm in your shell.'

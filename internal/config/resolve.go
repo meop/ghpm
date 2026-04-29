@@ -205,7 +205,7 @@ func searchGitHub(name string) (string, error) {
 	for i, r := range repos {
 		fmt.Printf("  %d) %s\n", i+1, r.FullName)
 	}
-	fmt.Print("Select a repo (or 0 to cancel): ")
+	fmt.Print("select a repo (or 0 to cancel): ")
 
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)

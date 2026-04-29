@@ -135,8 +135,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	type jobWithAssets struct {
-		job       installJob
-		release   gh.Release
+		job        installJob
+		release    gh.Release
 		candidates asset.AssetCandidates
 	}
 
@@ -194,7 +194,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			chosen = ja.candidates.Chosen
 		} else if len(ja.candidates.Ambiguous) > 0 {
 			var err error
-			chosen, err = asset.PromptSelect("Multiple candidates found. Select one:", ja.candidates.Ambiguous)
+			chosen, err = asset.PromptSelect("choose from ambiguous candidates:", ja.candidates.Ambiguous)
 			if err != nil {
 				printFail(cfg, "%s %v", ja.job.name, err)
 				hadErrors = true
@@ -202,7 +202,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			var err error
-			chosen, err = asset.PromptSelect("No auto-matched assets. Select one:", ja.candidates.All)
+			chosen, err = asset.PromptSelect("choose from all candidates:", ja.candidates.All)
 			if err != nil {
 				printFail(cfg, "%s %v", ja.job.name, err)
 				hadErrors = true
@@ -282,11 +282,11 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		key := r.job.key()
 		manifest.Repos[r.job.name] = r.job.source
 		manifest.Extracts[key] = config.PackageEntry{
-			Pin:        r.job.pin(),
-			Version:    config.NormalizeVersion(r.release.TagName),
-			AssetName:      r.chosen.Name,
+			Pin:       r.job.pin(),
+			Version:   config.NormalizeVersion(r.release.TagName),
+			AssetName: r.chosen.Name,
 			BinDir:    binPath,
-			BinName: binaryName,
+			BinName:   binaryName,
 		}
 		printPass(cfg, "installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))
 	}
