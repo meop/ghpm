@@ -19,7 +19,8 @@ func BinDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "bin"), nil
+	dir := filepath.Join(base, "bin")
+	return dir, os.MkdirAll(dir, 0755)
 }
 
 func ExtractsDir() (string, error) {

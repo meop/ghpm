@@ -5,75 +5,52 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-
-	"github.com/meop/ghpm/internal/config"
 )
 
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init [shell]",
-		Short: "Output shell hook for eval (sources path script + defines ghpm wrapper with reload)",
+		Short: "Output shell snippet to add ~/.ghpm/bin to PATH (for eval in shell config)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runInit,
 	}
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	if _, err := config.LoadSettings(); err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
-	}
-
 	shell := ""
 	if len(args) > 0 {
 		shell = args[0]
 	}
-	fmt.Print(envHook(shell))
+	fmt.Print(pathSnippet(shell))
 	return nil
 }
 
-func envHook(shell string) string {
+func pathSnippet(shell string) string {
 	switch strings.ToLower(shell) {
 	case "nu", "nushell":
-		return nuHook()
+		return nuSnippet()
 	case "pwsh", "powershell":
-		return ps1Hook()
+		return ps1Snippet()
 	default:
-		return shHook()
+		return shSnippet()
 	}
 }
 
-func shHook() string {
-	return `ghpm() {
-  case "$1" in
-    reload) [ -f "$HOME/.ghpm/scripts/paths.sh" ] && source "$HOME/.ghpm/scripts/paths.sh" ;;
-    *) command ghpm "$@" ;;
-  esac
-}
-ghpm reload
+func shSnippet() string {
+	return `case ":${PATH}:" in
+  *":$HOME/.ghpm/bin:"*) ;;
+  *) export PATH="$HOME/.ghpm/bin${PATH:+:$PATH}" ;;
+esac
 `
 }
 
-func nuHook() string {
-	return `def --env --wrapped ghpm [...args] {
-  if ($args | length) > 0 and $args.0 == "reload" {
-    if ("~/.ghpm/scripts/paths.nu" | path expand | path exists) { source-env ("~/.ghpm/scripts/paths.nu" | path expand) }
-  } else {
-    ^ghpm ...$args
-  }
-}
-ghpm reload
-`
+func nuSnippet() string {
+	return "$env.PATH = ($env.PATH | prepend ($env.HOME + \"/.ghpm/bin\") | uniq)\n"
 }
 
-func ps1Hook() string {
-	return `function ghpm {
-  if ($args.Count -gt 0 -and $args[0] -eq "reload") {
-    if (Test-Path "${env:HOME}/.ghpm/scripts/paths.ps1") { . "${env:HOME}/.ghpm/scripts/paths.ps1" }
-  } else {
-    & (Get-Command ghpm -CommandType Application).Source @args
-  }
+func ps1Snippet() string {
+	return `if (-not ($env:PATH -split [IO.Path]::PathSeparator -contains "${env:HOME}/.ghpm/bin")) {
+  $env:PATH = "${env:HOME}/.ghpm/bin" + [IO.Path]::PathSeparator + $env:PATH
 }
-ghpm reload
 `
 }

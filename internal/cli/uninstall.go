@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/env"
+	"github.com/meop/ghpm/internal/shim"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -107,6 +107,9 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 		if !hasOther {
 			delete(manifest.Repos, baseName)
+			if err := shim.Remove(baseName); err != nil {
+				printWarn(cfg, "%s: could not remove shim: %v", t.key, err)
+			}
 		}
 		printPass(cfg, "uninstalled %s", t.key)
 	}
@@ -114,10 +117,6 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	if err := config.SaveManifest(manifest); err != nil {
 		printFail(cfg, "could not save manifest: %v", err)
 		return errSilent
-	}
-
-	if _, err := env.Generate(manifest); err != nil {
-		printWarn(cfg, "could not generate env files: %v", err)
 	}
 
 	if hadErrors {

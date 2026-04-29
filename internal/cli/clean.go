@@ -8,8 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"runtime"
+
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/env"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -71,8 +72,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	cleanOrphanedPackages(cfg, manifest)
-
-	regenerateEnvFiles(cfg, manifest)
+	cleanOrphanedShims(cfg, manifest)
 
 	return nil
 }
@@ -137,14 +137,63 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	printPass(cfg, "cleaned %d cached file(s)", len(toRemove))
 }
 
-func regenerateEnvFiles(cfg *config.Settings, manifest *config.Manifest) {
-	if dryRun {
-		fmt.Println("[dry-run] would regenerate env files")
+func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
+	binDir, err := store.BinDir()
+	if err != nil {
 		return
 	}
-	if _, err := env.Generate(manifest); err != nil {
-		printFail(cfg, "could not regenerate env files: %v", err)
+	entries, err := os.ReadDir(binDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			printFail(cfg, "%v", err)
+		}
+		return
 	}
+
+	// Build set of expected shim names from manifest
+	expected := map[string]bool{}
+	for key, pkg := range manifest.Extracts {
+		if pkg.BinName == "" {
+			continue
+		}
+		name, _, _ := config.ParseVersionSuffix(key)
+		if runtime.GOOS == "windows" {
+			expected[name+".cmd"] = true
+		} else {
+			expected[name] = true
+		}
+	}
+
+	var orphaned []string
+	for _, e := range entries {
+		if !expected[e.Name()] {
+			orphaned = append(orphaned, e.Name())
+		}
+	}
+	if len(orphaned) == 0 {
+		return
+	}
+
+	fmt.Println()
+	for _, name := range orphaned {
+		fmt.Printf("bin/%s\n", name)
+	}
+
+	if dryRun {
+		return
+	}
+
+	if !promptConfirm(fmt.Sprintf("remove %d orphaned shim(s)", len(orphaned))) {
+		fmt.Println("aborted")
+		return
+	}
+
+	for _, name := range orphaned {
+		if err := os.Remove(filepath.Join(binDir, name)); err != nil {
+			printFail(cfg, "%s: %v", name, err)
+		}
+	}
+	printPass(cfg, "cleaned %d orphaned shim(s)", len(orphaned))
 }
 
 func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {

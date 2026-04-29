@@ -9,9 +9,9 @@ import (
 
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/env"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
+	"github.com/meop/ghpm/internal/shim"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -260,16 +260,15 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			BinDir:    binPath,
 			BinName:   binaryName,
 		}
+		if err := shim.Create(name, newPkgDir, binPath); err != nil {
+			printWarn(cfg, "%s: could not update shim: %v", r.key, err)
+		}
 		printPass(cfg, "updated %s %s → %s", r.key, r.pkg.Version, newVer)
 	}
 
 	if err := config.SaveManifest(manifest); err != nil {
 		printFail(cfg, "could not save manifest: %v", err)
 		return errSilent
-	}
-
-	if _, err := env.Generate(manifest); err != nil {
-		printWarn(cfg, "could not generate env files: %v", err)
 	}
 
 	if hadErrors {
