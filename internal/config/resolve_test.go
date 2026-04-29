@@ -45,7 +45,7 @@ func TestResolveSource_ManifestAndRepos(t *testing.T) {
 		Repos: map[string]string{
 			"bat": "github.com/sharkdp/bat",
 		},
-		Installs: map[string]PackageEntry{},
+		Extracts: map[string]PackageEntry{},
 	}
 	repos := map[string]string{
 		"fzf": "github.com/junegunn/fzf",
@@ -91,7 +91,7 @@ func TestFindBySource(t *testing.T) {
 			"gh":  "github.com/cli/cli",
 			"fzf": "github.com/junegunn/fzf",
 		},
-		Installs: map[string]PackageEntry{},
+		Extracts: map[string]PackageEntry{},
 	}
 
 	key, found := FindBySource("github.com/cli/cli", m)

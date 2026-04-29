@@ -22,16 +22,16 @@ func BinDir() (string, error) {
 	return filepath.Join(base, "bin"), nil
 }
 
-func PackagesDir() (string, error) {
+func ExtractsDir() (string, error) {
 	base, err := ghpmDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "packages"), nil
+	return filepath.Join(base, "extracts"), nil
 }
 
-func PackageDir(key string) (string, error) {
-	base, err := PackagesDir()
+func ExtractDir(key string) (string, error) {
+	base, err := ExtractsDir()
 	if err != nil {
 		return "", err
 	}

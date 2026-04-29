@@ -27,22 +27,22 @@ func runList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(manifest.Installs) == 0 {
+	if len(manifest.Extracts) == 0 {
 		fmt.Println("no packages installed")
 		return nil
 	}
 
-	keys := make([]string, 0, len(manifest.Installs))
-	for k := range manifest.Installs {
+	keys := make([]string, 0, len(manifest.Extracts))
+	for k := range manifest.Extracts {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
 
 	rows := make([][]string, len(keys))
 	for i, k := range keys {
-		p := manifest.Installs[k]
+		p := manifest.Extracts[k]
 		baseName, _, _ := config.ParseVersionSuffix(k)
-		rows[i] = []string{k, p.Pin, p.Version, p.Asset, manifest.Repos[baseName]}
+		rows[i] = []string{k, p.Pin, p.Version, p.AssetName, manifest.Repos[baseName]}
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
 	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)

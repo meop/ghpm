@@ -7,86 +7,27 @@ import (
 	"strings"
 )
 
-var skipDirs = map[string]bool{
-	"__macosx": true,
-	".ds_store": true,
-	".git":      true,
-}
-
-func DiscoverPaths(pkgDir string) (paths map[string][]string, binaryName string) {
-	paths = map[string][]string{}
-	hasBinDir := false
-
-	_ = filepath.WalkDir(pkgDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !d.IsDir() {
-			return nil
-		}
-		base := strings.ToLower(d.Name())
-		if skipDirs[base] {
-			return filepath.SkipDir
-		}
-
-		rel, err := filepath.Rel(pkgDir, path)
-		if err != nil {
-			return nil
-		}
-		if rel == "." {
-			return nil
-		}
-
-		switch base {
-		case "bin":
-			paths["bin"] = append(paths["bin"], rel)
-			hasBinDir = true
-		case "lib":
-			paths["lib"] = append(paths["lib"], rel)
-		case "share":
-			paths["share"] = append(paths["share"], rel)
-		}
-		return nil
-	})
-
-	visitManInShare(pkgDir, paths)
-
-	if !hasBinDir {
-		paths["bin"] = findExecutableDirs(pkgDir)
-	}
-
-	for _, binDir := range paths["bin"] {
-		binaryName = findFirstExecutable(filepath.Join(pkgDir, binDir))
-		if binaryName != "" {
-			break
-		}
-	}
-	if binaryName == "" {
+func DiscoverPaths(pkgDir string) (binPath string, binaryName string) {
+	binPath = findBinDir(pkgDir)
+	binaryName = findFirstExecutable(filepath.Join(pkgDir, binPath))
+	if binaryName == "" && binPath != "." {
 		binaryName = findFirstExecutable(pkgDir)
 	}
-
-	return paths, binaryName
+	return binPath, binaryName
 }
 
-func visitManInShare(pkgDir string, paths map[string][]string) {
-	shareDirs := paths["share"]
-	paths["man"] = nil
-	for _, sd := range shareDirs {
-		absShare := filepath.Join(pkgDir, sd)
-		manDir := filepath.Join(absShare, "man")
-		if fi, err := os.Stat(manDir); err == nil && fi.IsDir() {
-			rel, _ := filepath.Rel(pkgDir, manDir)
-			paths["man"] = append(paths["man"], rel)
-		}
-	}
-}
-
-func findExecutableDirs(pkgDir string) []string {
-	var dirs []string
+func findBinDir(pkgDir string) string {
 	entries, err := os.ReadDir(pkgDir)
 	if err != nil {
-		return nil
+		return "."
 	}
+
+	for _, e := range entries {
+		if e.IsDir() && strings.ToLower(e.Name()) == "bin" {
+			return e.Name()
+		}
+	}
+
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -96,27 +37,21 @@ func findExecutableDirs(pkgDir string) []string {
 			continue
 		}
 		if isExecutableFile(info, e.Name()) {
-			dirs = []string{"."}
-			return dirs
+			return "."
 		}
 	}
 
-	var found []string
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		sub := filepath.Join(pkgDir, e.Name())
 		if dirHasExecutables(sub) {
-			rel, _ := filepath.Rel(pkgDir, sub)
-			found = append(found, rel)
+			return e.Name()
 		}
 	}
-	if len(found) > 0 {
-		return found
-	}
 
-	return []string{"."}
+	return "."
 }
 
 func dirHasExecutables(dir string) bool {

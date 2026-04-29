@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/entrypoint"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -77,9 +76,6 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	ghpmDir := mustGhpmDir()
-	scriptsDir := filepath.Join(ghpmDir, "scripts")
-	shells := entrypoint.DetectShells()
-
 	binDir, _ := store.BinDir()
 	if binDir != "" {
 		ghBin := filepath.Join(binDir, "gh")
@@ -91,37 +87,14 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if shells.POSIX {
-		ep := filepath.Join(scriptsDir, "env.sh")
+	envDir, _ := store.ScriptsDir()
+	for _, name := range []string{"path.sh", "path.nu", "path.ps1"} {
+		ep := filepath.Join(envDir, name)
 		if _, err := os.Stat(ep); os.IsNotExist(err) {
-			check("scripts/env.sh exists", false, "run: ghpm init")
-		} else {
-			check("scripts/env.sh exists", true, ep)
-			sourced := checkSourced(ep, ".bashrc", ".zshrc", ".profile")
-			if !sourced {
-				fmt.Printf("  [%s] scripts/env.sh sourced in shell config — run: echo 'source %s' >> ~/.bashrc\n", warnLabel, ep)
-			} else {
-				fmt.Printf("  [%s] scripts/env.sh sourced in shell config\n", passLabel)
-			}
+			check(name+" exists", false, "run: ghpm init")
+			continue
 		}
-	}
-
-	if shells.Nu {
-		ep := filepath.Join(scriptsDir, "env.nu")
-		if _, err := os.Stat(ep); os.IsNotExist(err) {
-			check("scripts/env.nu exists", false, "run: ghpm init")
-		} else {
-			check("scripts/env.nu exists", true, ep)
-		}
-	}
-
-	if shells.PWSh {
-		ep := filepath.Join(scriptsDir, "env.ps1")
-		if _, err := os.Stat(ep); os.IsNotExist(err) {
-			check("scripts/env.ps1 exists", false, "run: ghpm init")
-		} else {
-			check("scripts/env.ps1 exists", true, ep)
-		}
+		check(name+" exists", true, ep)
 	}
 
 	manifestPath := filepath.Join(ghpmDir, "manifest.json")
@@ -149,10 +122,10 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	manifest, err := config.LoadManifest()
-	pkgsDir, pkgsErr := store.PackagesDir()
+	pkgsDir, pkgsErr := store.ExtractsDir()
 	if err == nil && manifest != nil && pkgsErr == nil {
 		var stale []string
-		for key := range manifest.Installs {
+		for key := range manifest.Extracts {
 			pkgPath := filepath.Join(pkgsDir, key)
 			if _, serr := os.Stat(pkgPath); os.IsNotExist(serr) {
 				stale = append(stale, key)
@@ -176,22 +149,6 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func checkSourced(entrypoint string, rcFiles ...string) bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	for _, rc := range rcFiles {
-		data, err := os.ReadFile(filepath.Join(home, rc))
-		if err != nil {
-			continue
-		}
-		if strings.Contains(string(data), entrypoint) {
-			return true
-		}
-	}
-	return false
-}
 
 func mustGhpmDir() string {
 	home, _ := os.UserHomeDir()

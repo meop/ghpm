@@ -10,16 +10,16 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 )
 
-func newInfoCmd() *cobra.Command {
+func newShowCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <name> [name...]",
-		Short: "Show release info and available assets for packages",
+		Use:   "show <name> [name...]",
+		Short: "Show releases and available assets for packages",
 		Args:  cobra.MinimumNArgs(1),
-		RunE:  runInfo,
+		RunE:  runShow,
 	}
 }
 
-func runInfo(cmd *cobra.Command, args []string) error {
+func runShow(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadSettings()
 	if err != nil {
 		printFail(nil, "could not load settings: %v", err)

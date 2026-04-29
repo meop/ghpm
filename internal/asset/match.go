@@ -41,11 +41,13 @@ func isSkipped(name string) bool {
 	return true
 }
 
-func tokenize(name string) []string {
+func Tokenize(name string) []string {
 	return strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
 		return r == '-' || r == '_' || r == ' '
 	})
 }
+
+func tokenize(name string) []string { return Tokenize(name) }
 
 func hasTokenPrefix(name string, prefixes []string) bool {
 	for _, token := range tokenize(name) {
@@ -239,6 +241,8 @@ func stripVersionTokens(tokens []string) []string {
 	return filtered
 }
 
+func IsVersionToken(t string) bool { return isVersionToken(t) }
+
 func isVersionToken(t string) bool {
 	hasDigit := false
 	for _, r := range t {
@@ -284,7 +288,7 @@ func Verify(owner, repo, tag, cacheDir, assetName string) (bool, error) {
 	cmd := exec.Command("gh", "release", "verify-asset", tag, assetPath, "-R", owner+"/"+repo)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if strings.Contains(string(out), "no attestation found") || strings.Contains(string(out), "not found") {
+		if strings.Contains(string(out), "no attestation") || strings.Contains(string(out), "not found") {
 			return false, nil
 		}
 		return false, fmt.Errorf("verification failed: %s", string(out))

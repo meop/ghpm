@@ -8,7 +8,7 @@ import (
 
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/entrypoint"
+	"github.com/meop/ghpm/internal/env"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
@@ -17,7 +17,7 @@ import (
 func newUpdateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "update [name...]",
-		Short: "update packages to their latest releases",
+		Short: "Update packages to their latest releases",
 		RunE:  runUpdate,
 	}
 }
@@ -61,14 +61,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	targets := map[string]config.PackageEntry{}
 	if len(args) == 0 {
-		for k, p := range manifest.Installs {
+		for k, p := range manifest.Extracts {
 			if p.Pin != "fixed" {
 				targets[k] = p
 			}
 		}
 	} else {
 		for _, name := range args {
-			p, ok := manifest.Installs[name]
+			p, ok := manifest.Extracts[name]
 			if !ok {
 				printInfo(cfg, "%s not installed", name)
 				continue
@@ -147,7 +147,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		chosen, err := asset.SelectAsset(rel.Assets, cfg, pkg.Asset)
+		chosen, err := asset.SelectAsset(rel.Assets, cfg, pkg.AssetName)
 		if err != nil {
 			printFail(cfg, "%s %v", res.Key, err)
 			hadErrors = true
@@ -209,10 +209,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 				if !noVerify {
 					_, err := asset.Verify(owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
 					if err != nil {
-						return nil, fmt.Errorf("verification failed: %w", err)
+						return nil, err
 					}
 				}
-				pkgDir, err := store.PackageDir(r.key)
+				pkgDir, err := store.ExtractDir(r.key)
 				if err != nil {
 					return nil, err
 				}
@@ -237,15 +237,15 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
-		pkgDir, _ := store.PackageDir(r.key)
-		paths, binaryName := asset.DiscoverPaths(pkgDir)
+		pkgDir, _ := store.ExtractDir(r.key)
+		binPath, binaryName := asset.DiscoverPaths(pkgDir)
 		newVer := config.NormalizeVersion(r.release.TagName)
-		manifest.Installs[r.key] = config.PackageEntry{
+		manifest.Extracts[r.key] = config.PackageEntry{
 			Pin:        r.pkg.Pin,
 			Version:    newVer,
-			Asset:      r.chosen.Name,
-			Paths:      paths,
-			BinaryName: binaryName,
+			AssetName:      r.chosen.Name,
+			BinDir:    binPath,
+			BinName: binaryName,
 		}
 		printPass(cfg, "updated %s %s → %s", r.key, r.pkg.Version, newVer)
 	}
@@ -255,8 +255,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 
-	if _, err := entrypoint.Generate(manifest); err != nil {
-		printWarn(cfg, "could not generate entrypoint: %v", err)
+	if _, err := env.Generate(manifest); err != nil {
+		printWarn(cfg, "could not generate env files: %v", err)
 	}
 
 	if hadErrors {

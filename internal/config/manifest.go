@@ -7,16 +7,16 @@ import (
 )
 
 type PackageEntry struct {
-	Pin        string              `json:"pin"`
-	Version    string              `json:"version"`
-	Asset      string              `json:"asset"`
-	Paths      map[string][]string `json:"paths,omitempty"`
-	BinaryName string              `json:"binary_name,omitempty"`
+	Pin       string `json:"pin"`
+	Version   string `json:"version"`
+	AssetName string `json:"asset_name"`
+	BinDir    string `json:"bin_dir,omitempty"`
+	BinName   string `json:"bin_name,omitempty"`
 }
 
 type Manifest struct {
 	Repos    map[string]string       `json:"repos"`
-	Installs map[string]PackageEntry `json:"installs"`
+	Extracts map[string]PackageEntry `json:"extracts"`
 }
 
 func HomeDir() (string, error) {
@@ -52,7 +52,7 @@ func loadManifestFile(path string) (*Manifest, error) {
 	if os.IsNotExist(err) {
 		return &Manifest{
 			Repos:    map[string]string{},
-			Installs: map[string]PackageEntry{},
+			Extracts: map[string]PackageEntry{},
 		}, nil
 	}
 	if err != nil {
@@ -65,8 +65,8 @@ func loadManifestFile(path string) (*Manifest, error) {
 	if m.Repos == nil {
 		m.Repos = map[string]string{}
 	}
-	if m.Installs == nil {
-		m.Installs = map[string]PackageEntry{}
+	if m.Extracts == nil {
+		m.Extracts = map[string]PackageEntry{}
 	}
 	return &m, nil
 }

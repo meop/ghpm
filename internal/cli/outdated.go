@@ -45,7 +45,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 	}
 
 	items := make([]gh.BatchItem, 0)
-	for key, pkg := range manifest.Installs {
+	for key, pkg := range manifest.Extracts {
 		if pkg.Pin == "fixed" {
 			continue
 		}
@@ -92,7 +92,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		checked++
-		pkg := manifest.Installs[res.Key]
+		pkg := manifest.Extracts[res.Key]
 		latest := config.NormalizeVersion(res.LatestTag)
 		if config.CompareVersions(latest, pkg.Version) > 0 {
 			name, _, _ := config.ParseVersionSuffix(res.Key)
