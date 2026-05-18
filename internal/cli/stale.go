@@ -11,16 +11,16 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 )
 
-func newOutdatedCmd() *cobra.Command {
+func newStaleCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "outdated",
-		Short: "Show packages with newer releases available",
+		Use:   "stale",
+		Short: "List packages with newer releases available",
 		Args:  cobra.NoArgs,
-		RunE:  runOutdated,
+		RunE:  runStale,
 	}
 }
 
-func runOutdated(cmd *cobra.Command, args []string) error {
+func runStale(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadSettings()
 	if err != nil {
 		printFail(nil, "could not load settings: %v", err)

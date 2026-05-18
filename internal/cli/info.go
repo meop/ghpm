@@ -10,16 +10,16 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 )
 
-func newShowCmd() *cobra.Command {
+func newInfoCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <name> [name...]",
+		Use:   "info <name> [name...]",
 		Short: "Show releases and available assets for packages",
 		Args:  cobra.MinimumNArgs(1),
-		RunE:  runShow,
+		RunE:  runInfo,
 	}
 }
 
-func runShow(cmd *cobra.Command, args []string) error {
+func runInfo(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadSettings()
 	if err != nil {
 		printFail(nil, "could not load settings: %v", err)
@@ -78,10 +78,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 				hadErrors = true
 				continue
 			}
-			limit := 10
-			if len(releases) < limit {
-				limit = len(releases)
-			}
+			limit := min(len(releases), 10)
 			fmt.Printf("  recent releases (%d shown):\n", limit)
 			for _, r := range releases[:limit] {
 				fmt.Printf("    %s\n", config.NormalizeVersion(r.TagName))

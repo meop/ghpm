@@ -48,15 +48,6 @@ func ExtractDir(key, version string) (string, error) {
 	return dir, os.MkdirAll(dir, 0755)
 }
 
-func ScriptsDir() (string, error) {
-	base, err := ghpmDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(base, "scripts")
-	return dir, os.MkdirAll(dir, 0755)
-}
-
 func ReleaseBaseDir() (string, error) {
 	base, err := ghpmDir()
 	if err != nil {

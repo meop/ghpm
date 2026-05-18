@@ -22,24 +22,7 @@ irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubus
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, add `~/.ghpm/bin` to your PATH:
-
-**zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
-```sh
-eval "$(ghpm init)"
-```
-
-**Nushell** — add to `~/.config/nushell/env.nu`:
-```nu
-$env.PATH = ($env.PATH | prepend ($env.HOME + "/.ghpm/bin") | uniq)
-```
-
-**PowerShell / pwsh** — add to `$PROFILE`:
-```powershell
-Invoke-Expression (ghpm init pwsh)
-```
-
-Each installed binary gets a shim in `~/.ghpm/bin/` — a symlink on Linux/macOS, a `.cmd` wrapper on Windows. Adding that single directory to PATH is all that's needed; no reload required after installs.
+After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a shim there — a symlink on Linux/macOS, a `.cmd` wrapper on Windows.
 
 ## Usage
 
@@ -66,8 +49,6 @@ ghpm uninstall fzf            # remove package
 ghpm clean                    # remove unused cached assets and orphaned package dirs
 ghpm clean --all              # remove all cached assets
 
-ghpm init                     # output PATH snippet for ~/.ghpm/bin (posix sh)
-ghpm init nu                  # same for nushell (pwsh/powershell for PowerShell, else posix)
 ghpm upgrade                  # upgrade ghpm itself and managed gh
 ghpm doctor                   # check system health
 ```

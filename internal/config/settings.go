@@ -71,7 +71,6 @@ func EnsureDirs() error {
 		filepath.Join(base, "extracts"),
 		filepath.Join(base, "releases"),
 		filepath.Join(base, "repos"),
-		filepath.Join(base, "scripts"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err

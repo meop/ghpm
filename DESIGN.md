@@ -156,7 +156,7 @@ Fields:
 ### Config module (`internal/config/`)
 
 - `AcquireLock() (func(), error)` — acquire exclusive process lock via `flock`
-- `EnsureDirs() error` — create `~/.ghpm/{bin,extracts,releases,repos,scripts}` if missing
+- `EnsureDirs() error` — create `~/.ghpm/{bin,extracts,releases,repos}` if missing
 - `LoadManifest() (*Manifest, error)` — read manifest, create if missing
 - `LoadSettings() (*Settings, error)` — load settings with hardcoded defaults for missing file
 - `NormalizeVersion(v string) string` — strip all leading non-digit chars from tag
@@ -301,20 +301,7 @@ Each manifest key gets its own shim: `fzf`, `fzf@0`, `fzf@1.2.3` → `~/.ghpm/bi
 
 ### Shell setup
 
-Users add one line to their shell config:
-
-```sh
-# bash/zsh (~/.bashrc or ~/.zshrc)
-eval "$(ghpm init)"
-
-# nushell (~/.config/nushell/env.nu)
-$env.PATH = ($env.PATH | prepend ($env.HOME + "/.ghpm/bin") | uniq)
-
-# PowerShell ($PROFILE)
-Invoke-Expression (ghpm init pwsh)
-```
-
-`ghpm init [shell]` outputs the appropriate static PATH snippet. Supported shell arguments: `nu`/`nushell`, `pwsh`/`powershell`; anything else (including no argument) outputs POSIX sh.
+Add `~/.ghpm/bin` to PATH however you manage shell config. No ghpm command is needed — the snippet is trivially `prepend ~/.ghpm/bin`.
 
 ---
 
@@ -487,10 +474,6 @@ Diagnostic command — checks system health:
 2. Fetch release list (or specific release)
 3. Print: source repo, available versions (last 10), asset list for selected version
 
-#### `ghpm init [shell]`
-
-Output a static PATH snippet for `~/.ghpm/bin` suitable for eval in a shell config file. Supported shell arguments: `nu`/`nushell`, `pwsh`/`powershell`; anything else (or no argument) outputs POSIX sh.
-
 #### `ghpm install <names>`
 
 1. Parse each name → resolve source + optional version
@@ -582,7 +565,7 @@ Use [goreleaser/goreleaser](https://github.com/goreleaser/goreleaser) to automat
 | Manifest concurrency | Orchestrator goroutine owns all reads/writes. Workers communicate via channels. |
 | Manifest format | JSON — stdlib only, no comments needed (machine-managed). Keyed by package name (with optional `@version` suffix). |
 | Multiple versions alongside | Each manifest key (`fzf`, `fzf@0`, `fzf@1.2.3`) gets its own shim. They coexist in `~/.ghpm/bin/` without conflict. |
-| PATH management | Single `~/.ghpm/bin/` directory in PATH. Each installed binary gets a shim there (symlink on Unix, `.cmd` on Windows). `ghpm init [shell]` outputs the static PATH snippet for the user's shell config. No reload or regeneration needed after installs. |
+| PATH management | Single `~/.ghpm/bin/` directory in PATH. Each installed binary gets a shim there (symlink on Unix, `.cmd` on Windows). Users add `~/.ghpm/bin` to PATH however they manage shell config. No reload or regeneration needed after installs. |
 | Parallelism | 5 workers default, configurable via `settings.num_parallel`. |
 | Path discovery | Name-based lookup: search `pkgDir` for a file named exactly `binaryName` (or `binaryName.exe` on Windows), verified via magic bytes (ELF/Mach-O). Avoids false positives from scripts with execute bits. |
 | Platform priorities | Windows: MSVC > GNU; Linux: GNU > Musl. Configurable in `settings.json`. |
