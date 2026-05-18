@@ -15,15 +15,15 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-func newUpdateCmd() *cobra.Command {
+func newSyncCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "update [name...]",
-		Short: "Update packages to their latest releases",
-		RunE:  runUpdate,
+		Use:   "sync [name...]",
+		Short: "Sync packages to their latest releases",
+		RunE:  runSync,
 	}
 }
 
-func runUpdate(cmd *cobra.Command, args []string) error {
+func runSync(cmd *cobra.Command, args []string) error {
 	unlock, err := config.AcquireLock()
 	if err != nil {
 		printFail(nil, "%v", err)
@@ -49,17 +49,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 
-	syncResults, _ := config.RefreshRepos()
-	var hadErrors bool
-	for _, r := range syncResults {
-		if r.Err != nil {
-			printFail(cfg, "%s %v", r.Source, r.Err)
-			hadErrors = true
-		} else {
-			printPass(cfg, "synced %s (%d entries)", r.Source, r.Count)
-		}
-	}
-
 	targets := map[string]config.PackageEntry{}
 	if len(args) == 0 {
 		for k, p := range manifest.Extracts {
@@ -82,9 +71,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if len(targets) == 0 {
-		if hadErrors {
-			return errSilent
-		}
 		return nil
 	}
 
@@ -105,7 +91,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	batchResults := gh.BatchLatestVersions(items, cfg.CacheTTL)
 
-	type updateJob struct {
+	type syncJob struct {
 		key     string
 		source  string
 		pkg     config.PackageEntry
@@ -113,9 +99,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		chosen  gh.Asset
 	}
 
-	var ready []updateJob
+	var ready []syncJob
 	checked := 0
 	skipped := 0
+	var hadErrors bool
 
 	for _, res := range batchResults {
 		if res.Err != nil {
@@ -148,13 +135,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
+		pkg = targets[res.Key]
 		chosen, err := asset.SelectAsset(rel.Assets, cfg, pkg.AssetName)
 		if err != nil {
 			printFail(cfg, "%s %v", res.Key, err)
 			hadErrors = true
 			continue
 		}
-		job := updateJob{key: res.Key, source: items[0].Source, pkg: pkg, release: rel, chosen: chosen}
+		job := syncJob{key: res.Key, source: items[0].Source, pkg: pkg, release: rel, chosen: chosen}
 		for _, it := range items {
 			if it.Key == res.Key {
 				job.source = it.Source
@@ -193,9 +181,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	updateTasks := make([]parallel.Task, len(ready))
+	syncTasks := make([]parallel.Task, len(ready))
 	for i, r := range ready {
-		updateTasks[i] = parallel.Task{
+		syncTasks[i] = parallel.Task{
 			Name: r.key,
 			Run: func() (any, error) {
 				fmt.Printf("  downloading %s %s...\n", r.key, config.NormalizeVersion(r.release.TagName))
@@ -230,13 +218,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for _, res := range parallel.Run(cmd.Context(), updateTasks, cfg.NumParallel) {
+	for _, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
 		if res.Err != nil {
 			printFail(cfg, "%s %v", res.Name, res.Err)
 			hadErrors = true
 			continue
 		}
-		r, ok := res.Value.(updateJob)
+		r, ok := res.Value.(syncJob)
 		if !ok {
 			continue
 		}
@@ -249,7 +237,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		// Remove old version dir now that new one is verified good
 		if oldBase, err := store.ExtractBaseDir(r.key); err == nil {
 			oldPkgDir := filepath.Join(oldBase, r.pkg.Version)
 			if err := os.RemoveAll(oldPkgDir); err != nil {

@@ -12,16 +12,16 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-func newUninstallCmd() *cobra.Command {
+func newRemoveCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "uninstall <name> [name...]",
+		Use:   "remove <name> [name...]",
 		Short: "Remove installed packages",
 		Args:  cobra.MinimumNArgs(1),
-		RunE:  runUninstall,
+		RunE:  runRemove,
 	}
 }
 
-func runUninstall(cmd *cobra.Command, args []string) error {
+func runRemove(cmd *cobra.Command, args []string) error {
 	unlock, err := config.AcquireLock()
 	if err != nil {
 		printFail(nil, "%v", err)

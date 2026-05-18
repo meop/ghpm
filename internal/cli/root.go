@@ -34,20 +34,20 @@ func NewRootCmd() *cobra.Command {
 		return cmd.Help()
 	}
 
-	root.SetHelpCommand(&cobra.Command{Use: "help", Hidden: true})
+	root.SetHelpCommand(&cobra.Command{Hidden: true})
 
 	root.AddCommand(
 		newCleanCmd(),
 		newDoctorCmd(),
 		newDownloadCmd(),
-		newInitCmd(),
-		newInstallCmd(),
+		newInfoCmd(),
+		newAddCmd(),
 		newListCmd(),
-		newOutdatedCmd(),
+		newRefreshCmd(),
 		newSearchCmd(),
-		newShowCmd(),
-		newUninstallCmd(),
-		newUpdateCmd(),
+		newStaleCmd(),
+		newSyncCmd(),
+		newRemoveCmd(),
 		newUpgradeCmd(),
 	)
 

@@ -133,6 +133,21 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 			printFail(cfg, "%s: %v", p, err)
 		}
 	}
+	pruned := map[string]bool{}
+	for _, p := range toRemove {
+		dir := filepath.Dir(p)
+		for dir != releaseDir && !pruned[dir] {
+			entries, _ := os.ReadDir(dir)
+			if len(entries) > 0 {
+				break
+			}
+			if err := os.Remove(dir); err != nil {
+				break
+			}
+			pruned[dir] = true
+			dir = filepath.Dir(dir)
+		}
+	}
 	printPass(cfg, "cleaned %d cached file(s)", len(toRemove))
 }
 
@@ -161,6 +176,13 @@ func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
 			expected[key] = true
 		}
 	}
+
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	expected["gh"+ext] = true
+	expected["ghpm"+ext] = true
 
 	var orphaned []string
 	for _, e := range entries {

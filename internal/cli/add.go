@@ -18,12 +18,12 @@ import (
 var forceInstall bool
 var installCfg *config.Settings
 
-func newInstallCmd() *cobra.Command {
+func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "install <name> [name...]",
-		Short: "Install packages from GitHub Releases",
+		Use:   "add <name> [name...]",
+		Short: "Add packages from releases",
 		Args:  cobra.MinimumNArgs(1),
-		RunE:  runInstall,
+		RunE:  runAdd,
 	}
 	cmd.Flags().BoolVarP(&forceInstall, "force", "f", false, "Reinstall even if already installed")
 	return cmd
@@ -60,7 +60,7 @@ type jobWithRelease struct {
 	chosen  gh.Asset
 }
 
-func runInstall(cmd *cobra.Command, args []string) error {
+func runAdd(cmd *cobra.Command, args []string) error {
 	unlock, err := config.AcquireLock()
 	if err != nil {
 		printFail(nil, "%v", err)
