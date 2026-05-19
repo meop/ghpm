@@ -20,10 +20,11 @@ var installCfg *config.Settings
 
 func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add <name> [name...]",
-		Short: "Add packages from releases",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runAdd,
+		Use:     "add <name> [name...]",
+		Aliases: []string{"ad", "in", "install"},
+		Short:   "Add packages from releases",
+		Args:    cobra.MinimumNArgs(1),
+		RunE:    runAdd,
 	}
 	cmd.Flags().BoolVarP(&forceInstall, "force", "f", false, "Reinstall even if already installed")
 	return cmd
@@ -167,7 +168,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 
-				ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "")
+				ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", job.name)
 				if err != nil {
 					return nil, err
 				}
@@ -189,25 +190,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
-		var chosen gh.Asset
-		if ja.candidates.Chosen.Name != "" {
-			chosen = ja.candidates.Chosen
-		} else if len(ja.candidates.Ambiguous) > 0 {
-			var err error
-			chosen, err = asset.PromptSelect("choose from ambiguous candidates:", ja.candidates.Ambiguous)
-			if err != nil {
-				printFail(cfg, "%s %v", ja.job.name, err)
-				hadErrors = true
-				continue
-			}
-		} else {
-			var err error
-			chosen, err = asset.PromptSelect("choose from all candidates:", ja.candidates.All)
-			if err != nil {
-				printFail(cfg, "%s %v", ja.job.name, err)
-				hadErrors = true
-				continue
-			}
+		chosen, err := asset.PromptFromCandidates(ja.candidates)
+		if err != nil {
+			printFail(cfg, "%s %v", ja.job.name, err)
+			hadErrors = true
+			continue
 		}
 		ready = append(ready, jobWithRelease{job: ja.job, release: ja.release, chosen: chosen})
 	}
@@ -226,7 +213,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	if !promptInstall(ready) {
-		fmt.Println("aborted")
 		return nil
 	}
 

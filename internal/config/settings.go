@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-type PlatPriority map[string][]string
+
 
 type Settings struct {
 	CacheTTL     string            `json:"cache_ttl"`
@@ -14,7 +14,6 @@ type Settings struct {
 	NoColor      bool              `json:"no_color"`
 	NoVerify     bool              `json:"no_verify"`
 	NumParallel  int               `json:"num_parallel"`
-	PlatPriority PlatPriority      `json:"plat_priority"`
 	RepoSources  []string          `json:"repo_sources"`
 }
 
@@ -32,10 +31,6 @@ func defaultSettings() *Settings {
 		NoVerify:    false,
 		NumParallel: 5,
 		CacheTTL:    "5m",
-		PlatPriority: PlatPriority{
-			"linux":   {"gnu", "musl"},
-			"windows": {"msvc", "gnu"},
-		},
 		RepoSources: []string{"github.com/meop/ghpm-config"},
 	}
 }
@@ -68,9 +63,9 @@ func EnsureDirs() error {
 	base := filepath.Join(home, ".ghpm")
 	for _, dir := range []string{
 		filepath.Join(base, "bin"),
-		filepath.Join(base, "extracts"),
-		filepath.Join(base, "releases"),
-		filepath.Join(base, "repos"),
+		filepath.Join(base, "extract"),
+		filepath.Join(base, "download"),
+		filepath.Join(base, "repo"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err

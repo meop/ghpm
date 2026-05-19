@@ -94,10 +94,6 @@ ghpm extracts archives into `~/.ghpm/extracts/<key>/<version>/` and discovers th
   "no_color": false,
   "no_verify": false,
   "num_parallel": 5,
-  "plat_priority": {
-    "linux": ["gnu", "musl"],
-    "windows": ["msvc", "gnu"]
-  },
   "repo_sources": ["github.com/meop/ghpm-config"]
 }
 ```
@@ -109,7 +105,6 @@ ghpm extracts archives into `~/.ghpm/extracts/<key>/<version>/` and discovers th
 | `no_color` | `false` | Disable colored output |
 | `no_verify` | `false` | Skip Sigstore attestation verification globally |
 | `num_parallel` | `5` | Max concurrent downloads |
-| `plat_priority` | see above | Preferred toolchain order when multiple assets match |
 | `repo_sources` | `["github.com/meop/ghpm-config"]` | Repo sources to fetch from; all their `repos.yaml` files are merged |
 
 Package repos map simple names like `fzf` to GitHub repos. `ghpm update` refreshes all configured repo sources. If a name isn't found, `ghpm` searches GitHub and prompts you to pick a repo.

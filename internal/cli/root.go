@@ -15,37 +15,58 @@ func SetVersion(v string) { version = v }
 
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "ghpm",
-		Short:         "GitHub Package Manager — Releases Tags Assets",
+		Use:           "ghpm [flags] [command]",
+		Short:         "GitHub Package Manager — Extract Releases / Tags / Assets",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_ = cmd.Help()
+			return nil
+		},
 	}
 
-	root.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Print what would be done without executing")
-	root.PersistentFlags().BoolVar(&noVerify, "no-verify", false, "Skip SHA256 verification")
-	root.PersistentFlags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
+	root.SetUsageTemplate(`Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if and (not .Runnable) .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
+`)
+
+	root.Version = version
+	root.SetVersionTemplate("{{.Version}}\n")
 	root.Flags().Bool("version", false, "Print ghpm version")
-	root.RunE = func(cmd *cobra.Command, args []string) error {
-		v, _ := cmd.Flags().GetBool("version")
-		if v {
-			cmd.Println(version)
-			return nil
-		}
-		return cmd.Help()
-	}
+
+	root.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "Print execution only without running")
+	root.PersistentFlags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	root.PersistentFlags().BoolVarP(&yes, "yes", "y", false, "Yes for confirmation prompts")
 
 	root.SetHelpCommand(&cobra.Command{Hidden: true})
 
 	root.AddCommand(
-		newCleanCmd(),
+		newTidyCmd(),
 		newDoctorCmd(),
 		newDownloadCmd(),
+		newFindCmd(),
 		newInfoCmd(),
 		newAddCmd(),
 		newListCmd(),
 		newRefreshCmd(),
-		newSearchCmd(),
-		newStaleCmd(),
+		newOutdatedCmd(),
 		newSyncCmd(),
 		newRemoveCmd(),
 		newUpgradeCmd(),

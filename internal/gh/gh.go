@@ -21,8 +21,9 @@ type Asset struct {
 }
 
 type Release struct {
-	TagName string  `json:"tagName"`
-	Assets  []Asset `json:"assets"`
+	TagName      string  `json:"tagName"`
+	IsPrerelease bool    `json:"isPrerelease"`
+	Assets       []Asset `json:"assets"`
 }
 
 // ghBin returns the path to the gh binary, checking PATH first then ~/.ghpm/bin.
@@ -61,7 +62,7 @@ func SplitSource(source string) (string, string, error) {
 func ListReleases(owner, repo string) ([]Release, error) {
 	out, err := run("gh", "release", "list",
 		"-R", owner+"/"+repo,
-		"--json", "tagName",
+		"--json", "tagName,isPrerelease",
 		"--limit", "200",
 	)
 	if err != nil {
@@ -112,6 +113,9 @@ func FindLatestMatching(owner, repo string, c config.Constraint) (Release, error
 
 	bestTag := ""
 	for _, r := range releases {
+		if r.IsPrerelease {
+			continue
+		}
 		if !c.Matches(r.TagName) {
 			continue
 		}

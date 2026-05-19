@@ -12,10 +12,6 @@ import (
 func testCfg() *config.Settings {
 	return &config.Settings{
 		NumParallel: 5,
-		PlatPriority: config.PlatPriority{
-			"linux":   {"gnu", "musl"},
-			"windows": {"msvc", "gnu"},
-		},
 	}
 }
 
@@ -56,7 +52,7 @@ func TestSelectAsset_ExactHint(t *testing.T) {
 		{Name: "fzf-0.56.0-linux_amd64.tar.gz", Size: 1000},
 		{Name: "fzf-0.56.0-darwin_amd64.tar.gz", Size: 1000},
 	}
-	chosen, err := SelectAsset(assets, testCfg(), "fzf-0.56.0-linux_amd64.tar.gz")
+	chosen, err := SelectAsset(assets, testCfg(), "fzf-0.56.0-linux_amd64.tar.gz", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +71,7 @@ func TestSelectAsset_PlatformMatch(t *testing.T) {
 		{Name: "tool-windows-amd64.zip", Size: 100},
 		{Name: "tool-linux-amd64.tar.gz.sha256", Size: 10},
 	}
-	chosen, err := SelectAsset(assets, testCfg(), "")
+	chosen, err := SelectAsset(assets, testCfg(), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,22 +128,7 @@ func TestHasTokenPrefix(t *testing.T) {
 	}
 }
 
-func TestSelectAsset_PlatPriorityLinux(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("linux-only test")
-	}
-	assets := []gh.Asset{
-		{Name: "tool-unknown-linux-musl-x86_64.tar.gz", Size: 100},
-		{Name: "tool-unknown-linux-gnu-x86_64.tar.gz", Size: 100},
-	}
-	chosen, err := SelectAsset(assets, testCfg(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if chosen.Name != "tool-unknown-linux-gnu-x86_64.tar.gz" {
-		t.Errorf("expected gnu, got %s", chosen.Name)
-	}
-}
+
 
 func TestIsVersionToken(t *testing.T) {
 	cases := []struct {
@@ -261,6 +242,93 @@ func TestMatchByHint_BunVPrefix(t *testing.T) {
 	}
 	if chosen.Name != "bun-v1.3.14-linux-x64.zip" {
 		t.Errorf("got %q, want bun-v1.3.14-linux-x64.zip", chosen.Name)
+	}
+}
+
+func TestScoreAsset_HasNegative(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	cases := []struct {
+		name    string
+		wantNeg bool
+	}{
+		{"tool-linux-amd64.tar.gz", false},
+		{"tool-darwin-amd64.tar.gz", true},
+		{"tool-windows-amd64.zip", true},
+		{"tool-linux-arm64.tar.gz", true},
+		{"tool-generic.tar.gz", false},
+	}
+	for _, c := range cases {
+		_, got := scoreAsset(c.name, "")
+		if got != c.wantNeg {
+			t.Errorf("scoreAsset(%q) hasNeg = %v, want %v", c.name, got, c.wantNeg)
+		}
+	}
+}
+
+func TestSelectAssetAuto_SingleCompatible(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "tool-linux-amd64.tar.gz", Size: 100},
+		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
+		{Name: "tool-windows-amd64.zip", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "tool-linux-amd64.tar.gz" {
+		t.Errorf("expected auto-select, got Chosen=%q Compatible=%v", ac.Chosen.Name, ac.Compatible)
+	}
+}
+
+func TestSelectAssetAuto_MultipleCompatible(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "tool-linux-x64.tar.gz", Size: 100},
+		{Name: "tool-linux-amd64.tar.gz", Size: 100},
+		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "" {
+		t.Errorf("expected no auto-select, got %q", ac.Chosen.Name)
+	}
+	if len(ac.Compatible) != 2 {
+		t.Errorf("expected 2 compatible, got %d: %v", len(ac.Compatible), ac.Compatible)
+	}
+	if len(ac.Hidden) != 1 {
+		t.Errorf("expected 1 hidden, got %d: %v", len(ac.Hidden), ac.Hidden)
+	}
+}
+
+func TestSelectAssetAuto_NoCompatible(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
+		{Name: "tool-windows-amd64.zip", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "" {
+		t.Errorf("expected no auto-select in fallback, got %q", ac.Chosen.Name)
+	}
+	if len(ac.Hidden) != 0 {
+		t.Errorf("expected no hidden in fallback, got %d", len(ac.Hidden))
+	}
+	if len(ac.Compatible) != 2 {
+		t.Errorf("expected 2 in fallback compatible, got %d", len(ac.Compatible))
 	}
 }
 

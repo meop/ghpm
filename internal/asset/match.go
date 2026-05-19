@@ -60,71 +60,53 @@ func hasTokenPrefix(name string, prefixes []string) bool {
 	return false
 }
 
-func scoreAsset(name string) int {
+func scoreAsset(name, pkgName string) (int, bool) {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 	score := 0
+	hasNeg := false
+
+	if pkgName != "" && hasTokenPrefix(name, []string{pkgName}) {
+		score++
+	}
 
 	if prefixes, ok := osPrefixes[goos]; ok && hasTokenPrefix(name, prefixes) {
-		score += 10
-	}
-	if prefixes, ok := archPrefixes[goarch]; ok && hasTokenPrefix(name, prefixes) {
-		score += 10
-	}
-	if goos == "windows" && strings.HasSuffix(strings.ToLower(name), ".exe") {
-		score += 5
-	}
-	return score
-}
-
-func priorityResolved(aName, bName string, cfg *config.Settings) bool {
-	goos := runtime.GOOS
-	priorities := cfg.PlatPriority[goos]
-	aRank, bRank := len(priorities), len(priorities)
-	for i, pri := range priorities {
-		if strings.Contains(strings.ToLower(aName), strings.ToLower(pri)) && i < aRank {
-			aRank = i
-		}
-		if strings.Contains(strings.ToLower(bName), strings.ToLower(pri)) && i < bRank {
-			bRank = i
-		}
-	}
-	return aRank < bRank
-}
-
-func applyPriority(assets []gh.Asset, cfg *config.Settings) []gh.Asset {
-	goos := runtime.GOOS
-	priorities, ok := cfg.PlatPriority[goos]
-	if !ok || len(priorities) == 0 {
-		return assets
-	}
-	best := make([]gh.Asset, 0, len(assets))
-	for _, pri := range priorities {
-		for _, a := range assets {
-			if strings.Contains(strings.ToLower(a.Name), strings.ToLower(pri)) {
-				best = append(best, a)
+		score++
+	} else {
+		for os, prefixes := range osPrefixes {
+			if os != goos && hasTokenPrefix(name, prefixes) {
+				hasNeg = true
+				break
 			}
 		}
 	}
-	inBest := map[string]bool{}
-	for _, a := range best {
-		inBest[a.Name] = true
-	}
-	for _, a := range assets {
-		if !inBest[a.Name] {
-			best = append(best, a)
+
+	if prefixes, ok := archPrefixes[goarch]; ok && hasTokenPrefix(name, prefixes) {
+		score++
+	} else {
+		for arch, prefixes := range archPrefixes {
+			if arch != goarch && hasTokenPrefix(name, prefixes) {
+				hasNeg = true
+				break
+			}
 		}
 	}
-	return best
+
+	if goos == "windows" && strings.HasSuffix(strings.ToLower(name), ".exe") {
+		score++
+	}
+
+	return score, hasNeg
 }
 
 type AssetCandidates struct {
-	Chosen    gh.Asset
-	Ambiguous []gh.Asset
-	All       []gh.Asset
+	Chosen     gh.Asset
+	Compatible []gh.Asset
+	Hidden     []gh.Asset
+	All        []gh.Asset
 }
 
-func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint string) (AssetCandidates, error) {
+func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName string) (AssetCandidates, error) {
 	candidates := make([]gh.Asset, 0, len(assets))
 	for _, a := range assets {
 		if !isSkipped(a.Name) {
@@ -141,60 +123,114 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint string) (Asse
 		}
 	}
 
-	type scored struct {
-		asset gh.Asset
-		score int
+	type candidateScore struct {
+		asset  gh.Asset
+		score  int
+		hasNeg bool
 	}
-	scored_ := make([]scored, 0, len(candidates))
+	all := make([]candidateScore, 0, len(candidates))
 	for _, a := range candidates {
-		s := scoreAsset(a.Name)
-		if s > 0 {
-			scored_ = append(scored_, scored{a, s})
+		s, neg := scoreAsset(a.Name, pkgName)
+		all = append(all, candidateScore{a, s, neg})
+	}
+
+	var compatible, hidden []candidateScore
+	for _, c := range all {
+		if c.hasNeg {
+			hidden = append(hidden, c)
+		} else {
+			compatible = append(compatible, c)
 		}
 	}
 
-	if len(scored_) == 0 {
-		return AssetCandidates{Ambiguous: candidates, All: candidates}, nil
+	workingSet := compatible
+	if len(workingSet) == 0 {
+		workingSet = all
+		hidden = nil
 	}
 
 	maxScore := 0
-	for _, s := range scored_ {
-		if s.score > maxScore {
-			maxScore = s.score
-		}
-	}
-	best := make([]gh.Asset, 0)
-	for _, s := range scored_ {
-		if s.score == maxScore {
-			best = append(best, s.asset)
+	for _, c := range workingSet {
+		if c.score > maxScore {
+			maxScore = c.score
 		}
 	}
 
-	best = applyPriority(best, cfg)
+	var best []gh.Asset
+	for _, c := range workingSet {
+		if maxScore == 0 || c.score == maxScore {
+			best = append(best, c.asset)
+		}
+	}
 
 	if len(best) == 1 {
 		return AssetCandidates{Chosen: best[0], All: candidates}, nil
 	}
 
-	if len(best) >= 2 && priorityResolved(best[0].Name, best[1].Name, cfg) {
-		return AssetCandidates{Chosen: best[0], All: candidates}, nil
+	var hiddenAssets []gh.Asset
+	for _, c := range hidden {
+		hiddenAssets = append(hiddenAssets, c.asset)
 	}
 
-	return AssetCandidates{Ambiguous: best, All: candidates}, nil
+	return AssetCandidates{Compatible: best, Hidden: hiddenAssets, All: candidates}, nil
 }
 
-func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint string) (gh.Asset, error) {
-	ac, err := SelectAssetAuto(assets, cfg, hint)
+func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint, pkgName string) (gh.Asset, error) {
+	ac, err := SelectAssetAuto(assets, cfg, hint, pkgName)
 	if err != nil {
 		return gh.Asset{}, err
 	}
+	return PromptFromCandidates(ac)
+}
+
+func PromptFromCandidates(ac AssetCandidates) (gh.Asset, error) {
 	if ac.Chosen.Name != "" {
 		return ac.Chosen, nil
 	}
-	if len(ac.Ambiguous) > 0 {
-		return PromptSelect("choose from ambiguous candidates:", ac.Ambiguous)
+	return promptWithShowMore(ac.Compatible, ac.Hidden)
+}
+
+func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
+	fmt.Println("choose from candidates:")
+	for i, a := range compatible {
+		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	return PromptSelect("choose from all candidates:", ac.All)
+	showMoreIdx := -1
+	if len(hidden) > 0 {
+		showMoreIdx = len(compatible) + 1
+		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
+	}
+	fmt.Print("enter number: ")
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(line)
+	var idx int
+	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
+		return gh.Asset{}, fmt.Errorf("invalid selection")
+	}
+	if showMoreIdx > 0 && idx == showMoreIdx {
+		return PromptSelect("choose from candidates:", append(compatible, hidden...))
+	}
+	if idx < 1 || idx > len(compatible) {
+		return gh.Asset{}, fmt.Errorf("invalid selection")
+	}
+	return compatible[idx-1], nil
+}
+
+func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
+	fmt.Println(msg)
+	for i, a := range assets {
+		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
+	}
+	fmt.Print("enter number: ")
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(line)
+	var idx int
+	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(assets) {
+		return gh.Asset{}, fmt.Errorf("invalid selection")
+	}
+	return assets[idx-1], nil
 }
 
 func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
@@ -261,22 +297,6 @@ func isVersionToken(t string) bool {
 		return true
 	}
 	return false
-}
-
-func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
-	fmt.Println(msg)
-	for i, a := range assets {
-		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
-	}
-	fmt.Print("enter number: ")
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	line = strings.TrimSpace(line)
-	var idx int
-	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(assets) {
-		return gh.Asset{}, fmt.Errorf("invalid selection")
-	}
-	return assets[idx-1], nil
 }
 
 func Verify(owner, repo, tag, cacheDir, assetName string) (bool, error) {

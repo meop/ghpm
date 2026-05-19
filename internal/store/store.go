@@ -28,7 +28,7 @@ func ExtractsDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "extracts"), nil
+	return filepath.Join(base, "extract"), nil
 }
 
 func ExtractBaseDir(key string) (string, error) {
@@ -53,7 +53,7 @@ func ReleaseBaseDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "releases"), nil
+	return filepath.Join(base, "download"), nil
 }
 
 func ReposBaseDir() (string, error) {
@@ -61,7 +61,7 @@ func ReposBaseDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "repos"), nil
+	return filepath.Join(base, "repo"), nil
 }
 
 func RepoDir(source string) (string, error) {
@@ -80,6 +80,15 @@ func ReleaseDir(source, version string) (string, error) {
 		return "", err
 	}
 	relPath := strings.ReplaceAll(source, "/", string(filepath.Separator))
-	dir := filepath.Join(base, relPath, version)
+	dir := filepath.Join(base, relPath, normalizeVersion(version))
 	return dir, os.MkdirAll(dir, 0755)
+}
+
+func normalizeVersion(v string) string {
+	for i, r := range v {
+		if r >= '0' && r <= '9' {
+			return v[i:]
+		}
+	}
+	return v
 }

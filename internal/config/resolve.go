@@ -18,7 +18,7 @@ type reposFile struct {
 	Repos map[string]string `yaml:"repos"`
 }
 
-// LoadRepos scans ~/.ghpm/repos recursively for repos.yaml files,
+// LoadRepos scans ~/.ghpm/repos recursively for repo.yaml files,
 // loads all of them, and merges into a single map (later entries win on conflict).
 // Returns an empty map (no error) if the repos directory doesn't exist yet.
 func LoadRepos() (map[string]string, error) {
@@ -34,7 +34,7 @@ func LoadRepos() (map[string]string, error) {
 			}
 			return err
 		}
-		if d.IsDir() || d.Name() != "repos.yaml" {
+		if d.IsDir() || d.Name() != "repo.yaml" {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -61,7 +61,7 @@ func LoadRepos() (map[string]string, error) {
 	return merged, nil
 }
 
-// RefreshRepos fetches repos.yaml from each source configured in settings
+// RefreshRepos fetches repo.yaml from each source configured in settings
 // (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/repos/.
 // SyncResult holds the outcome of syncing a single repo source.
 type SyncResult struct {
@@ -101,7 +101,7 @@ func fetchAndCacheRepos(source string) (int, error) {
 		return 0, fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
 	}
 	cmd := exec.Command("gh", "api", //nolint:gosec
-		fmt.Sprintf("repos/%s/contents/repos.yaml", slug),
+		fmt.Sprintf("repos/%s/contents/repo.yaml", slug),
 		"--header", "Accept: application/vnd.github.raw+json",
 	)
 	data, err := cmd.Output()
@@ -113,13 +113,13 @@ func fetchAndCacheRepos(source string) (int, error) {
 	}
 	var rf reposFile
 	if err := yaml.Unmarshal(data, &rf); err != nil {
-		return 0, fmt.Errorf("parsing repos.yaml from %s: %w", source, err)
+		return 0, fmt.Errorf("parsing repo.yaml from %s: %w", source, err)
 	}
 	dir, err := store.RepoDir(source)
 	if err != nil {
 		return 0, err
 	}
-	path := filepath.Join(dir, "repos.yaml")
+	path := filepath.Join(dir, "repo.yaml")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return 0, err

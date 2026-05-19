@@ -20,7 +20,7 @@ func TestExtractsDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "extracts")
+	want := filepath.Join(home, ".ghpm", "extract")
 	if dir != want {
 		t.Errorf("ExtractsDir() = %q, want %q", dir, want)
 	}
@@ -32,7 +32,7 @@ func TestExtractDir_CreatesDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "extracts", "fzf", "0.58.0")
+	want := filepath.Join(home, ".ghpm", "extract", "fzf", "0.58.0")
 	if dir != want {
 		t.Errorf("ExtractDir = %q, want %q", dir, want)
 	}
@@ -47,7 +47,7 @@ func TestReleaseBaseDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "releases")
+	want := filepath.Join(home, ".ghpm", "download")
 	if dir != want {
 		t.Errorf("ReleaseBaseDir() = %q, want %q", dir, want)
 	}
@@ -59,7 +59,7 @@ func TestReleaseDir_CreatesDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(dir, "junegunn") || !strings.Contains(dir, "fzf") || !strings.Contains(dir, "v0.56.0") {
+	if !strings.Contains(dir, "junegunn") || !strings.Contains(dir, "fzf") || !strings.Contains(dir, "0.56.0") {
 		t.Errorf("unexpected path: %s", dir)
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
@@ -73,7 +73,7 @@ func TestReleaseDir_Structure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "releases", "github.com", "cli", "cli", "v2.0.0")
+	want := filepath.Join(home, ".ghpm", "download", "github.com", "cli", "cli", "2.0.0")
 	if dir != want {
 		t.Errorf("ReleaseDir = %q, want %q", dir, want)
 	}
@@ -85,7 +85,7 @@ func TestReposBaseDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "repos")
+	want := filepath.Join(home, ".ghpm", "repo")
 	if dir != want {
 		t.Errorf("ReposBaseDir() = %q, want %q", dir, want)
 	}
@@ -97,7 +97,7 @@ func TestRepoDir_Structure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "repos", "github.com", "meop", "ghpm-config")
+	want := filepath.Join(home, ".ghpm", "repo", "github.com", "meop", "ghpm-config")
 	if dir != want {
 		t.Errorf("RepoDir = %q, want %q", dir, want)
 	}

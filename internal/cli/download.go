@@ -19,7 +19,7 @@ func newDownloadCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runDownload,
 	}
-	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/releases/)")
+	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/download/)")
 	return cmd
 }
 
@@ -87,7 +87,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return nil, err
 				}
-				chosen, err := asset.SelectAsset(rel.Assets, cfg, "")
+				chosen, err := asset.SelectAsset(rel.Assets, cfg, "", name)
 				if err != nil {
 					return nil, err
 				}
@@ -125,7 +125,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 
 	if !promptConfirm(fmt.Sprintf("download %d asset(s)", len(ready))) {
-		fmt.Println("aborted")
 		return nil
 	}
 

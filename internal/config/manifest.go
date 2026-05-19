@@ -15,8 +15,8 @@ type PackageEntry struct {
 }
 
 type Manifest struct {
-	Repos    map[string]string       `json:"repos"`
-	Extracts map[string]PackageEntry `json:"extracts"`
+	Repos    map[string]string       `json:"repo"`
+	Extracts map[string]PackageEntry `json:"extract"`
 }
 
 func HomeDir() (string, error) {
@@ -62,6 +62,20 @@ func loadManifestFile(path string) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
+	if len(m.Repos) == 0 || len(m.Extracts) == 0 {
+		var legacy struct {
+			Repos    map[string]string       `json:"repos"`
+			Extracts map[string]PackageEntry `json:"extracts"`
+		}
+		if json.Unmarshal(data, &legacy) == nil {
+			if len(m.Repos) == 0 && len(legacy.Repos) > 0 {
+				m.Repos = legacy.Repos
+			}
+			if len(m.Extracts) == 0 && len(legacy.Extracts) > 0 {
+				m.Extracts = legacy.Extracts
+			}
+		}
+	}
 	if m.Repos == nil {
 		m.Repos = map[string]string{}
 	}
@@ -77,7 +91,7 @@ func saveManifestFile(m *Manifest, path string) error {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, append(data, '\n'), 0644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
