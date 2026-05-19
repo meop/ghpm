@@ -138,20 +138,15 @@ Fields:
   "no_verify": false,
   "no_color": false,
   "num_parallel": 5,
-  "plat_priority": {
-    "linux": ["gnu", "musl"],
-    "windows": ["msvc", "gnu"]
-  },
   "repo_sources": ["github.com/meop/ghpm-config"]
 }
 ```
 
-- **`cache_ttl`**: duration to cache `gh api` responses, passed as `--cache` flag (default: `"5m"`)
-- **`no_color`**: disable colored output (default: false)
-- **`no_verify`**: skip SHA verification globally (default: false)
-- **`num_parallel`**: max concurrent download/extract operations (default: 5)
-- **`plat_priority`**: when multiple assets match OS+arch, prefer toolchains in this order. Default: Windows → MSVC over GNU; Linux → GNU over Musl.
-- **`repo_sources`**: list of GitHub repos to fetch `repos.yaml` from (default: `["github.com/meop/ghpm-config"]`). Multiple sources are supported; their repo maps are merged (later entries win on conflict).
+ - **`cache_ttl`**: duration to cache `gh api` responses, passed as `--cache` flag (default: `"5m"`)
+ - **`no_color`**: disable colored output (default: false)
+ - **`no_verify`**: skip SHA verification globally (default: false)
+ - **`num_parallel`**: max concurrent download/extract operations (default: 5)
+ - **`repo_sources`**: list of GitHub repos to fetch `repos.yaml` from (default: `["github.com/meop/ghpm-config"]`). Multiple sources are supported; their repo maps are merged (later entries win on conflict).
 
 ### Config module (`internal/config/`)
 
@@ -226,8 +221,7 @@ Use `runtime.GOOS` and `runtime.GOARCH`. Map to common naming conventions:
 1. **Filter out non-binaries**: `.sha256`, `.sha512`, `.sig`, `.pem`, `.sbom`, source archives (containing `src` or `source`), `.deb`, `.apk`, `.rpm`, `.msi`, `.pkg`
 2. **Hint matching**: if the package was previously installed, tokenize the stored `asset_name` and candidate names, strip version-like tokens, and compare structural tokens. If exactly one candidate matches, auto-select.
 3. **Score remaining assets** by matching OS and arch keywords
-4. **Apply platform priority** from settings to break ties
-5. **Prompt**: if multiple plausible matches remain, prompt user to pick from numbered list
+4. **Prompt**: if multiple plausible matches remain, prompt user to pick from numbered list
 
 ### Token-based version stripping
 
@@ -568,7 +562,7 @@ Use [goreleaser/goreleaser](https://github.com/goreleaser/goreleaser) to automat
 | PATH management | Single `~/.ghpm/bin/` directory in PATH. Each installed binary gets a shim there (symlink on Unix, `.cmd` on Windows). Users add `~/.ghpm/bin` to PATH however they manage shell config. No reload or regeneration needed after installs. |
 | Parallelism | 5 workers default, configurable via `settings.num_parallel`. |
 | Path discovery | Name-based lookup: search `pkgDir` for a file named exactly `binaryName` (or `binaryName.exe` on Windows), verified via magic bytes (ELF/Mach-O). Avoids false positives from scripts with execute bits. |
-| Platform priorities | Windows: MSVC > GNU; Linux: GNU > Musl. Configurable in `settings.json`. |
+| Platform priorities | Multiple platform-matching assets are presented to user for selection |
 | Process locking | Exclusive `flock` on `~/.ghpm/.lock` via `gofrs/flock`. Acquired by all mutating commands. Read-only commands skip the lock. |
 | Rate limiting | Detect `"rate limit"` in `gh` stderr, return `ErrRateLimited`. Fail-fast: report skipped packages and counts. No auto-retry. |
 | Repo sources | One or more configured via `repo_sources`. Cached locally, refreshed only during `ghpm update`. |

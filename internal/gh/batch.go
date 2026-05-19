@@ -33,23 +33,20 @@ type releaseField struct {
 	LatestRelease *struct {
 		TagName string `json:"tagName"`
 	} `json:"latestRelease"`
-	Releases *struct {
-		Nodes []struct {
-			TagName string `json:"tagName"`
-		} `json:"nodes"`
-	} `json:"releases"`
+	VRefs *struct {
+		Nodes []struct{ Name string `json:"name"` } `json:"nodes"`
+	} `json:"vRefs"`
+	NvRefs *struct {
+		Nodes []struct{ Name string `json:"name"` } `json:"nodes"`
+	} `json:"nvRefs"`
 }
 
 func BatchLatestVersions(items []BatchItem, cacheTTL string) []BatchResult {
 	results := make([]BatchResult, len(items))
 
 	for start := 0; start < len(items); start += batchSize {
-		end := start + batchSize
-		if end > len(items) {
-			end = len(items)
-		}
-		batch := items[start:end]
-		batchResults := executeBatch(batch, cacheTTL)
+		end := min(start+batchSize, len(items))
+		batchResults := executeBatch(items[start:end], cacheTTL)
 		for i, r := range batchResults {
 			results[start+i] = r
 		}
@@ -139,13 +136,11 @@ func buildBatchQuery(items []BatchItem, aliases []string, ownerMap map[string][2
 			continue
 		}
 		pair := ownerMap[aliases[i]]
-		owner := pair[0]
-		repo := pair[1]
-
-		isPinned := item.Pin.Raw != ""
-		fmt.Fprintf(&b, "  %s: repository(owner: %q, name: %q) {\n", aliases[i], owner, repo)
-		if isPinned {
-			b.WriteString("    releases(first: 20) { nodes { tagName } }\n")
+		fmt.Fprintf(&b, "  %s: repository(owner: %q, name: %q) {\n", aliases[i], pair[0], pair[1])
+		if item.Pin.Raw != "" {
+			vp, nvp := tagRefPrefixes(item.Pin)
+			fmt.Fprintf(&b, "    vRefs: refs(refPrefix: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", vp)
+			fmt.Fprintf(&b, "    nvRefs: refs(refPrefix: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", nvp)
 		} else {
 			b.WriteString("    latestRelease { tagName }\n")
 		}
@@ -155,30 +150,59 @@ func buildBatchQuery(items []BatchItem, aliases []string, ownerMap map[string][2
 	return b.String()
 }
 
+// tagRefPrefixes returns the v-prefixed and non-v-prefixed tag ref prefixes for a constraint.
+// e.g. PinMajor{20} → "refs/tags/v20.", "refs/tags/20."
+// e.g. PinMinor{20,9} → "refs/tags/v20.9.", "refs/tags/20.9."
+func tagRefPrefixes(c config.Constraint) (vPfx, nvPfx string) {
+	var base string
+	if c.Level == config.PinMinor {
+		base = fmt.Sprintf("%d.%d.", c.Major, c.Minor)
+	} else {
+		base = fmt.Sprintf("%d.", c.Major)
+	}
+	return "refs/tags/v" + base, "refs/tags/" + base
+}
+
 func extractTag(rf releaseField, pin config.Constraint) (string, error) {
-	isPinned := pin.Raw != ""
-
-	if isPinned {
-		if rf.Releases == nil {
-			return "", fmt.Errorf("no releases returned for pinned package")
+	if pin.Raw == "" {
+		if rf.LatestRelease == nil {
+			return "", fmt.Errorf("no latest release returned")
 		}
-		bestTag := ""
-		for _, node := range rf.Releases.Nodes {
-			if !pin.Matches(node.TagName) {
-				continue
-			}
-			if bestTag == "" || config.CompareVersions(node.TagName, bestTag) > 0 {
-				bestTag = node.TagName
-			}
-		}
-		if bestTag == "" {
-			return "", fmt.Errorf("no release found matching %q", pin.Raw)
-		}
-		return bestTag, nil
+		return rf.LatestRelease.TagName, nil
 	}
 
-	if rf.LatestRelease == nil {
-		return "", fmt.Errorf("no latest release returned")
+	var tags []string
+	if rf.VRefs != nil {
+		for _, n := range rf.VRefs.Nodes {
+			tags = append(tags, n.Name)
+		}
 	}
-	return rf.LatestRelease.TagName, nil
+	if rf.NvRefs != nil {
+		for _, n := range rf.NvRefs.Nodes {
+			tags = append(tags, n.Name)
+		}
+	}
+
+	bestTag := ""
+	for _, tag := range tags {
+		if isPrereleaseName(tag) {
+			continue
+		}
+		if !pin.Matches(tag) {
+			continue
+		}
+		if bestTag == "" || config.CompareVersions(tag, bestTag) > 0 {
+			bestTag = tag
+		}
+	}
+	if bestTag == "" {
+		return "", fmt.Errorf("no release found matching %q", pin.Raw)
+	}
+	return bestTag, nil
+}
+
+// isPrereleaseName reports whether a tag looks like a pre-release.
+// Standard semver uses a hyphen separator for pre-release identifiers (e.g. v1.0.0-rc.1).
+func isPrereleaseName(tag string) bool {
+	return strings.Contains(config.NormalizeVersion(tag), "-")
 }

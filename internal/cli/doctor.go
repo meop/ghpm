@@ -16,10 +16,11 @@ import (
 
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "doctor",
-		Short: "Check system health and configuration",
-		Args:  cobra.NoArgs,
-		RunE:  runDoctor,
+		Use:     "doctor",
+		Aliases: []string{"check"},
+		Short:   "Check system health and configuration",
+		Args:    cobra.NoArgs,
+		RunE:    runDoctor,
 	}
 }
 

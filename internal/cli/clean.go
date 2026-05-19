@@ -13,18 +13,19 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-func newCleanCmd() *cobra.Command {
+func newTidyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "clean",
-		Short: "Remove cached release assets and orphaned package dirs",
-		Args:  cobra.NoArgs,
-		RunE:  runClean,
+		Use:     "tidy",
+		Aliases: []string{"ti", "cl", "clean"},
+		Short:   "Clean unused downloads and orphaned items",
+		Args:    cobra.NoArgs,
+		RunE:    runTidy,
 	}
 	cmd.Flags().Bool("all", false, "remove all cached assets regardless of installation status")
 	return cmd
 }
 
-func runClean(cmd *cobra.Command, args []string) error {
+func runTidy(cmd *cobra.Command, args []string) error {
 	unlock, err := config.AcquireLock()
 	if err != nil {
 		printFail(nil, "%v", err)
@@ -56,7 +57,6 @@ func runClean(cmd *cobra.Command, args []string) error {
 			fmt.Printf("[dry-run] would remove all cached assets in %s\n", releaseDir)
 		} else {
 			if !promptConfirm(fmt.Sprintf("remove all cached assets in %s", releaseDir)) {
-				fmt.Println("aborted")
 				return nil
 			}
 			if err := os.RemoveAll(releaseDir); err != nil {
@@ -124,7 +124,6 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 
 	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d cached file(s)", len(toRemove))) {
-		fmt.Println("aborted")
 		return
 	}
 
@@ -133,19 +132,18 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 			printFail(cfg, "%s: %v", p, err)
 		}
 	}
-	pruned := map[string]bool{}
-	for _, p := range toRemove {
-		dir := filepath.Dir(p)
-		for dir != releaseDir && !pruned[dir] {
-			entries, _ := os.ReadDir(dir)
-			if len(entries) > 0 {
-				break
-			}
-			if err := os.Remove(dir); err != nil {
-				break
-			}
-			pruned[dir] = true
-			dir = filepath.Dir(dir)
+	var dirs []string
+	_ = filepath.WalkDir(releaseDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || path == releaseDir || !d.IsDir() {
+			return nil
+		}
+		dirs = append(dirs, path)
+		return nil
+	})
+	for i := len(dirs) - 1; i >= 0; i-- {
+		entries, _ := os.ReadDir(dirs[i])
+		if len(entries) == 0 {
+			_ = os.Remove(dirs[i])
 		}
 	}
 	printPass(cfg, "cleaned %d cached file(s)", len(toRemove))
@@ -204,7 +202,6 @@ func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned shim(s)", len(orphaned))) {
-		fmt.Println("aborted")
 		return
 	}
 
@@ -260,7 +257,7 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 
 	fmt.Println()
 	for _, name := range orphaned {
-		fmt.Printf("extracts/%s\n", name)
+		fmt.Printf("extract/%s\n", name)
 	}
 
 	if dryRun {
@@ -268,7 +265,6 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned package dir(s)", len(orphaned))) {
-		fmt.Println("aborted")
 		return
 	}
 

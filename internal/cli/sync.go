@@ -17,9 +17,10 @@ import (
 
 func newSyncCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "sync [name...]",
-		Short: "Sync packages to their latest releases",
-		RunE:  runSync,
+		Use:     "sync [name...]",
+		Aliases: []string{"up", "update"},
+		Short:   "Sync packages to their latest releases",
+		RunE:    runSync,
 	}
 }
 
@@ -136,7 +137,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		pkg = targets[res.Key]
-		chosen, err := asset.SelectAsset(rel.Assets, cfg, pkg.AssetName)
+		chosen, err := asset.SelectAsset(rel.Assets, cfg, pkg.AssetName, res.Key)
 		if err != nil {
 			printFail(cfg, "%s %v", res.Key, err)
 			hadErrors = true
@@ -177,7 +178,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if !promptConfirm(fmt.Sprintf("update %d package(s)", len(ready))) {
-		fmt.Println("aborted")
 		return nil
 	}
 

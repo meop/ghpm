@@ -12,10 +12,11 @@ import (
 
 func newInfoCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <name> [name...]",
-		Short: "Show releases and available assets for packages",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runInfo,
+		Use:     "info <name> [name...]",
+		Aliases: []string{"show"},
+		Short:   "Show releases and available assets for packages",
+		Args:    cobra.MinimumNArgs(1),
+		RunE:    runInfo,
 	}
 }
 

@@ -11,12 +11,12 @@ import (
 	"github.com/meop/ghpm/internal/config"
 )
 
-func newSearchCmd() *cobra.Command {
+func newFindCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "search <term> [term...]",
-		Short: "Search cached repos by name or source",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runSearch,
+		Use:     "find [term...]",
+		Aliases: []string{"search"},
+		Short:   "List or search cached repos by name or source",
+		RunE:    runFind,
 	}
 }
 
@@ -25,7 +25,7 @@ type repoMatch struct {
 	source string
 }
 
-func runSearch(cmd *cobra.Command, args []string) error {
+func runFind(cmd *cobra.Command, args []string) error {
 	repos, err := config.LoadRepos()
 	if err != nil {
 		return err
@@ -35,12 +35,28 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	if len(args) == 0 {
+		var all []repoMatch
+		for name, source := range repos {
+			all = append(all, repoMatch{name: name, source: source})
+		}
+		slices.SortFunc(all, func(a, b repoMatch) int {
+			return cmp.Compare(a.name, b.name)
+		})
+		rows := make([][]string, len(all))
+		for i, m := range all {
+			rows[i] = []string{m.name, m.source}
+		}
+		printTable([]string{"name", "repo"}, rows, nil)
+		return nil
+	}
+
 	for i, term := range args {
 		if i > 0 {
 			fmt.Println()
 		}
 		if len(args) > 1 {
-			fmt.Printf("search: %s\n", term)
+			fmt.Printf("find: %s\n", term)
 		}
 
 		lower := strings.ToLower(term)

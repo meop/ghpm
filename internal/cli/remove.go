@@ -14,10 +14,11 @@ import (
 
 func newRemoveCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "remove <name> [name...]",
-		Short: "Remove installed packages",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runRemove,
+		Use:     "remove <name> [name...]",
+		Aliases: []string{"rem", "rm", "un", "unin", "uninstall"},
+		Short:   "Remove installed packages",
+		Args:    cobra.MinimumNArgs(1),
+		RunE:    runRemove,
 	}
 }
 
@@ -79,7 +80,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
 	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("uninstall %d package(s)", len(targets))) {
-		fmt.Println("aborted")
 		return nil
 	}
 

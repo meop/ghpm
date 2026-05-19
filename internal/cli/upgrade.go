@@ -74,7 +74,7 @@ func upgradeSelf(cfg *config.Settings) error {
 		return nil
 	}
 
-	chosen, err := asset.SelectAsset(rel.Assets, cfg, "")
+	chosen, err := asset.SelectAsset(rel.Assets, cfg, "", "ghpm")
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,6 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 
 	if !promptConfirm(fmt.Sprintf("upgrade ghpm %s → %s", version, config.NormalizeVersion(rel.TagName))) {
-		fmt.Println("aborted")
 		return nil
 	}
 
@@ -170,7 +169,7 @@ func upgradeGh(cfg *config.Settings) error {
 		return nil
 	}
 
-	chosen, err := asset.SelectAsset(rel.Assets, cfg, "")
+	chosen, err := asset.SelectAsset(rel.Assets, cfg, "", "gh")
 	if err != nil {
 		return err
 	}
@@ -181,7 +180,6 @@ func upgradeGh(cfg *config.Settings) error {
 	}
 
 	if !promptConfirm(fmt.Sprintf("upgrade gh %s → %s", currentVer, latestVer)) {
-		fmt.Println("aborted")
 		return nil
 	}
 

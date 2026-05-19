@@ -11,10 +11,11 @@ import (
 
 func newListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List installed packages",
-		Args:  cobra.NoArgs,
-		RunE:  runList,
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List installed packages",
+		Args:    cobra.NoArgs,
+		RunE:    runList,
 	}
 }
 

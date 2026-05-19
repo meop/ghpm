@@ -56,7 +56,7 @@ func TestCleanOrphanedPackages_RemovesOrphans(t *testing.T) {
 	yes = true
 	defer func() { yes = false }()
 
-	pkgsDir := filepath.Join(home, ".ghpm", "extracts")
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "orphan", "1.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestCleanOrphanedPackages_KeepsCurrentVersion(t *testing.T) {
 	yes = true
 	defer func() { yes = false }()
 
-	pkgsDir := filepath.Join(home, ".ghpm", "extracts")
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestCleanOrphanedPackages_RemovesStaleVersion(t *testing.T) {
 	yes = true
 	defer func() { yes = false }()
 
-	pkgsDir := filepath.Join(home, ".ghpm", "extracts")
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.57.0"), 0755); err != nil {
 		t.Fatal(err)
 	}

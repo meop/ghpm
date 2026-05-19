@@ -10,7 +10,12 @@ var version = "dev"
 
 func main() {
 	cli.SetVersion(version)
-	if err := cli.NewRootCmd().Execute(); err != nil {
+	root := cli.NewRootCmd()
+	cmd, err := root.ExecuteC()
+	if err != nil {
+		if err.Error() != "" {
+			_ = cmd.Help()
+		}
 		os.Exit(1)
 	}
 }

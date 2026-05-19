@@ -24,8 +24,8 @@ func TestBuildBatchQuery_Floating(t *testing.T) {
 	if !strings.Contains(query, "latestRelease") {
 		t.Error("expected latestRelease for floating packages")
 	}
-	if strings.Contains(query, "releases(") {
-		t.Error("should not request releases list for floating packages")
+	if strings.Contains(query, "refs(") {
+		t.Error("should not request refs for floating packages")
 	}
 	if !strings.Contains(query, `owner: "junegunn"`) {
 		t.Error("expected junegunn owner in query")
@@ -47,11 +47,34 @@ func TestBuildBatchQuery_Pinned(t *testing.T) {
 
 	query := buildBatchQuery(items, aliases, ownerMap)
 
-	if !strings.Contains(query, "releases(first: 20)") {
-		t.Error("expected releases list for pinned packages")
+	if !strings.Contains(query, `refPrefix: "refs/tags/v14."`) {
+		t.Error("expected v-prefixed refs query for pinned major")
+	}
+	if !strings.Contains(query, `refPrefix: "refs/tags/14."`) {
+		t.Error("expected non-v refs query for pinned major")
 	}
 	if strings.Contains(query, "latestRelease") {
 		t.Error("should not request latestRelease for pinned packages")
+	}
+}
+
+func TestBuildBatchQuery_PinnedMinor(t *testing.T) {
+	c, _ := config.ParseConstraint("0.70")
+	items := []BatchItem{
+		{Key: "fzf@0.70", Source: "github.com/junegunn/fzf", Pin: c},
+	}
+	aliases := []string{"r0"}
+	ownerMap := map[string][2]string{
+		"r0": {"junegunn", "fzf"},
+	}
+
+	query := buildBatchQuery(items, aliases, ownerMap)
+
+	if !strings.Contains(query, `refPrefix: "refs/tags/v0.70."`) {
+		t.Error("expected v-prefixed refs query for pinned minor")
+	}
+	if !strings.Contains(query, `refPrefix: "refs/tags/0.70."`) {
+		t.Error("expected non-v refs query for pinned minor")
 	}
 }
 
@@ -93,7 +116,7 @@ func TestExtractTag_Floating(t *testing.T) {
 }
 
 func TestExtractTag_Pinned(t *testing.T) {
-	raw := `{"releases":{"nodes":[{"tagName":"v1.3.0"},{"tagName":"v1.2.0"},{"tagName":"v2.0.0"},{"tagName":"v1.1.0"}]}}`
+	raw := `{"vRefs":{"nodes":[{"name":"v1.3.0"},{"name":"v1.2.0"},{"name":"v1.1.0"}]}}`
 	var rf releaseField
 	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
 		t.Fatal(err)
@@ -108,8 +131,40 @@ func TestExtractTag_Pinned(t *testing.T) {
 	}
 }
 
+func TestExtractTag_PinnedSkipsPrerelease(t *testing.T) {
+	raw := `{"vRefs":{"nodes":[{"name":"v1.4.0-rc.1"},{"name":"v1.3.0"},{"name":"v1.2.0"}]}}`
+	var rf releaseField
+	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := config.ParseConstraint("1")
+	tag, err := extractTag(rf, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag != "v1.3.0" {
+		t.Errorf("got %q, want v1.3.0 (skipping rc pre-release)", tag)
+	}
+}
+
+func TestExtractTag_PinnedMergesVAndNonV(t *testing.T) {
+	raw := `{"nvRefs":{"nodes":[{"name":"1.3.0"},{"name":"1.2.0"}]}}`
+	var rf releaseField
+	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := config.ParseConstraint("1")
+	tag, err := extractTag(rf, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag != "1.3.0" {
+		t.Errorf("got %q, want 1.3.0 (non-v prefix repo)", tag)
+	}
+}
+
 func TestExtractTag_PinnedNoMatch(t *testing.T) {
-	raw := `{"releases":{"nodes":[{"tagName":"v1.0.0"}]}}`
+	raw := `{"vRefs":{"nodes":[{"name":"v1.0.0"}]}}`
 	var rf releaseField
 	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
 		t.Fatal(err)
