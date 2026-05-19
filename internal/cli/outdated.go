@@ -2,7 +2,6 @@ package cli
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -108,7 +107,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 	}
 
 	if rateLimited && skipped > 0 {
-		fmt.Printf("\nchecked %d/%d packages (%d skipped due to rate limiting)\n", checked, len(items), skipped)
+		printWarn(cfg, "checked %d/%d packages (%d skipped due to rate limiting)", checked, len(items), skipped)
 	}
 
 	if len(outdated) == 0 {

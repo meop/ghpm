@@ -191,7 +191,7 @@ func PromptFromCandidates(ac AssetCandidates) (gh.Asset, error) {
 }
 
 func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
-	fmt.Println("choose from candidates:")
+	fmt.Println("choose asset:")
 	for i, a := range compatible {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
@@ -209,7 +209,7 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 		return gh.Asset{}, fmt.Errorf("invalid selection")
 	}
 	if showMoreIdx > 0 && idx == showMoreIdx {
-		return PromptSelect("choose from candidates:", append(compatible, hidden...))
+		return PromptSelect("choose asset:", append(compatible, hidden...))
 	}
 	if idx < 1 || idx > len(compatible) {
 		return gh.Asset{}, fmt.Errorf("invalid selection")

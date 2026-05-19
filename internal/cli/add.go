@@ -97,21 +97,32 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		printInfo(cfg, "could not load repos: %v", repoErr)
 	}
 
-	jobs := make([]installJob, 0, len(args))
+	var ready []jobWithRelease
 	var hadErrors bool
+
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
+		fmt.Printf("add: %s\n", name)
+
 		if err := config.ValidateName(name); err != nil {
-			printFail(cfg, "%s: %v", arg, err)
+			printFail(cfg, "%v", err)
 			hadErrors = true
 			continue
 		}
-		source, err := config.ResolveSource(name, ver, manifest, repos)
-		if err != nil {
-			printFail(cfg, "%s: %v", arg, err)
-			hadErrors = true
-			continue
+
+		source, found := config.LookupSource(name, manifest, repos)
+		if !found {
+			printInfo(cfg, "repo not defined")
+			var err error
+			source, err = config.SearchGitHub(name)
+			if err != nil {
+				printFail(cfg, "%v", err)
+				hadErrors = true
+				continue
+			}
 		}
+		printInfo(cfg, "repo defined: %s", source)
+
 		jobKey := name
 		if pinned {
 			jobKey = name + "@" + strings.TrimPrefix(ver, "v")
@@ -126,78 +137,57 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				continue
 			}
 		}
-		jobs = append(jobs, installJob{name: name, source: source, version: ver, pinned: pinned})
-	}
-	if len(jobs) == 0 {
-		if hadErrors {
-			return errSilent
-		}
-		return nil
-	}
 
-	type jobWithAssets struct {
-		job        installJob
-		release    gh.Release
-		candidates asset.AssetCandidates
-	}
-
-	fetchTasks := make([]parallel.Task, len(jobs))
-	for i, job := range jobs {
-		fetchTasks[i] = parallel.Task{
-			Name: job.name,
-			Run: func() (any, error) {
-				owner, repo, err := gh.SplitSource(job.source)
-				if err != nil {
-					return nil, err
-				}
-				var rel gh.Release
-				if !job.pinned {
-					rel, err = gh.GetLatestRelease(owner, repo)
-				} else {
-					c, perr := config.ParseConstraint(job.version)
-					if perr != nil {
-						return nil, perr
-					}
-					if c.Level == config.PinExact {
-						rel, err = gh.GetReleaseByTag(owner, repo, job.version)
-					} else {
-						rel, err = gh.FindLatestMatching(owner, repo, c)
-					}
-				}
-				if err != nil {
-					return nil, err
-				}
-
-				ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", job.name)
-				if err != nil {
-					return nil, err
-				}
-				return jobWithAssets{job: job, release: rel, candidates: ac}, nil
-			},
-		}
-	}
-
-	fetchResults := parallel.Run(cmd.Context(), fetchTasks, cfg.NumParallel)
-
-	var ready []jobWithRelease
-	for _, res := range fetchResults {
-		if res.Err != nil {
-			printFail(cfg, "%s %v", res.Name, res.Err)
-			hadErrors = true
-			continue
-		}
-		ja, ok := res.Value.(jobWithAssets)
-		if !ok {
-			continue
-		}
-		chosen, err := asset.PromptFromCandidates(ja.candidates)
+		owner, repo, err := gh.SplitSource(source)
 		if err != nil {
-			printFail(cfg, "%s %v", ja.job.name, err)
+			printFail(cfg, "%v", err)
 			hadErrors = true
 			continue
 		}
-		ready = append(ready, jobWithRelease{job: ja.job, release: ja.release, chosen: chosen})
+		var rel gh.Release
+		if !pinned {
+			rel, err = gh.GetLatestRelease(owner, repo)
+		} else {
+			c, perr := config.ParseConstraint(ver)
+			if perr != nil {
+				printFail(cfg, "%v", perr)
+				hadErrors = true
+				continue
+			}
+			if c.Level == config.PinExact {
+				rel, err = gh.GetReleaseByTag(owner, repo, ver)
+			} else {
+				rel, err = gh.FindLatestMatching(owner, repo, c)
+			}
+		}
+		if err != nil {
+			printFail(cfg, "%v", err)
+			hadErrors = true
+			continue
+		}
+
+		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", name)
+		if err != nil {
+			printFail(cfg, "%v", err)
+			hadErrors = true
+			continue
+		}
+		chosen, err := asset.PromptFromCandidates(ac)
+		if err != nil {
+			printFail(cfg, "%v", err)
+			hadErrors = true
+			continue
+		}
+		if ac.Chosen.Name != "" {
+			printInfo(cfg, "asset: %s", chosen.Name)
+		}
+		ready = append(ready, jobWithRelease{
+			job:     installJob{name: name, source: source, version: ver, pinned: pinned},
+			release: rel,
+			chosen:  chosen,
+		})
 	}
+
 	if len(ready) == 0 {
 		if hadErrors {
 			return errSilent
@@ -221,7 +211,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		installTasks[i] = parallel.Task{
 			Name: r.job.name,
 			Run: func() (any, error) {
-				fmt.Printf("downloading %s %s...\n", r.job.name, config.NormalizeVersion(r.release.TagName))
+				printInfo(cfg, "downloading %s %s...", r.job.name, config.NormalizeVersion(r.release.TagName))
 				owner, repo, _ := gh.SplitSource(r.job.source)
 				cacheDir, err := store.ReleaseDir(r.job.source, r.release.TagName)
 				if err != nil {
@@ -272,6 +262,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
+		printInfo(cfg, "binary: %s", binaryName)
 		key := r.job.key()
 		manifest.Repos[r.job.name] = r.job.source
 		manifest.Extracts[key] = config.PackageEntry{

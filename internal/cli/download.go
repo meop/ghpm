@@ -60,6 +60,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	var hadErrors bool
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
+		fmt.Printf("download: %s\n", name)
 		if err := config.ValidateName(name); err != nil {
 			printFail(cfg, "%s: %v", arg, err)
 			hadErrors = true
@@ -87,9 +88,16 @@ func runDownload(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return nil, err
 				}
-				chosen, err := asset.SelectAsset(rel.Assets, cfg, "", name)
+				ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", name)
 				if err != nil {
 					return nil, err
+				}
+				chosen, err := asset.PromptFromCandidates(ac)
+				if err != nil {
+					return nil, err
+				}
+				if ac.Chosen.Name != "" {
+					printInfo(cfg, "asset: %s", chosen.Name)
 				}
 				return dlJob{name: name, source: source, version: ver, pinned: pinned, release: rel, chosen: chosen}, nil
 			},

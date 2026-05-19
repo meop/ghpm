@@ -1,47 +1,86 @@
 package asset
 
 import (
+	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
-// DiscoverPaths searches pkgDir for a binary named name (or name.exe on Windows),
+// DiscoverPaths searches pkgDir for a binary whose name contains name,
 // checking common locations: root, bin/, and one level of subdirs.
-// Returns the bin dir relative to pkgDir and the binary name, or empty strings if not found.
+// If multiple matches are found the user is prompted to choose.
+// Returns the bin dir relative to pkgDir and the binary filename, or empty strings if not found.
 func DiscoverPaths(pkgDir, name string) (binDir string, binaryName string) {
-	target := name
-	if runtime.GOOS == "windows" {
-		target = name + ".exe"
-	}
-
-	// Check root, then bin/ at root
-	for _, rel := range []string{"", "bin"} {
-		if isBinaryFile(filepath.Join(pkgDir, rel, target)) {
-			ensureExecutable(filepath.Join(pkgDir, rel, target))
-			return rel, name
-		}
-	}
-
-	// Check one level of subdirs, then bin/ within each
 	entries, err := os.ReadDir(pkgDir)
 	if err != nil {
 		return "", ""
+	}
+
+	type nameMatch struct {
+		rel  string
+		name string
+	}
+	var matches []nameMatch
+	seen := map[string]bool{}
+	lower := strings.ToLower(name)
+
+	collectMatches := func(dir, rel string) {
+		dirEntries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, e := range dirEntries {
+			if e.IsDir() {
+				continue
+			}
+			base := strings.TrimSuffix(e.Name(), ".exe")
+			if !strings.Contains(strings.ToLower(base), lower) {
+				continue
+			}
+			path := filepath.Join(dir, e.Name())
+			if seen[path] || !isBinaryFile(path) {
+				continue
+			}
+			seen[path] = true
+			ensureExecutable(path)
+			matches = append(matches, nameMatch{rel: filepath.ToSlash(rel), name: base})
+		}
+	}
+
+	for _, rel := range []string{"", "bin"} {
+		collectMatches(filepath.Join(pkgDir, rel), rel)
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		for _, rel := range []string{e.Name(), filepath.Join(e.Name(), "bin")} {
-			if isBinaryFile(filepath.Join(pkgDir, rel, target)) {
-				ensureExecutable(filepath.Join(pkgDir, rel, target))
-				return filepath.ToSlash(rel), name
-			}
+			collectMatches(filepath.Join(pkgDir, rel), rel)
 		}
 	}
 
-	return "", ""
+	if len(matches) == 0 {
+		return "", ""
+	}
+	if len(matches) == 1 {
+		return matches[0].rel, matches[0].name
+	}
+	fmt.Printf("choose which binary to use for %q:\n", name)
+	for i, m := range matches {
+		fmt.Printf("  %d) %s\n", i+1, m.name)
+	}
+	fmt.Print("enter number: ")
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	line = strings.TrimSpace(line)
+	var idx int
+	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(matches) {
+		return "", ""
+	}
+	return matches[idx-1].rel, matches[idx-1].name
 }
 
 func isBinaryFile(path string) bool {

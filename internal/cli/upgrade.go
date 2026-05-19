@@ -64,6 +64,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 }
 
 func upgradeSelf(cfg *config.Settings) error {
+	printInfo(cfg, "checking ghpm...")
 	rel, err := gh.GetLatestRelease("meop", "ghpm")
 	if err != nil {
 		return err
@@ -74,9 +75,16 @@ func upgradeSelf(cfg *config.Settings) error {
 		return nil
 	}
 
-	chosen, err := asset.SelectAsset(rel.Assets, cfg, "", "ghpm")
+	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", "ghpm")
 	if err != nil {
 		return err
+	}
+	chosen, err := asset.PromptFromCandidates(acGhpm)
+	if err != nil {
+		return err
+	}
+	if acGhpm.Chosen.Name != "" {
+		printInfo(cfg, "asset: %s", chosen.Name)
 	}
 
 	if dryRun {
@@ -158,6 +166,7 @@ func upgradeGh(cfg *config.Settings) error {
 		return nil
 	}
 
+	printInfo(cfg, "checking gh...")
 	rel, err := gh.GetLatestRelease("cli", "cli")
 	if err != nil {
 		return err
@@ -169,9 +178,16 @@ func upgradeGh(cfg *config.Settings) error {
 		return nil
 	}
 
-	chosen, err := asset.SelectAsset(rel.Assets, cfg, "", "gh")
+	acGh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", "gh")
 	if err != nil {
 		return err
+	}
+	chosen, err := asset.PromptFromCandidates(acGh)
+	if err != nil {
+		return err
+	}
+	if acGh.Chosen.Name != "" {
+		printInfo(cfg, "asset: %s", chosen.Name)
 	}
 
 	if dryRun {

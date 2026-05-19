@@ -122,6 +122,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if config.CompareVersions(latest, pkg.Version) <= 0 {
 			continue
 		}
+		fmt.Printf("sync: %s\n", res.Key)
 
 		owner, repo, _ := gh.SplitSource(items[0].Source)
 		for _, it := range items {
@@ -137,11 +138,20 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		pkg = targets[res.Key]
-		chosen, err := asset.SelectAsset(rel.Assets, cfg, pkg.AssetName, res.Key)
+		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, pkg.AssetName, res.Key)
 		if err != nil {
 			printFail(cfg, "%s %v", res.Key, err)
 			hadErrors = true
 			continue
+		}
+		chosen, err := asset.PromptFromCandidates(ac)
+		if err != nil {
+			printFail(cfg, "%s %v", res.Key, err)
+			hadErrors = true
+			continue
+		}
+		if ac.Chosen.Name != "" {
+			printInfo(cfg, "asset: %s", chosen.Name)
 		}
 		job := syncJob{key: res.Key, source: items[0].Source, pkg: pkg, release: rel, chosen: chosen}
 		for _, it := range items {
@@ -154,7 +164,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if skipped > 0 {
-		fmt.Printf("\nchecked %d/%d packages (%d skipped due to rate limiting)\n", checked, len(items), skipped)
+		printWarn(cfg, "checked %d/%d packages (%d skipped due to rate limiting)", checked, len(items), skipped)
 	}
 
 	if len(ready) == 0 {
@@ -186,7 +196,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		syncTasks[i] = parallel.Task{
 			Name: r.key,
 			Run: func() (any, error) {
-				fmt.Printf("  downloading %s %s...\n", r.key, config.NormalizeVersion(r.release.TagName))
+				printInfo(cfg, "downloading %s %s...", r.key, config.NormalizeVersion(r.release.TagName))
 				owner, repo, _ := gh.SplitSource(r.source)
 				cacheDir, err := store.ReleaseDir(r.source, r.release.TagName)
 				if err != nil {
@@ -237,6 +247,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
+		printInfo(cfg, "binary: %s", binaryName)
 		if oldBase, err := store.ExtractBaseDir(r.key); err == nil {
 			oldPkgDir := filepath.Join(oldBase, r.pkg.Version)
 			if err := os.RemoveAll(oldPkgDir); err != nil {

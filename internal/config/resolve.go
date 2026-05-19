@@ -152,29 +152,31 @@ var builtinRepos = map[string]string{
 	"gh": "github.com/cli/cli",
 }
 
+// LookupSource resolves a name from non-interactive sources only.
+// Returns the source and true if found; empty string and false if not.
+func LookupSource(name string, manifest *Manifest, repos map[string]string) (string, bool) {
+	if src, ok := manifest.Repos[name]; ok {
+		return src, true
+	}
+	if src, ok := builtinRepos[name]; ok {
+		return src, true
+	}
+	if repos != nil {
+		if src, ok := repos[name]; ok {
+			return normalizeSource(src), true
+		}
+	}
+	return "", false
+}
+
 // ResolveSource resolves a simple name to a full GitHub URI (github.com/owner/repo).
 // Resolution order: manifest repos → builtin repos → user repos → gh search fallback.
 // name must have already been validated by ValidateName.
 func ResolveSource(name, version string, manifest *Manifest, repos map[string]string) (string, error) {
-	// 1. Manifest repos (already-installed)
-	if src, ok := manifest.Repos[name]; ok {
+	if src, found := LookupSource(name, manifest, repos); found {
 		return src, nil
 	}
-
-	// 2. Builtin repos (well-known)
-	if src, ok := builtinRepos[name]; ok {
-		return src, nil
-	}
-
-	// 3. User repos (from local cache)
-	if repos != nil {
-		if src, ok := repos[name]; ok {
-			return normalizeSource(src), nil
-		}
-	}
-
-	// 4. GitHub search fallback
-	return searchGitHub(name)
+	return SearchGitHub(name)
 }
 
 // FindBySource returns the name already registered with source.
@@ -187,11 +189,11 @@ func FindBySource(source string, manifest *Manifest) (string, bool) {
 	return "", false
 }
 
-// searchGitHub runs `gh search repos` and prompts the user to pick a result.
-func searchGitHub(name string) (string, error) {
+// SearchGitHub runs `gh search repos` and prompts the user to pick a result.
+func SearchGitHub(name string) (string, error) {
 	out, err := exec.Command("gh", "search", "repos", name, "--limit", "5", "--json", "fullName").Output()
 	if err != nil {
-		return "", fmt.Errorf("no entry for %q and gh search failed — is gh authenticated?", name)
+		return "", fmt.Errorf("gh search failed — is gh authenticated?")
 	}
 
 	var repos []struct {
@@ -201,7 +203,7 @@ func searchGitHub(name string) (string, error) {
 		return "", fmt.Errorf("no results found for %q", name)
 	}
 
-	fmt.Printf("no entry for %q.. github search results:\n", name)
+	fmt.Println("repo search results:")
 	for i, r := range repos {
 		fmt.Printf("  %d) %s\n", i+1, r.FullName)
 	}
