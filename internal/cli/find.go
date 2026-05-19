@@ -26,12 +26,13 @@ type repoMatch struct {
 }
 
 func runFind(cmd *cobra.Command, args []string) error {
+	cfg, _ := config.LoadSettings()
 	repos, err := config.LoadRepos()
 	if err != nil {
 		return err
 	}
 	if len(repos) == 0 {
-		fmt.Println("no repos cached")
+		printInfo(cfg, "no repos cached")
 		return nil
 	}
 
@@ -69,7 +70,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		}
 
 		if len(matches) == 0 {
-			fmt.Printf("no repos matching %q\n", term)
+			printInfo(cfg, "no repos matching %q", term)
 			continue
 		}
 

@@ -18,7 +18,7 @@ func promptConfirm(msg string) bool {
 	if yes {
 		return true
 	}
-	fmt.Printf("%s [y,[n]] ", msg)
+	fmt.Printf("%s [y,[n]]: ", msg)
 	return readYN()
 }
 

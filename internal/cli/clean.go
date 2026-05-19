@@ -67,7 +67,12 @@ func runTidy(cmd *cobra.Command, args []string) error {
 			_ = os.MkdirAll(releaseDir, 0755)
 		}
 	} else {
-		cleanOrphanedReleases(cfg, releaseDir, manifest)
+		if !cleanOrphanedReleases(cfg, releaseDir, manifest) &&
+			!cleanOrphanedPackages(cfg, manifest) &&
+			!cleanOrphanedShims(cfg, manifest) {
+			printInfo(cfg, "nothing to tidy")
+		}
+		return nil
 	}
 
 	cleanOrphanedPackages(cfg, manifest)
@@ -76,7 +81,7 @@ func runTidy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *config.Manifest) {
+func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *config.Manifest) bool {
 	installed := map[string]bool{}
 	for key, pkg := range manifest.Extracts {
 		name, _, _ := config.ParseVersionSuffix(key)
@@ -110,7 +115,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	})
 
 	if len(toRemove) == 0 {
-		return
+		return false
 	}
 
 	for _, p := range toRemove {
@@ -119,12 +124,12 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	}
 
 	if dryRun {
-		return
+		return true
 	}
 
 	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d cached file(s)", len(toRemove))) {
-		return
+		return true
 	}
 
 	for _, p := range toRemove {
@@ -147,19 +152,20 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		}
 	}
 	printPass(cfg, "cleaned %d cached file(s)", len(toRemove))
+	return true
 }
 
-func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
+func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) bool {
 	binDir, err := store.BinDir()
 	if err != nil {
-		return
+		return false
 	}
 	entries, err := os.ReadDir(binDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			printFail(cfg, "%v", err)
 		}
-		return
+		return false
 	}
 
 	// Build set of expected shim names from manifest keys
@@ -189,7 +195,7 @@ func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
 		}
 	}
 	if len(orphaned) == 0 {
-		return
+		return false
 	}
 
 	fmt.Println()
@@ -198,11 +204,11 @@ func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
 	}
 
 	if dryRun {
-		return
+		return true
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned shim(s)", len(orphaned))) {
-		return
+		return true
 	}
 
 	for _, name := range orphaned {
@@ -211,12 +217,13 @@ func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) {
 		}
 	}
 	printPass(cfg, "cleaned %d orphaned shim(s)", len(orphaned))
+	return true
 }
 
-func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
+func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) bool {
 	pkgsDir, err := store.ExtractsDir()
 	if err != nil {
-		return
+		return false
 	}
 
 	keyEntries, err := os.ReadDir(pkgsDir)
@@ -224,7 +231,7 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 		if !os.IsNotExist(err) {
 			printFail(cfg, "%v", err)
 		}
-		return
+		return false
 	}
 
 	// orphaned is a list of paths relative to pkgsDir to remove
@@ -252,7 +259,7 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 	}
 
 	if len(orphaned) == 0 {
-		return
+		return false
 	}
 
 	fmt.Println()
@@ -261,11 +268,11 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 	}
 
 	if dryRun {
-		return
+		return true
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned package dir(s)", len(orphaned))) {
-		return
+		return true
 	}
 
 	for _, name := range orphaned {
@@ -274,7 +281,6 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 			printFail(cfg, "%s: %v", name, err)
 			continue
 		}
-		// Clean up empty key dirs left behind after removing version subdirs
 		parent := filepath.Dir(p)
 		if parent != pkgsDir {
 			if entries, err := os.ReadDir(parent); err == nil && len(entries) == 0 {
@@ -283,4 +289,5 @@ func cleanOrphanedPackages(cfg *config.Settings, manifest *config.Manifest) {
 		}
 	}
 	printPass(cfg, "cleaned %d orphaned package dir(s)", len(orphaned))
+	return true
 }

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -29,7 +28,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(manifest.Extracts) == 0 {
-		fmt.Println("no packages installed")
+		printInfo(cfg, "no packages installed")
 		return nil
 	}
 

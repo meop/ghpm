@@ -43,6 +43,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	var hadErrors bool
 	for _, arg := range args {
 		name, ver, _ := config.ParseVersionSuffix(arg)
+		fmt.Printf("info: %s\n", name)
 		if err := config.ValidateName(name); err != nil {
 			printFail(cfg, "%s: %v", arg, err)
 			hadErrors = true
