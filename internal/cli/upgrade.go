@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -139,7 +140,7 @@ func upgradeSelf(cfg *config.Settings) error {
 	if err := os.Chmod(tmp, 0755); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, self); err != nil {
+	if err := replaceSelf(tmp, self); err != nil {
 		return err
 	}
 
@@ -248,4 +249,23 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, data, 0755)
+}
+
+// replaceSelf atomically replaces dst (the running executable) with src.
+// On Windows the running exe is locked, so we rename it away first.
+func replaceSelf(src, dst string) error {
+	if runtime.GOOS != "windows" {
+		return os.Rename(src, dst)
+	}
+	old := dst + ".old"
+	_ = os.Remove(old)
+	if err := os.Rename(dst, old); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err != nil {
+		_ = os.Rename(old, dst)
+		return err
+	}
+	_ = os.Remove(old)
+	return nil
 }
