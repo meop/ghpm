@@ -251,8 +251,6 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0755)
 }
 
-// replaceSelf atomically replaces dst (the running executable) with src.
-// On Windows the running exe is locked, so we rename it away first.
 func replaceSelf(src, dst string) error {
 	if runtime.GOOS != "windows" {
 		return os.Rename(src, dst)
