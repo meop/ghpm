@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -145,6 +146,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		chosen, err := asset.PromptFromCandidates(ac)
+		if errors.Is(err, asset.ErrSkip) {
+			continue
+		}
 		if err != nil {
 			printFail(cfg, "%s %v", res.Key, err)
 			hadErrors = true
@@ -241,7 +245,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		newVer := config.NormalizeVersion(r.release.TagName)
 		newPkgDir, _ := store.ExtractDir(r.key, newVer)
 		name, _, _ := config.ParseVersionSuffix(r.key)
-		binPath, binaryName := asset.DiscoverPaths(newPkgDir, name)
+		binPath, binaryName, discoverErr := asset.DiscoverPaths(newPkgDir, name)
+		if errors.Is(discoverErr, asset.ErrSkip) {
+			continue
+		}
 		if binaryName == "" {
 			printFail(cfg, "%s: no binary found in %s", r.key, r.chosen.Name)
 			hadErrors = true

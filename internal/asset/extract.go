@@ -360,11 +360,17 @@ func findAndMoveBinary(tmp, destDir, outputName, hint string) (string, string, e
 	for i, c := range candidates {
 		fmt.Printf("  %d) %s\n", i+1, filepath.Base(c))
 	}
-	fmt.Print("enter number: ")
+	fmt.Print("enter number (0 to skip): ")
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 	var idx int
-	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(candidates) {
+	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
+		return "", "", fmt.Errorf("invalid selection")
+	}
+	if idx == 0 {
+		return "", "", ErrSkip
+	}
+	if idx < 1 || idx > len(candidates) {
 		return "", "", fmt.Errorf("invalid selection")
 	}
 	return moveChosen(candidates[idx-1], destDir, outputName)

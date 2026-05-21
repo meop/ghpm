@@ -126,10 +126,10 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 
 	rows := make([][]string, len(outdated))
 	for i, o := range outdated {
-		rows[i] = []string{o.name, o.pin, o.installed, o.latest, "", o.source}
+		rows[i] = []string{o.name, o.installed, o.latest, o.pin, o.source, ""}
 	}
-	colors := []func(string) string{nil, nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
-	printTable([]string{"name", "pin", "version", "update", "asset", "repo"}, rows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil}
+	printTable([]string{"name", "version", "update", "pin", "repo", "asset"}, rows, colors)
 	if hadErrors {
 		return errSilent
 	}

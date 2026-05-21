@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,5 +76,26 @@ func TestFindAndMoveBinary_NoFiles(t *testing.T) {
 	tmp, dest := t.TempDir(), t.TempDir()
 	if _, _, err := findAndMoveBinary(tmp, dest, "mytool", ""); err == nil {
 		t.Error("expected error for empty dir")
+	}
+}
+
+func TestFindAndMoveBinary_Skip(t *testing.T) {
+	tmp, dest := t.TempDir(), t.TempDir()
+	writeExec(t, tmp, "foo")
+	writeExec(t, tmp, "bar")
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = old }()
+	w.WriteString("0\n")
+	w.Close()
+
+	_, _, moveErr := findAndMoveBinary(tmp, dest, "mytool", "")
+	if !errors.Is(moveErr, ErrSkip) {
+		t.Errorf("expected ErrSkip, got %v", moveErr)
 	}
 }
