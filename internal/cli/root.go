@@ -1,7 +1,14 @@
 package cli
 
 import (
+	"runtime"
+
 	"github.com/spf13/cobra"
+)
+
+const (
+	binGhpm = "ghpm"
+	binGh   = "gh"
 )
 
 var (
@@ -12,6 +19,13 @@ var (
 )
 
 func SetVersion(v string) { version = v }
+
+func exeName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
 
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{

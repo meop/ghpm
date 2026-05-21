@@ -181,12 +181,8 @@ func cleanOrphanedShims(cfg *config.Settings, manifest *config.Manifest) bool {
 		}
 	}
 
-	ext := ""
-	if runtime.GOOS == "windows" {
-		ext = ".exe"
-	}
-	expected["gh"+ext] = true
-	expected["ghpm"+ext] = true
+	expected[exeName(binGh)] = true
+	expected[exeName(binGhpm)] = true
 
 	var orphaned []string
 	for _, e := range entries {
