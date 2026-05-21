@@ -27,38 +27,39 @@ After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a s
 ## Usage
 
 ```sh
-ghpm install fzf              # install latest fzf
-ghpm install fzf@14           # install latest fzf 14.x (tracks within major)
-ghpm install fzf@14.1         # install latest fzf 14.1.x (tracks within minor)
-ghpm install fzf@14.1.0       # install exact fzf 14.1.0 (static, never updates)
-ghpm install fzf ripgrep bat  # install multiple in parallel
-ghpm install --force fzf      # reinstall even if already installed
+ghpm add fzf              # install latest fzf
+ghpm add fzf@14           # install latest fzf 14.x (tracks within major)
+ghpm add fzf@14.1         # install latest fzf 14.1.x (tracks within minor)
+ghpm add fzf@14.1.0       # install exact fzf 14.1.0 (static, never updates)
+ghpm add fzf ripgrep bat  # install multiple in parallel
+ghpm add --force fzf      # reinstall even if already installed
 
-ghpm list                     # show installed packages
-ghpm search fzf               # search cached repos by name or source
-ghpm show fzf                 # show available releases and assets
-ghpm outdated                 # check for updates
+ghpm list                 # show installed packages
+ghpm find fzf             # search cached repos by name or source
+ghpm info fzf             # show available releases and assets
+ghpm outdated             # check for updates
 
-ghpm update                   # update all floating and major/minor-pinned packages
-ghpm update fzf               # update specific package
+ghpm sync                 # update all floating and major/minor-pinned packages
+ghpm sync fzf             # update specific package
 
-ghpm download fzf             # download release asset to cache without installing
+ghpm download fzf         # download release asset to cache without installing
 ghpm download --path /tmp fzf # download release asset to a specific directory
 
-ghpm uninstall fzf            # remove package
-ghpm clean                    # remove unused cached assets and orphaned package dirs
-ghpm clean --all              # remove all cached assets
+ghpm remove fzf           # remove package
+ghpm tidy                 # remove unused cached assets and orphaned package dirs
+ghpm tidy --all           # remove all cached assets
 
-ghpm upgrade                  # upgrade ghpm itself and managed gh
-ghpm doctor                   # check system health
+ghpm upgrade              # upgrade ghpm itself and managed gh
+ghpm refresh              # refresh repo sources to latest versions
+ghpm doctor               # check system health
 ```
 
 ### Global flags
 
 | Flag | Description |
 |---|---|
-| `--dry-run` | Print what would be done without executing |
-| `--no-verify` | Skip Sigstore attestation verification |
+| `--dry-run`, `-n` | Print what would be done without executing |
+| `--skip-verify`, `-s` | Skip SHA256 verification |
 | `--yes`, `-y` | Skip confirmation prompts |
 
 ### Version pinning
@@ -92,7 +93,7 @@ ghpm extracts archives into `~/.ghpm/extracts/<key>/<version>/` and discovers th
     "warn": "yellow"
   },
   "no_color": false,
-  "no_verify": false,
+  "skip_verify": false,
   "num_parallel": 5,
   "repo_sources": ["github.com/meop/ghpm-config"]
 }
@@ -103,7 +104,7 @@ ghpm extracts archives into `~/.ghpm/extracts/<key>/<version>/` and discovers th
 | `cache_ttl` | `"5m"` | How long cached version data stays fresh before re-fetching |
 | `color` | see above | Output colors by message type |
 | `no_color` | `false` | Disable colored output |
-| `no_verify` | `false` | Skip Sigstore attestation verification globally |
+| `skip_verify` | `false` | Skip SHA256 verification globally |
 | `num_parallel` | `5` | Max concurrent downloads |
 | `repo_sources` | `["github.com/meop/ghpm-config"]` | Repo sources to fetch from; all their `repos.yaml` files are merged |
 

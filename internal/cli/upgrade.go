@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -80,6 +81,9 @@ func upgradeSelf(cfg *config.Settings) error {
 		return err
 	}
 	chosen, err := asset.PromptFromCandidates(acGhpm)
+	if errors.Is(err, asset.ErrSkip) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -114,6 +118,9 @@ func upgradeSelf(cfg *config.Settings) error {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, "ghpm", ""); err != nil {
+		if errors.Is(err, asset.ErrSkip) {
+			return nil
+		}
 		return err
 	}
 
@@ -183,6 +190,9 @@ func upgradeGh(cfg *config.Settings) error {
 		return err
 	}
 	chosen, err := asset.PromptFromCandidates(acGh)
+	if errors.Is(err, asset.ErrSkip) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -217,6 +227,9 @@ func upgradeGh(cfg *config.Settings) error {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, "gh", ""); err != nil {
+		if errors.Is(err, asset.ErrSkip) {
+			return nil
+		}
 		return err
 	}
 

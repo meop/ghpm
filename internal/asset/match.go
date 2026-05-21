@@ -2,6 +2,7 @@ package asset
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,9 +14,11 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 )
 
+var ErrSkip = errors.New("skipped")
+
 var osPrefixes = map[string][]string{
 	"linux":   {"lin"},
-	"darwin":  {"dar", "mac"},
+	"darwin":  {"dar", "mac", "osx"},
 	"windows": {"win"},
 }
 
@@ -200,13 +203,16 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 		showMoreIdx = len(compatible) + 1
 		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
 	}
-	fmt.Print("enter number: ")
+	fmt.Print("enter number (0 to skip): ")
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
 	var idx int
 	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
 		return gh.Asset{}, fmt.Errorf("invalid selection")
+	}
+	if idx == 0 {
+		return gh.Asset{}, ErrSkip
 	}
 	if showMoreIdx > 0 && idx == showMoreIdx {
 		return PromptSelect("choose asset:", append(compatible, hidden...))
@@ -222,12 +228,18 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	for i, a := range assets {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	fmt.Print("enter number: ")
+	fmt.Print("enter number (0 to skip): ")
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
 	var idx int
-	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(assets) {
+	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
+		return gh.Asset{}, fmt.Errorf("invalid selection")
+	}
+	if idx == 0 {
+		return gh.Asset{}, ErrSkip
+	}
+	if idx < 1 || idx > len(assets) {
 		return gh.Asset{}, fmt.Errorf("invalid selection")
 	}
 	return assets[idx-1], nil

@@ -34,7 +34,7 @@ func writeFakeBinary(t *testing.T, dir, name string) {
 func TestDiscoverPaths_Root(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, dir, "mytool")
-	binDir, name := DiscoverPaths(dir, "mytool")
+	binDir, name, _ := DiscoverPaths(dir, "mytool")
 	if binDir != "" || name != "mytool" {
 		t.Errorf("got (%q, %q), want (%q, %q)", binDir, name, "", "mytool")
 	}
@@ -43,7 +43,7 @@ func TestDiscoverPaths_Root(t *testing.T) {
 func TestDiscoverPaths_BinSubdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "bin"), "mytool")
-	binDir, name := DiscoverPaths(dir, "mytool")
+	binDir, name, _ := DiscoverPaths(dir, "mytool")
 	if binDir != "bin" || name != "mytool" {
 		t.Errorf("got (%q, %q), want (%q, %q)", binDir, name, "bin", "mytool")
 	}
@@ -52,7 +52,7 @@ func TestDiscoverPaths_BinSubdir(t *testing.T) {
 func TestDiscoverPaths_Subdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0"), "mytool")
-	binDir, name := DiscoverPaths(dir, "mytool")
+	binDir, name, _ := DiscoverPaths(dir, "mytool")
 	if binDir != "mytool-1.0" || name != "mytool" {
 		t.Errorf("got (%q, %q), want (%q, %q)", binDir, name, "mytool-1.0", "mytool")
 	}
@@ -61,7 +61,7 @@ func TestDiscoverPaths_Subdir(t *testing.T) {
 func TestDiscoverPaths_SubdirBin(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0", "bin"), "mytool")
-	binDir, name := DiscoverPaths(dir, "mytool")
+	binDir, name, _ := DiscoverPaths(dir, "mytool")
 	if binDir != "mytool-1.0/bin" || name != "mytool" {
 		t.Errorf("got (%q, %q), want (%q, %q)", binDir, name, "mytool-1.0/bin", "mytool")
 	}
@@ -69,8 +69,29 @@ func TestDiscoverPaths_SubdirBin(t *testing.T) {
 
 func TestDiscoverPaths_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	binDir, name := DiscoverPaths(dir, "nothere")
+	binDir, name, _ := DiscoverPaths(dir, "nothere")
 	if binDir != "" || name != "" {
 		t.Errorf("got (%q, %q), want empty strings", binDir, name)
+	}
+}
+
+func TestDiscoverPaths_MultipleSkip(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeBinary(t, dir, "mytool")
+	writeFakeBinary(t, dir, "mytool-extra")
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = old }()
+	w.WriteString("0\n")
+	w.Close()
+
+	_, _, discoverErr := DiscoverPaths(dir, "mytool")
+	if discoverErr != ErrSkip {
+		t.Errorf("expected ErrSkip, got %v", discoverErr)
 	}
 }

@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"os"
 	"reflect"
 	"runtime"
 	"testing"
@@ -113,6 +114,8 @@ func TestHasTokenPrefix(t *testing.T) {
 		{"tool-linux-amd64.tar.gz", []string{"lin"}, true},
 		// macos matches "mac"
 		{"tool-macos-arm64.tar.gz", []string{"dar", "mac"}, true},
+		// osx matches "osx"
+		{"tool-osx-arm64.tar.gz", []string{"dar", "mac", "osx"}, true},
 		// win32 token matches "win"
 		{"claude-win32_x64.zip", []string{"win"}, true},
 		// x86_64 — "x86" token matches "x86"
@@ -255,6 +258,7 @@ func TestScoreAsset_HasNegative(t *testing.T) {
 	}{
 		{"tool-linux-amd64.tar.gz", false},
 		{"tool-darwin-amd64.tar.gz", true},
+		{"tool-osx-amd64.tar.gz", true},
 		{"tool-windows-amd64.zip", true},
 		{"tool-linux-arm64.tar.gz", true},
 		{"tool-generic.tar.gz", false},
@@ -329,6 +333,43 @@ func TestSelectAssetAuto_NoCompatible(t *testing.T) {
 	}
 	if len(ac.Compatible) != 2 {
 		t.Errorf("expected 2 in fallback compatible, got %d", len(ac.Compatible))
+	}
+}
+
+func stdinPipe(t *testing.T, input string) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = old })
+	w.WriteString(input)
+	w.Close()
+}
+
+func TestPromptWithShowMore_Skip(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "tool-linux-amd64.tar.gz", Size: 100},
+		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
+	}
+	stdinPipe(t, "0\n")
+	_, err := promptWithShowMore(assets, nil)
+	if err != ErrSkip {
+		t.Errorf("expected ErrSkip, got %v", err)
+	}
+}
+
+func TestPromptSelect_Skip(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "tool-linux-amd64.tar.gz", Size: 100},
+		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
+	}
+	stdinPipe(t, "0\n")
+	_, err := PromptSelect("choose:", assets)
+	if err != ErrSkip {
+		t.Errorf("expected ErrSkip, got %v", err)
 	}
 }
 

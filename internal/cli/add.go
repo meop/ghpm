@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -173,6 +174,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		chosen, err := asset.PromptFromCandidates(ac)
+		if errors.Is(err, asset.ErrSkip) {
+			continue
+		}
 		if err != nil {
 			printFail(cfg, "%v", err)
 			hadErrors = true
@@ -256,7 +260,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		pkgDir, _ := store.ExtractDir(r.job.key(), config.NormalizeVersion(r.release.TagName))
-		binPath, binaryName := asset.DiscoverPaths(pkgDir, r.job.name)
+		binPath, binaryName, discoverErr := asset.DiscoverPaths(pkgDir, r.job.name)
+		if errors.Is(discoverErr, asset.ErrSkip) {
+			continue
+		}
 		if binaryName == "" {
 			printFail(cfg, "%s: no binary found in %s", r.job.name, r.chosen.Name)
 			hadErrors = true

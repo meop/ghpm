@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -107,6 +108,9 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	results := parallel.Run(cmd.Context(), tasks, cfg.NumParallel)
 	var ready []dlJob
 	for _, res := range results {
+		if errors.Is(res.Err, asset.ErrSkip) {
+			continue
+		}
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true

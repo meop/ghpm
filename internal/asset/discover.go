@@ -14,10 +14,11 @@ import (
 // checking common locations: root, bin/, and one level of subdirs.
 // If multiple matches are found the user is prompted to choose.
 // Returns the bin dir relative to pkgDir and the binary filename, or empty strings if not found.
-func DiscoverPaths(pkgDir, name string) (binDir string, binaryName string) {
-	entries, err := os.ReadDir(pkgDir)
-	if err != nil {
-		return "", ""
+// Returns ErrSkip if the user enters 0 at the prompt.
+func DiscoverPaths(pkgDir, name string) (binDir string, binaryName string, err error) {
+	entries, readErr := os.ReadDir(pkgDir)
+	if readErr != nil {
+		return "", "", nil
 	}
 
 	type nameMatch struct {
@@ -64,23 +65,29 @@ func DiscoverPaths(pkgDir, name string) (binDir string, binaryName string) {
 	}
 
 	if len(matches) == 0 {
-		return "", ""
+		return "", "", nil
 	}
 	if len(matches) == 1 {
-		return matches[0].rel, matches[0].name
+		return matches[0].rel, matches[0].name, nil
 	}
 	fmt.Printf("choose which binary to use for %q:\n", name)
 	for i, m := range matches {
 		fmt.Printf("  %d) %s\n", i+1, m.name)
 	}
-	fmt.Print("enter number: ")
+	fmt.Print("enter number (0 to skip): ")
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 	var idx int
-	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(matches) {
-		return "", ""
+	if _, scanErr := fmt.Sscanf(line, "%d", &idx); scanErr != nil {
+		return "", "", nil
 	}
-	return matches[idx-1].rel, matches[idx-1].name
+	if idx == 0 {
+		return "", "", ErrSkip
+	}
+	if idx < 1 || idx > len(matches) {
+		return "", "", nil
+	}
+	return matches[idx-1].rel, matches[idx-1].name, nil
 }
 
 func isBinaryFile(path string) bool {
