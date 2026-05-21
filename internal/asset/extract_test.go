@@ -91,8 +91,12 @@ func TestFindAndMoveBinary_Skip(t *testing.T) {
 	old := os.Stdin
 	os.Stdin = r
 	defer func() { os.Stdin = old }()
-	w.WriteString("0\n")
-	w.Close()
+	if _, err = w.WriteString("0\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err = w.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	_, _, moveErr := findAndMoveBinary(tmp, dest, "mytool", "")
 	if !errors.Is(moveErr, ErrSkip) {

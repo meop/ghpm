@@ -345,8 +345,12 @@ func stdinPipe(t *testing.T, input string) {
 	old := os.Stdin
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = old })
-	w.WriteString(input)
-	w.Close()
+	if _, err = w.WriteString(input); err != nil {
+		t.Fatal(err)
+	}
+	if err = w.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPromptWithShowMore_Skip(t *testing.T) {
