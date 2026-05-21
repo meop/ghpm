@@ -125,7 +125,7 @@ esac
 export PATH="$GHPM_BIN:$PATH"
 if ! gh auth status >/dev/null 2>&1; then
   echo 'Authenticating gh...'
-  gh auth login </dev/tty
+  gh auth login --insecure-storage </dev/tty
 fi
 
 echo ''

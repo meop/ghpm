@@ -1,4 +1,3 @@
-#Requires -Version 5.1
 [CmdletBinding()]
 param()
 
@@ -79,10 +78,10 @@ $GhRelease = Get-LatestRelease $GhRepo
 Write-Host "  version: $($GhRelease.tag_name)"
 Install-Binary $GhRelease "gh_.*_windows_$Arch\.zip$" 'gh.exe' $GhpmBin
 $env:PATH = "$GhpmBin;$env:PATH"
-& "$GhpmBin\gh.exe" auth status 2>$null
+& "$GhpmBin\gh.exe" auth status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
   Write-Host 'Authenticating gh...'
-  & "$GhpmBin\gh.exe" auth login
+  & "$GhpmBin\gh.exe" auth login --insecure-storage
 }
 
 Write-Host ''
