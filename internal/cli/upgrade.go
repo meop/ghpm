@@ -154,19 +154,18 @@ func upgradeGh(cfg *config.Settings) error {
 	}
 	ghPath := filepath.Join(binDir, exeName(binGh))
 
+	if _, err := os.Stat(ghPath); err != nil {
+		return nil
+	}
+
 	currentVer := ""
-	if info, err := os.Stat(ghPath); err == nil && info.Mode()&0111 != 0 {
-		out, err := exec.Command(ghPath, "--version").Output()
-		if err == nil {
-			for _, tok := range asset.Tokenize(strings.TrimSpace(string(out))) {
-				if asset.IsVersionToken(tok) {
-					currentVer = strings.TrimPrefix(tok, "v")
-					break
-				}
+	if out, err := exec.Command(ghPath, "--version").Output(); err == nil {
+		for _, tok := range asset.Tokenize(strings.TrimSpace(string(out))) {
+			if asset.IsVersionToken(tok) {
+				currentVer = strings.TrimPrefix(tok, "v")
+				break
 			}
 		}
-	} else {
-		return nil
 	}
 
 	printInfo(cfg, "checking gh...")
