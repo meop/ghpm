@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -66,7 +65,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 func upgradeSelf(cfg *config.Settings) error {
 	printInfo(cfg, "checking ghpm...")
-	rel, err := gh.GetLatestRelease("meop", "ghpm")
+	rel, err := gh.GetLatestRelease("meop", binGhpm)
 	if err != nil {
 		return err
 	}
@@ -76,7 +75,7 @@ func upgradeSelf(cfg *config.Settings) error {
 		return nil
 	}
 
-	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", "ghpm")
+	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGhpm)
 	if err != nil {
 		return err
 	}
@@ -104,11 +103,11 @@ func upgradeSelf(cfg *config.Settings) error {
 	if err != nil {
 		return err
 	}
-	if err := gh.DownloadAsset("meop", "ghpm", rel.TagName, chosen.Name, cacheDir); err != nil {
+	if err := gh.DownloadAsset("meop", binGhpm, rel.TagName, chosen.Name, cacheDir); err != nil {
 		return err
 	}
 	if !noVerify {
-		_, _ = asset.Verify("meop", "ghpm", rel.TagName, cacheDir, chosen.Name)
+		_, _ = asset.Verify("meop", binGhpm, rel.TagName, cacheDir, chosen.Name)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
@@ -117,7 +116,7 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, "ghpm", ""); err != nil {
+	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, binGhpm, ""); err != nil {
 		if errors.Is(err, asset.ErrSkip) {
 			return nil
 		}
@@ -134,7 +133,7 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 
 	tmp := self + ".new"
-	if err := copyFile(filepath.Join(tmpDir, "ghpm"), tmp); err != nil {
+	if err := copyFile(filepath.Join(tmpDir, exeName(binGhpm)), tmp); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0755); err != nil {
@@ -153,10 +152,7 @@ func upgradeGh(cfg *config.Settings) error {
 	if err != nil {
 		return err
 	}
-	ghPath := filepath.Join(binDir, "gh")
-	if runtime.GOOS == "windows" {
-		ghPath += ".exe"
-	}
+	ghPath := filepath.Join(binDir, exeName(binGh))
 
 	currentVer := ""
 	if info, err := os.Stat(ghPath); err == nil && info.Mode()&0111 != 0 {
@@ -185,7 +181,7 @@ func upgradeGh(cfg *config.Settings) error {
 		return nil
 	}
 
-	acGh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", "gh")
+	acGh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGh)
 	if err != nil {
 		return err
 	}
@@ -226,21 +222,17 @@ func upgradeGh(cfg *config.Settings) error {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, "gh", ""); err != nil {
+	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, binGh, ""); err != nil {
 		if errors.Is(err, asset.ErrSkip) {
 			return nil
 		}
 		return err
 	}
 
-	binaryName := "gh"
-	if runtime.GOOS == "windows" {
-		binaryName = "gh.exe"
-	}
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return err
 	}
-	if err := copyFile(filepath.Join(tmpDir, binaryName), ghPath); err != nil {
+	if err := copyFile(filepath.Join(tmpDir, exeName(binGh)), ghPath); err != nil {
 		return err
 	}
 	if err := os.Chmod(ghPath, 0755); err != nil {
