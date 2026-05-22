@@ -105,7 +105,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if name == binGhpm || name == binGh {
-			printInfo(cfg, "%s: managed by ghpm upgrade, skipping", name)
+			printInfo(cfg, "%s: self managed, skipping", name)
 			continue
 		}
 		if err := config.ValidateName(name); err != nil {

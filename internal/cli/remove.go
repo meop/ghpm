@@ -53,11 +53,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	var targets []uninstallTarget
 	for _, arg := range args {
-		baseName, _, _ := config.ParseVersionSuffix(arg)
-		if baseName == binGhpm || baseName == binGh {
-			printInfo(cfg, "%s: managed by ghpm upgrade, skipping", arg)
-			continue
-		}
 		pkg, ok := manifest.Extracts[arg]
 		if !ok {
 			printInfo(cfg, "%s: not installed", arg)
