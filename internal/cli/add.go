@@ -104,8 +104,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
-		fmt.Printf("add: %s\n", name)
-
 		if err := config.ValidateName(name); err != nil {
 			printFail(cfg, "%v", err)
 			hadErrors = true
@@ -130,12 +128,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			jobKey = name + "@" + strings.TrimPrefix(ver, "v")
 		}
 		if entry, exists := manifest.Extracts[jobKey]; exists && !forceInstall {
-			printInfo(cfg, "%s %s is already installed", jobKey, entry.Version)
+			printInfo(cfg, "%s: already installed %s", jobKey, entry.Version)
 			continue
 		}
 		if !pinned {
 			if existing, found := config.FindBySource(source, manifest); found && existing != name && !forceInstall {
-				printInfo(cfg, "%s (%s) is already installed as %q — skipping", name, source, existing)
+				printInfo(cfg, "%s: already installed as %s — skipping", name, existing)
 				continue
 			}
 		}
@@ -202,7 +200,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, r := range ready {
-			fmt.Printf("[dry-run] would install %s %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
+			fmt.Printf("[dry-run] %s: would install %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
 		}
 		return nil
 	}
@@ -216,7 +214,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		installTasks[i] = parallel.Task{
 			Name: r.job.name,
 			Run: func() (any, error) {
-				printInfo(cfg, "downloading %s %s...", r.job.name, config.NormalizeVersion(r.release.TagName))
+				printInfo(cfg, "%s: downloading %s...", r.job.name, config.NormalizeVersion(r.release.TagName))
 				owner, repo, _ := gh.SplitSource(r.job.source)
 				cacheDir, err := store.ReleaseDir(r.job.source, r.release.TagName)
 				if err != nil {
@@ -275,7 +273,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		for i, s := range selected {
 			binNames[i] = s.BinName
 		}
-		printInfo(cfg, "binary: %s", strings.Join(binNames, ", "))
+		printInfo(cfg, "%s: binary %s", r.job.name, strings.Join(binNames, ", "))
 		key := r.job.key()
 		manifest.Repos[r.job.name] = r.job.source
 		manifest.Extracts[key] = config.PackageEntry{
@@ -290,7 +288,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				printWarn(cfg, "%s: could not create shim: %v", s.BinName, err)
 			}
 		}
-		printPass(cfg, "installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))
+		printPass(cfg, "%s: installed %s", r.job.name, config.NormalizeVersion(r.release.TagName))
 	}
 
 	if err := config.SaveManifest(manifest); err != nil {

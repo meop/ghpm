@@ -305,7 +305,12 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 
 	for _, p := range toRemove {
 		rel, _ := filepath.Rel(releaseDir, p)
-		fmt.Printf("%s\n", rel)
+		parts := strings.Split(rel, string(filepath.Separator))
+		if len(parts) >= 5 {
+			fmt.Printf("%s: unused download %s (%s)\n", parts[2], parts[3], parts[len(parts)-1])
+		} else {
+			fmt.Printf("%s\n", rel)
+		}
 	}
 
 	if dryRun {
