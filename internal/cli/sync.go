@@ -65,11 +65,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		for _, name := range args {
 			p, ok := manifest.Extracts[name]
 			if !ok {
-				printInfo(cfg, "%s not installed", name)
+				printInfo(cfg, "%s: not installed", name)
 				continue
 			}
 			if p.Pin == "fixed" {
-				printInfo(cfg, "%s is fixed at %s, skipping", name, p.Version)
+				printInfo(cfg, "%s: fixed at %s, skipping", name, p.Version)
 				continue
 			}
 			targets[name] = p
@@ -113,10 +113,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if res.Err != nil {
 			if gh.IsRateLimited(res.Err) {
 				skipped++
-				printWarn(cfg, "%s rate limited", res.Key)
+				printWarn(cfg, "%s: rate limited", res.Key)
 				continue
 			}
-			printFail(cfg, "%s %v", res.Key, res.Err)
+			printFail(cfg, "%s: %v", res.Key, res.Err)
 			hadErrors = true
 			continue
 		}
@@ -126,8 +126,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if config.CompareVersions(latest, pkg.Version) <= 0 {
 			continue
 		}
-		fmt.Printf("sync: %s\n", res.Key)
-
 		owner, repo, _ := gh.SplitSource(items[0].Source)
 		for _, it := range items {
 			if it.Key == res.Key {
@@ -137,14 +135,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		rel, err := gh.GetReleaseByTag(owner, repo, res.LatestTag)
 		if err != nil {
-			printFail(cfg, "%s %v", res.Key, err)
+			printFail(cfg, "%s: %v", res.Key, err)
 			hadErrors = true
 			continue
 		}
 		pkg = targets[res.Key]
 		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, pkg.AssetName, res.Key)
 		if err != nil {
-			printFail(cfg, "%s %v", res.Key, err)
+			printFail(cfg, "%s: %v", res.Key, err)
 			hadErrors = true
 			continue
 		}
@@ -153,7 +151,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		if err != nil {
-			printFail(cfg, "%s %v", res.Key, err)
+			printFail(cfg, "%s: %v", res.Key, err)
 			hadErrors = true
 			continue
 		}
@@ -203,7 +201,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		syncTasks[i] = parallel.Task{
 			Name: r.key,
 			Run: func() (any, error) {
-				printInfo(cfg, "downloading %s %s...", r.key, config.NormalizeVersion(r.release.TagName))
+				printInfo(cfg, "%s: downloading %s...", r.key, config.NormalizeVersion(r.release.TagName))
 				owner, repo, _ := gh.SplitSource(r.source)
 				cacheDir, err := store.ReleaseDir(r.source, r.release.TagName)
 				if err != nil {
@@ -237,7 +235,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	for _, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
 		if res.Err != nil {
-			printFail(cfg, "%s %v", res.Name, res.Err)
+			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
 			continue
 		}
@@ -262,7 +260,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		for i, s := range selected {
 			binNames[i] = s.BinName
 		}
-		printInfo(cfg, "binary: %s", strings.Join(binNames, ", "))
+		printInfo(cfg, "%s: binary %s", r.key, strings.Join(binNames, ", "))
 		for _, oldName := range r.pkg.BinNames {
 			_ = shim.Remove(binShimName(r.key, oldName))
 		}
@@ -284,7 +282,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				printWarn(cfg, "%s: could not update shim: %v", s.BinName, err)
 			}
 		}
-		printPass(cfg, "updated %s %s → %s", r.key, r.pkg.Version, newVer)
+		printPass(cfg, "%s: updated %s → %s", r.key, r.pkg.Version, newVer)
 	}
 
 	if err := config.SaveManifest(manifest); err != nil {

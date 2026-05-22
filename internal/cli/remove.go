@@ -66,7 +66,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, t := range targets {
-			fmt.Printf("[dry-run] would remove %s %s (extract dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
+			fmt.Printf("[dry-run] %s: would remove %s (extract dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
 		}
 		return nil
 	}
@@ -85,7 +85,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	var hadErrors bool
 	for _, t := range targets {
-		fmt.Printf("remove: %s\n", t.key)
 		pkgPath := filepath.Join(pkgsDir, t.key, t.pkg.Version)
 		if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
 			printFail(cfg, "%s: could not remove extract dir: %v", t.key, err)
@@ -114,7 +113,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 				printWarn(cfg, "%s: could not remove shim: %v", binName, err)
 			}
 		}
-		printPass(cfg, "uninstalled %s", t.key)
+		printPass(cfg, "%s: uninstalled", t.key)
 	}
 
 	if err := config.SaveManifest(manifest); err != nil {
