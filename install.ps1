@@ -3,8 +3,8 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
-$GhpmRepo = 'meop/ghpm'
 $GhRepo = 'cli/cli'
+$GhpmRepo = 'meop/ghpm'
 $SheeshRepo = 'meop/sheesh'
 $GhpmBin = "$env:USERPROFILE\.ghpm\bin"
 $GhpmShim = "$env:USERPROFILE\.ghpm\shim"
@@ -92,13 +92,7 @@ function Install-Binary($Release, $Pattern, $Binary, $Dest) {
   }
 }
 
-# Install ghpm
-Write-Host "Fetching latest ghpm release: github.com/$GhpmRepo"
-$GhpmRelease = Get-LatestRelease $GhpmRepo
-Write-Host "  version: $($GhpmRelease.tag_name)"
-Install-Binary $GhpmRelease "ghpm-.*-windows-$Arch\.zip$" 'ghpm.exe' $GhpmBin
-
-# Install gh (bootstrap — ghpm needs it to operate)
+# Install gh
 Write-Host "Fetching latest gh release: github.com/$GhRepo"
 $GhRelease = Get-LatestRelease $GhRepo
 Write-Host "  version: $($GhRelease.tag_name)"
@@ -110,8 +104,14 @@ if ($LASTEXITCODE -ne 0) {
   & "$GhpmBin\gh.exe" auth login --insecure-storage
 }
 
-# Install sheesh (shim runtime + kebab stamper)
-Write-Host "Fetching latest sheesh release: github.com/$SheeshRepo"
+# Install ghpm
+Write-Host "Fetching latest ghpm release: github.com/$GhpmRepo"
+$GhpmRelease = Get-LatestRelease $GhpmRepo
+Write-Host "  version: $($GhpmRelease.tag_name)"
+Install-Binary $GhpmRelease "ghpm-.*-windows-$Arch\.zip$" 'ghpm.exe' $GhpmBin
+
+# Install shim (sheesh runtime + kebab stamper)
+Write-Host "Fetching latest shim release: github.com/$SheeshRepo"
 $SheeshRelease = Get-LatestRelease $SheeshRepo
 Write-Host "  version: $($SheeshRelease.tag_name)"
 Install-AllExe $SheeshRelease "sheesh-.*-windows-$SheeshArch\.zip$" $GhpmShim

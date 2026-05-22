@@ -50,16 +50,16 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	upgraded := false
 
+	if err := upgradeGh(cfg); err != nil {
+		printFail(cfg, "gh: %v", err)
+		upgraded = true
+	}
 	if err := upgradeSelf(cfg); err != nil {
 		printFail(cfg, "ghpm: %v", err)
 		upgraded = true
 	}
 	if err := upgradeShim(cfg); err != nil {
 		printFail(cfg, "sheesh: %v", err)
-		upgraded = true
-	}
-	if err := upgradeGh(cfg); err != nil {
-		printFail(cfg, "gh: %v", err)
 		upgraded = true
 	}
 
