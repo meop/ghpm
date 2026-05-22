@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -11,13 +12,15 @@ import (
 )
 
 func newOutdatedCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "outdated",
 		Aliases: []string{"out", "ou", "stale"},
 		Short:   "List packages with newer releases available",
 		Args:    cobra.NoArgs,
 		RunE:    runOutdated,
 	}
+	cmd.Flags().BoolVarP(&onlyNames, "only-names", "o", false, "Print names only, one per line")
+	return cmd
 }
 
 func runOutdated(cmd *cobra.Command, args []string) error {
@@ -124,6 +127,15 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return cmp.Compare(a.name, b.name)
 	})
 
+	if onlyNames {
+		for _, o := range outdated {
+			fmt.Println(o.name)
+		}
+		if hadErrors {
+			return errSilent
+		}
+		return nil
+	}
 	rows := make([][]string, len(outdated))
 	for i, o := range outdated {
 		rows[i] = []string{o.name, o.installed, o.latest, o.pin, o.source, ""}

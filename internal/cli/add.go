@@ -28,6 +28,7 @@ func newAddCmd() *cobra.Command {
 		RunE:    runAdd,
 	}
 	cmd.Flags().BoolVarP(&forceInstall, "force", "f", false, "Reinstall even if already installed")
+	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
 	return cmd
 }
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -9,13 +10,15 @@ import (
 )
 
 func newListCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List installed packages",
 		Args:    cobra.NoArgs,
 		RunE:    runList,
 	}
+	cmd.Flags().BoolVarP(&onlyNames, "only-names", "o", false, "Print names only, one per line")
+	return cmd
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -38,6 +41,12 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 	slices.Sort(keys)
 
+	if onlyNames {
+		for _, k := range keys {
+			fmt.Println(k)
+		}
+		return nil
+	}
 	rows := make([][]string, len(keys))
 	for i, k := range keys {
 		p := manifest.Extracts[k]
