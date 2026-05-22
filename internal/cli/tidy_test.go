@@ -121,15 +121,22 @@ func TestCleanBrokenLinkage_PartialShim(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"uv": {Version: "0.7.0", BinNames: []string{"uv", "uvx"}}},
 	}
 
-	if cleaned := cleanBrokenLinkage(nil, manifest, downloadDir); cleaned {
-		t.Error("should not clean when extract present and at least one shim exists")
+	if cleaned := cleanBrokenLinkage(nil, manifest, downloadDir); !cleaned {
+		t.Error("should have reported partial shim to update manifest")
 	}
-	if _, ok := manifest.Extracts["uv"]; !ok {
-		t.Error("manifest entry was incorrectly removed")
+	entry, ok := manifest.Extracts["uv"]
+	if !ok {
+		t.Error("manifest entry was removed but should be kept")
+	}
+	if len(entry.BinNames) != 1 || entry.BinNames[0] != "uv" {
+		t.Errorf("expected BinNames=[uv], got %v", entry.BinNames)
 	}
 	binDir := filepath.Join(home, ".ghpm", "bin")
 	if _, err := os.Lstat(filepath.Join(binDir, "uv")); err != nil {
 		t.Error("uv shim was removed but should have been kept")
+	}
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "uv", "0.7.0")); err != nil {
+		t.Error("extract dir was removed but should have been kept")
 	}
 }
 
