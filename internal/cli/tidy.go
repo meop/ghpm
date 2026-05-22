@@ -94,10 +94,11 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 	}
 
 	type item struct {
-		display     string
-		shimPaths   []string
-		extractPath string
-		manifestKey string
+		display      string
+		shimPaths    []string
+		extractPath  string
+		manifestKey  string
+		trimBinNames []string // non-nil → partial: trim these names from BinNames, keep rest
 	}
 	var items []item
 
@@ -107,7 +108,7 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 			continue
 		}
 		var shimPaths []string
-		allShimsMissing := true
+		var missingBinNames []string
 		for _, binName := range pkg.BinNames {
 			sn := binShimName(key, binName)
 			if runtime.GOOS == "windows" {
@@ -115,28 +116,38 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 			}
 			sp := filepath.Join(binDir, sn)
 			shimPaths = append(shimPaths, sp)
-			if _, err := os.Lstat(sp); err == nil {
-				allShimsMissing = false
+			if _, err := os.Lstat(sp); os.IsNotExist(err) {
+				missingBinNames = append(missingBinNames, binName)
 			}
 		}
 		_, extractErr := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version))
 		extractMissing := os.IsNotExist(extractErr)
-		if !allShimsMissing && !extractMissing {
+		allShimsMissing := len(missingBinNames) == len(pkg.BinNames)
+
+		if len(missingBinNames) == 0 && !extractMissing {
 			continue
 		}
-		var missing []string
-		if allShimsMissing {
-			missing = append(missing, "shim")
+		if allShimsMissing || extractMissing {
+			var missing []string
+			if allShimsMissing {
+				missing = append(missing, "shim")
+			}
+			if extractMissing {
+				missing = append(missing, "extract")
+			}
+			items = append(items, item{
+				display:     fmt.Sprintf("%s: missing %s", key, strings.Join(missing, ", ")),
+				shimPaths:   shimPaths,
+				extractPath: filepath.Join(pkgsDir, key, pkg.Version),
+				manifestKey: key,
+			})
+		} else {
+			items = append(items, item{
+				display:      fmt.Sprintf("%s: missing shim %s", key, strings.Join(missingBinNames, ", ")),
+				manifestKey:  key,
+				trimBinNames: missingBinNames,
+			})
 		}
-		if extractMissing {
-			missing = append(missing, "extract")
-		}
-		items = append(items, item{
-			display:     fmt.Sprintf("%s: missing %s", key, strings.Join(missing, ", ")),
-			shimPaths:   shimPaths,
-			extractPath: filepath.Join(pkgsDir, key, pkg.Version),
-			manifestKey: key,
-		})
 	}
 
 	// Shims in bin/ with no manifest entry
@@ -226,32 +237,44 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 			}
 		}
 		if it.manifestKey != "" {
-			baseName, _, _ := config.ParseVersionSuffix(it.manifestKey)
-			pkg := manifest.Extracts[it.manifestKey]
-			if src, ok := manifest.Repos[baseName]; ok {
-				relPath := strings.ReplaceAll(src, "/", string(filepath.Separator))
-				downloadVersionDir := filepath.Join(releaseDir, relPath, pkg.Version)
-				_ = os.RemoveAll(downloadVersionDir)
-				parent := filepath.Join(releaseDir, relPath)
-				for parent != releaseDir {
-					es, err := os.ReadDir(parent)
-					if err != nil || len(es) > 0 {
+			if len(it.trimBinNames) > 0 {
+				entry := manifest.Extracts[it.manifestKey]
+				var remaining []string
+				for _, name := range entry.BinNames {
+					if !slices.Contains(it.trimBinNames, name) {
+						remaining = append(remaining, name)
+					}
+				}
+				entry.BinNames = remaining
+				manifest.Extracts[it.manifestKey] = entry
+			} else {
+				baseName, _, _ := config.ParseVersionSuffix(it.manifestKey)
+				pkg := manifest.Extracts[it.manifestKey]
+				if src, ok := manifest.Repos[baseName]; ok {
+					relPath := strings.ReplaceAll(src, "/", string(filepath.Separator))
+					downloadVersionDir := filepath.Join(releaseDir, relPath, pkg.Version)
+					_ = os.RemoveAll(downloadVersionDir)
+					parent := filepath.Join(releaseDir, relPath)
+					for parent != releaseDir {
+						es, err := os.ReadDir(parent)
+						if err != nil || len(es) > 0 {
+							break
+						}
+						_ = os.Remove(parent)
+						parent = filepath.Dir(parent)
+					}
+				}
+				delete(manifest.Extracts, it.manifestKey)
+				hasOther := false
+				for k := range manifest.Extracts {
+					if n, _, _ := config.ParseVersionSuffix(k); n == baseName {
+						hasOther = true
 						break
 					}
-					_ = os.Remove(parent)
-					parent = filepath.Dir(parent)
 				}
-			}
-			delete(manifest.Extracts, it.manifestKey)
-			hasOther := false
-			for k := range manifest.Extracts {
-				if n, _, _ := config.ParseVersionSuffix(k); n == baseName {
-					hasOther = true
-					break
+				if !hasOther {
+					delete(manifest.Repos, baseName)
 				}
-			}
-			if !hasOther {
-				delete(manifest.Repos, baseName)
 			}
 			manifestTouched = true
 		}
