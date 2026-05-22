@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,6 +52,10 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	if err := upgradeSelf(cfg); err != nil {
 		printFail(cfg, "ghpm: %v", err)
+		upgraded = true
+	}
+	if err := upgradeShim(cfg); err != nil {
+		printFail(cfg, "sheesh: %v", err)
 		upgraded = true
 	}
 	if err := upgradeGh(cfg); err != nil {
@@ -241,6 +246,121 @@ func upgradeGh(cfg *config.Settings) error {
 
 	printPass(cfg, "upgraded gh %s → %s", currentVer, latestVer)
 	return nil
+}
+
+func upgradeShim(cfg *config.Settings) error {
+	shimDir, err := store.ShimDir()
+	if err != nil {
+		return err
+	}
+	kebabPath := filepath.Join(shimDir, exeName("kebab"))
+
+	currentVer := ""
+	if _, err := os.Stat(kebabPath); err == nil {
+		if out, err := exec.Command(kebabPath, "--version").Output(); err == nil {
+			currentVer = strings.TrimSpace(string(out))
+		}
+	}
+
+	printInfo(cfg, "checking sheesh...")
+	rel, err := gh.GetLatestRelease("meop", binSheesh)
+	if err != nil {
+		return err
+	}
+	latestVer := config.NormalizeVersion(rel.TagName)
+
+	if currentVer == latestVer {
+		printInfo(cfg, "sheesh %s is already the latest version", currentVer)
+		return nil
+	}
+
+	acSheesh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binSheesh)
+	if err != nil {
+		return err
+	}
+	chosen, err := asset.PromptFromCandidates(acSheesh)
+	if errors.Is(err, asset.ErrSkip) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	var prompt string
+	if currentVer == "" {
+		prompt = fmt.Sprintf("install sheesh %s", latestVer)
+	} else {
+		prompt = fmt.Sprintf("upgrade sheesh %s → %s", currentVer, latestVer)
+	}
+
+	if dryRun {
+		fmt.Printf("[dry-run] would %s (asset: %s)\n", prompt, chosen.Name)
+		return nil
+	}
+
+	if !promptConfirm(prompt) {
+		return nil
+	}
+
+	cacheDir, err := store.ReleaseDir("github.com/meop/sheesh", rel.TagName)
+	if err != nil {
+		return err
+	}
+	if err := gh.DownloadAsset("meop", binSheesh, rel.TagName, chosen.Name, cacheDir); err != nil {
+		return err
+	}
+	if !noVerify {
+		_, _ = asset.Verify("meop", binSheesh, rel.TagName, cacheDir, chosen.Name)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "ghpm-shim-upgrade-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
+		return err
+	}
+	if err := copyExecutablesToDir(tmpDir, shimDir); err != nil {
+		return err
+	}
+
+	if currentVer == "" {
+		printPass(cfg, "installed sheesh %s", latestVer)
+	} else {
+		printPass(cfg, "upgraded sheesh %s → %s", currentVer, latestVer)
+	}
+	return nil
+}
+
+// copyExecutablesToDir walks srcDir recursively and copies all executable files
+// (Unix: executable bit set; Windows: .exe suffix) to destDir flat.
+func copyExecutablesToDir(srcDir, destDir string) error {
+	return filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		name := d.Name()
+		if runtime.GOOS == "windows" {
+			if !strings.HasSuffix(strings.ToLower(name), ".exe") {
+				return nil
+			}
+		} else {
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			if info.Mode()&0111 == 0 {
+				return nil
+			}
+		}
+		dest := filepath.Join(destDir, name)
+		if err := copyFile(path, dest); err != nil {
+			return err
+		}
+		return os.Chmod(dest, 0755)
+	})
 }
 
 func copyFile(src, dst string) error {

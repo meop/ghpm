@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	binGhpm = "ghpm"
-	binGh   = "gh"
+	binGhpm   = "ghpm"
+	binGh     = "gh"
+	binSheesh = "sheesh"
 )
 
 var (

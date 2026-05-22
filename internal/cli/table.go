@@ -43,18 +43,18 @@ func colorfn(cfg *config.Settings, role string) func(string) string {
 func printInfo(cfg *config.Settings, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "info"); fn != nil {
-		fmt.Println(fn("ℹ " + msg))
+		fmt.Println(fn("› " + msg))
 	} else {
-		fmt.Println("ℹ " + msg)
+		fmt.Println("› " + msg)
 	}
 }
 
 func printWarn(cfg *config.Settings, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "warn"); fn != nil {
-		fmt.Println(fn("⚠ " + msg))
+		fmt.Println(fn("‼ " + msg))
 	} else {
-		fmt.Println("⚠ " + msg)
+		fmt.Println("‼ " + msg)
 	}
 }
 
@@ -116,10 +116,7 @@ func printTable(headers []string, rows [][]string, colColors []func(string) stri
 				fn = colColors[i]
 			}
 			if i < len(cells)-1 {
-				pad := widths[i] - len(cell)
-				if pad < 0 {
-					pad = 0
-				}
+				pad := max(widths[i]-len(cell), 0)
 				if fn != nil {
 					fmt.Print(fn(cell) + strings.Repeat(" ", pad))
 				} else {
