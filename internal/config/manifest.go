@@ -7,11 +7,11 @@ import (
 )
 
 type PackageEntry struct {
-	Pin       string `json:"pin"`
-	Version   string `json:"version"`
-	AssetName string `json:"asset_name"`
-	BinDir    string `json:"bin_dir,omitempty"`
-	BinName   string `json:"bin_name,omitempty"`
+	Pin       string   `json:"pin"`
+	Version   string   `json:"version"`
+	AssetName string   `json:"asset_name"`
+	BinDir    string   `json:"bin_dir,omitempty"`
+	BinNames  []string `json:"bin_names,omitempty"`
 }
 
 type Manifest struct {
@@ -81,6 +81,22 @@ func loadManifestFile(path string) (*Manifest, error) {
 	}
 	if m.Extracts == nil {
 		m.Extracts = map[string]PackageEntry{}
+	}
+	// Migrate legacy bin_name (singular) → bin_names
+	var legacyBins struct {
+		Extracts map[string]struct {
+			BinName string `json:"bin_name,omitempty"`
+		} `json:"extract"`
+	}
+	if json.Unmarshal(data, &legacyBins) == nil {
+		for k, e := range legacyBins.Extracts {
+			if e.BinName != "" {
+				if entry, ok := m.Extracts[k]; ok && len(entry.BinNames) == 0 {
+					entry.BinNames = []string{e.BinName}
+					m.Extracts[k] = entry
+				}
+			}
+		}
 	}
 	return &m, nil
 }

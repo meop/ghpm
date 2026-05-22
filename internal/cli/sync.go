@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -247,16 +248,24 @@ func runSync(cmd *cobra.Command, args []string) error {
 		newVer := config.NormalizeVersion(r.release.TagName)
 		newPkgDir, _ := store.ExtractDir(r.key, newVer)
 		name, _, _ := config.ParseVersionSuffix(r.key)
-		binPath, binaryName, discoverErr := asset.DiscoverPaths(newPkgDir, name)
+		candidates := asset.FindBinaries(newPkgDir, name)
+		selected, discoverErr := asset.SelectBinaries(candidates, name, r.pkg.BinNames)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue
 		}
-		if binaryName == "" {
+		if len(selected) == 0 {
 			printFail(cfg, "%s: no binary found in %s", r.key, r.chosen.Name)
 			hadErrors = true
 			continue
 		}
-		printInfo(cfg, "binary: %s", binaryName)
+		binNames := make([]string, len(selected))
+		for i, s := range selected {
+			binNames[i] = s.BinName
+		}
+		printInfo(cfg, "binary: %s", strings.Join(binNames, ", "))
+		for _, oldName := range r.pkg.BinNames {
+			_ = shim.Remove(binShimName(r.key, oldName))
+		}
 		if oldBase, err := store.ExtractBaseDir(r.key); err == nil {
 			oldPkgDir := filepath.Join(oldBase, r.pkg.Version)
 			if err := os.RemoveAll(oldPkgDir); err != nil {
@@ -267,11 +276,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 			Pin:       r.pkg.Pin,
 			Version:   newVer,
 			AssetName: r.chosen.Name,
-			BinDir:    binPath,
-			BinName:   binaryName,
+			BinDir:    selected[0].BinDir,
+			BinNames:  binNames,
 		}
-		if err := shim.Create(r.key, binaryName, newPkgDir, binPath); err != nil {
-			printWarn(cfg, "%s: could not update shim: %v", r.key, err)
+		for _, s := range selected {
+			if err := shim.Create(binShimName(r.key, s.BinName), s.BinName, newPkgDir, s.BinDir); err != nil {
+				printWarn(cfg, "%s: could not update shim: %v", s.BinName, err)
+			}
 		}
 		printPass(cfg, "updated %s %s → %s", r.key, r.pkg.Version, newVer)
 	}

@@ -42,7 +42,7 @@ func TestCleanBrokenLinkage_MissingShim(t *testing.T) {
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
 	cleanBrokenLinkage(nil, manifest, downloadDir)
@@ -65,7 +65,7 @@ func TestCleanBrokenLinkage_MissingExtract(t *testing.T) {
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
 	cleanBrokenLinkage(nil, manifest, downloadDir)
@@ -93,7 +93,7 @@ func TestCleanBrokenLinkage_HealthyInstall(t *testing.T) {
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
 	if cleaned := cleanBrokenLinkage(nil, manifest, downloadDir); cleaned {
@@ -118,7 +118,7 @@ func TestCleanBrokenLinkage_OrphanedShim(t *testing.T) {
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
 	cleanBrokenLinkage(nil, manifest, downloadDir)
@@ -194,7 +194,7 @@ func TestCleanBrokenLinkage_StaleVersion(t *testing.T) {
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
 	cleanBrokenLinkage(nil, manifest, downloadDir)

@@ -261,27 +261,34 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		pkgDir, _ := store.ExtractDir(r.job.key(), config.NormalizeVersion(r.release.TagName))
-		binPath, binaryName, discoverErr := asset.DiscoverPaths(pkgDir, r.job.name)
+		candidates := asset.FindBinaries(pkgDir, r.job.name)
+		selected, discoverErr := asset.SelectBinaries(candidates, r.job.name, nil)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue
 		}
-		if binaryName == "" {
+		if len(selected) == 0 {
 			printFail(cfg, "%s: no binary found in %s", r.job.name, r.chosen.Name)
 			hadErrors = true
 			continue
 		}
-		printInfo(cfg, "binary: %s", binaryName)
+		binNames := make([]string, len(selected))
+		for i, s := range selected {
+			binNames[i] = s.BinName
+		}
+		printInfo(cfg, "binary: %s", strings.Join(binNames, ", "))
 		key := r.job.key()
 		manifest.Repos[r.job.name] = r.job.source
 		manifest.Extracts[key] = config.PackageEntry{
 			Pin:       r.job.pin(),
 			Version:   config.NormalizeVersion(r.release.TagName),
 			AssetName: r.chosen.Name,
-			BinDir:    binPath,
-			BinName:   binaryName,
+			BinDir:    selected[0].BinDir,
+			BinNames:  binNames,
 		}
-		if err := shim.Create(key, binaryName, pkgDir, binPath); err != nil {
-			printWarn(cfg, "%s: could not create shim: %v", r.job.name, err)
+		for _, s := range selected {
+			if err := shim.Create(binShimName(key, s.BinName), s.BinName, pkgDir, s.BinDir); err != nil {
+				printWarn(cfg, "%s: could not create shim: %v", s.BinName, err)
+			}
 		}
 		printPass(cfg, "installed %s %s", r.job.name, config.NormalizeVersion(r.release.TagName))
 	}

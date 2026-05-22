@@ -109,8 +109,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		if !hasOther {
 			delete(manifest.Repos, baseName)
 		}
-		if err := shim.Remove(t.key); err != nil {
-			printWarn(cfg, "%s: could not remove shim: %v", t.key, err)
+		for _, binName := range t.pkg.BinNames {
+			if err := shim.Remove(binShimName(t.key, binName)); err != nil {
+				printWarn(cfg, "%s: could not remove shim: %v", binName, err)
+			}
 		}
 		printPass(cfg, "uninstalled %s", t.key)
 	}
