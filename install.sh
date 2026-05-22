@@ -3,20 +3,22 @@ set -e
 
 GHPM_REPO='meop/ghpm'
 GH_REPO='cli/cli'
+SHEESH_REPO='meop/sheesh'
 GHPM_BIN="$HOME/.ghpm/bin"
+GHPM_SHIM="$HOME/.ghpm/shim"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
 case "$ARCH" in
-  x86_64)  ARCH_TAG='amd64' ;;
-  aarch64|arm64) ARCH_TAG='arm64' ;;
+  x86_64)  ARCH_TAG='amd64' ; SHEESH_ARCH_TAG='x86_64' ;;
+  aarch64|arm64) ARCH_TAG='arm64' ; SHEESH_ARCH_TAG='arm64' ;;
   *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
 case "$OS" in
-  linux)  OS_TAG='linux' ;;
-  darwin) OS_TAG='darwin' ;;
+  linux)  OS_TAG='linux' ; SHEESH_OS_TAG='linux' ;;
+  darwin) OS_TAG='darwin' ; SHEESH_OS_TAG='macos' ;;
   *) echo "Unsupported OS: $OS"; exit 1 ;;
 esac
 
@@ -52,6 +54,34 @@ release_asset_url() {
     exit 1
   fi
   printf '%s' "$url"
+}
+
+install_shim_from_release() {
+  local pattern="$1" dest="$2"
+  local tmp url pkg
+  tmp=$(mktemp -d)
+  url=$(release_asset_url "$pattern")
+  pkg="$tmp/pkg"
+  echo "  downloading $url"
+  echo "  temp dir: $tmp"
+  curl -fsSL "$url" -o "$pkg" || {
+    echo "  download failed: $url" >&2
+    rm -rf "$tmp"
+    exit 1
+  }
+  echo "  downloaded $(ls -la "$pkg" | awk '{print $5}') bytes to $pkg"
+  case "$url" in
+    *.tar.gz|*.tgz) tar xzf "$pkg" -C "$tmp" ;;
+    *.zip) unzip -q "$pkg" -d "$tmp" ;;
+  esac
+  mkdir -p "$dest"
+  find "$tmp" -type f ! -name 'pkg' | while IFS= read -r f; do
+    name=$(basename "$f")
+    cp "$f" "$dest/$name"
+    chmod +x "$dest/$name"
+    echo "  installed $dest/$name"
+  done
+  rm -rf "$tmp"
 }
 
 install_from_release() {
@@ -127,6 +157,17 @@ if ! gh auth status >/dev/null 2>&1; then
   echo 'Authenticating gh...'
   gh auth login --insecure-storage </dev/tty
 fi
+
+# Install sheesh (shim runtime + kebab stamper)
+echo "Fetching latest sheesh release: github.com/$SHEESH_REPO"
+fetch_release "$SHEESH_REPO"
+SHEESH_TAG=$(release_tag)
+echo "  version: $SHEESH_TAG"
+install_shim_from_release "sheesh-.*-${SHEESH_OS_TAG}-${SHEESH_ARCH_TAG}.tar.gz" "$GHPM_SHIM"
+
+echo ''
+echo 'Refreshing repo sources...'
+ghpm refresh
 
 echo ''
 echo 'Refer to the project README for how to activate ghpm in your shell.'
