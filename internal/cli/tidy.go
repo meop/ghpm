@@ -107,7 +107,7 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 			continue
 		}
 		var shimPaths []string
-		anyMissing := false
+		allShimsMissing := true
 		for _, binName := range pkg.BinNames {
 			sn := binShimName(key, binName)
 			if runtime.GOOS == "windows" {
@@ -115,19 +115,20 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 			}
 			sp := filepath.Join(binDir, sn)
 			shimPaths = append(shimPaths, sp)
-			if _, err := os.Lstat(sp); os.IsNotExist(err) {
-				anyMissing = true
+			if _, err := os.Lstat(sp); err == nil {
+				allShimsMissing = false
 			}
 		}
 		_, extractErr := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version))
-		if !anyMissing && !os.IsNotExist(extractErr) {
+		extractMissing := os.IsNotExist(extractErr)
+		if !allShimsMissing && !extractMissing {
 			continue
 		}
 		var missing []string
-		if anyMissing {
+		if allShimsMissing {
 			missing = append(missing, "shim")
 		}
-		if os.IsNotExist(extractErr) {
+		if extractMissing {
 			missing = append(missing, "extract")
 		}
 		items = append(items, item{

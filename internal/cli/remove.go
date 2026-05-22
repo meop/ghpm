@@ -91,7 +91,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		// Remove base dir if now empty (no other version dirs remain)
 		baseDir := filepath.Join(pkgsDir, t.key)
 		if entries, err := os.ReadDir(baseDir); err == nil && len(entries) == 0 {
 			_ = os.Remove(baseDir)

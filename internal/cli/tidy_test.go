@@ -104,6 +104,35 @@ func TestCleanBrokenLinkage_HealthyInstall(t *testing.T) {
 	}
 }
 
+func TestCleanBrokenLinkage_PartialShim(t *testing.T) {
+	home := withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	makeBinDir(t, home, "uv")
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "uv", "0.7.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir := filepath.Join(home, ".ghpm", "download")
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"uv": "github.com/astral-sh/uv"},
+		Extracts: map[string]config.PackageEntry{"uv": {Version: "0.7.0", BinNames: []string{"uv", "uvx"}}},
+	}
+
+	if cleaned := cleanBrokenLinkage(nil, manifest, downloadDir); cleaned {
+		t.Error("should not clean when extract present and at least one shim exists")
+	}
+	if _, ok := manifest.Extracts["uv"]; !ok {
+		t.Error("manifest entry was incorrectly removed")
+	}
+	binDir := filepath.Join(home, ".ghpm", "bin")
+	if _, err := os.Lstat(filepath.Join(binDir, "uv")); err != nil {
+		t.Error("uv shim was removed but should have been kept")
+	}
+}
+
 func TestCleanBrokenLinkage_OrphanedShim(t *testing.T) {
 	home := withHome(t)
 	yes = true
