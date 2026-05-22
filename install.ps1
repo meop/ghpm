@@ -11,8 +11,8 @@ $GhpmShim = "$env:USERPROFILE\.ghpm\shim"
 
 $IsArm64 = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq `
   [System.Runtime.InteropServices.Architecture]::Arm64
-$Arch = if ($IsArm64) { 'arm64' } else { 'amd64' }
-$SheeshArch = if ($IsArm64) { 'arm64' } else { 'x86_64' }
+$Arch = if ($IsArm64) { 'aarch64' } else { 'x86_64' }
+$GoArch = if ($IsArm64) { 'arm64' } else { 'amd64' }
 
 function Get-LatestRelease($Repo) {
   $url = "https://api.github.com/repos/$Repo/releases/latest"
@@ -96,7 +96,7 @@ function Install-Binary($Release, $Pattern, $Binary, $Dest) {
 Write-Host "Fetching latest gh release: github.com/$GhRepo"
 $GhRelease = Get-LatestRelease $GhRepo
 Write-Host "  version: $($GhRelease.tag_name)"
-Install-Binary $GhRelease "gh_.*_windows_$Arch\.zip$" 'gh.exe' $GhpmBin
+Install-Binary $GhRelease "gh_.*_windows_$GoArch\.zip$" 'gh.exe' $GhpmBin
 $env:PATH = "$GhpmBin;$env:PATH"
 & "$GhpmBin\gh.exe" auth status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -108,13 +108,13 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Fetching latest ghpm release: github.com/$GhpmRepo"
 $GhpmRelease = Get-LatestRelease $GhpmRepo
 Write-Host "  version: $($GhpmRelease.tag_name)"
-Install-Binary $GhpmRelease "ghpm-.*-windows-$Arch\.zip$" 'ghpm.exe' $GhpmBin
+Install-Binary $GhpmRelease "ghpm-.*-windows-$GoArch\.zip$" 'ghpm.exe' $GhpmBin
 
 # Install shim (sheesh runtime + kebab stamper)
 Write-Host "Fetching latest shim release: github.com/$SheeshRepo"
 $SheeshRelease = Get-LatestRelease $SheeshRepo
 Write-Host "  version: $($SheeshRelease.tag_name)"
-Install-AllExe $SheeshRelease "sheesh-.*-windows-$SheeshArch\.zip$" $GhpmShim
+Install-AllExe $SheeshRelease "sheesh-.*-windows-$Arch\.zip$" $GhpmShim
 
 Write-Host ''
 Write-Host 'Refreshing repo sources...'

@@ -10,15 +10,20 @@ GHPM_SHIM="$HOME/.ghpm/shim"
 ARCH=$(uname -m)
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 
+# normalize to Rust target arch names (x86_64/aarch64)
 case "$ARCH" in
-  arm64|aarch64) ARCH_TAG='arm64' ; SHEESH_ARCH_TAG='arm64' ;;
-  amd64|x86_64)  ARCH_TAG='amd64' ; SHEESH_ARCH_TAG='x86_64' ;;
+  arm64)  ARCH='aarch64' ;;
+  amd64)  ARCH='x86_64' ;;
+esac
+
+case "$ARCH" in
+  x86_64)  ARCH_GO='amd64' ;;
+  aarch64) ARCH_GO='arm64' ;;
   *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
 case "$OS" in
-  linux)  OS_TAG='linux' ; SHEESH_OS_TAG='linux' ;;
-  darwin) OS_TAG='darwin' ; SHEESH_OS_TAG='macos' ;;
+  linux|darwin) ;;
   *) echo "Unsupported OS: $OS"; exit 1 ;;
 esac
 
@@ -141,9 +146,9 @@ echo "Fetching latest gh release: github.com/$GH_REPO"
 fetch_release "$GH_REPO"
 GH_TAG=$(release_tag)
 echo "  version: $GH_TAG"
-case "$OS_TAG" in
-  linux)  install_from_release "gh_.*_linux_${ARCH_TAG}.tar.gz" 'gh' "$GHPM_BIN" ;;
-  darwin) install_from_release "gh_.*_macOS_${ARCH_TAG}.zip"    'gh' "$GHPM_BIN" ;;
+case "$OS" in
+  linux)  install_from_release "gh_.*_linux_${ARCH_GO}.tar.gz" 'gh' "$GHPM_BIN" ;;
+  darwin) install_from_release "gh_.*_macOS_${ARCH_GO}.zip"    'gh' "$GHPM_BIN" ;;
 esac
 export PATH="$GHPM_BIN:$PATH"
 if ! gh auth status >/dev/null 2>&1; then
@@ -156,14 +161,14 @@ echo "Fetching latest ghpm release: github.com/$GHPM_REPO"
 fetch_release "$GHPM_REPO"
 GHPM_TAG=$(release_tag)
 echo "  version: $GHPM_TAG"
-install_from_release "ghpm-.*-${OS_TAG}-${ARCH_TAG}.tar.gz" 'ghpm' "$GHPM_BIN"
+install_from_release "ghpm-.*-${OS}-${ARCH_GO}.tar.gz" 'ghpm' "$GHPM_BIN"
 
 # Install shim (sheesh runtime + kebab stamper)
 echo "Fetching latest shim release: github.com/$SHEESH_REPO"
 fetch_release "$SHEESH_REPO"
 SHEESH_TAG=$(release_tag)
 echo "  version: $SHEESH_TAG"
-install_shim_from_release "sheesh-.*-${SHEESH_OS_TAG}-${SHEESH_ARCH_TAG}.tar.gz" "$GHPM_SHIM"
+install_shim_from_release "sheesh-.*-${OS}-${ARCH}.tar.gz" "$GHPM_SHIM"
 
 echo ''
 echo 'Refreshing repo sources...'
