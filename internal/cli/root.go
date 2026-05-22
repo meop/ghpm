@@ -3,6 +3,7 @@ package cli
 import (
 	"runtime"
 
+	"github.com/meop/ghpm/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +28,14 @@ func exeName(name string) string {
 		return name + ".exe"
 	}
 	return name
+}
+
+func binShimName(key, binName string) string {
+	_, ver, pinned := config.ParseVersionSuffix(key)
+	if !pinned {
+		return binName
+	}
+	return binName + "@" + ver
 }
 
 func NewRootCmd() *cobra.Command {

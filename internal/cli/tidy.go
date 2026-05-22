@@ -95,7 +95,7 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 
 	type item struct {
 		display     string
-		shimPath    string
+		shimPaths   []string
 		extractPath string
 		manifestKey string
 	}
@@ -103,20 +103,28 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 
 	// Manifest entries with missing shim or extract
 	for key, pkg := range manifest.Extracts {
-		if pkg.BinName == "" {
+		if len(pkg.BinNames) == 0 {
 			continue
 		}
-		shimName := key
-		if runtime.GOOS == "windows" {
-			shimName += ".cmd"
+		var shimPaths []string
+		anyMissing := false
+		for _, binName := range pkg.BinNames {
+			sn := binShimName(key, binName)
+			if runtime.GOOS == "windows" {
+				sn += ".cmd"
+			}
+			sp := filepath.Join(binDir, sn)
+			shimPaths = append(shimPaths, sp)
+			if _, err := os.Lstat(sp); os.IsNotExist(err) {
+				anyMissing = true
+			}
 		}
-		_, shimErr := os.Lstat(filepath.Join(binDir, shimName))
 		_, extractErr := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version))
-		if !os.IsNotExist(shimErr) && !os.IsNotExist(extractErr) {
+		if !anyMissing && !os.IsNotExist(extractErr) {
 			continue
 		}
 		var missing []string
-		if os.IsNotExist(shimErr) {
+		if anyMissing {
 			missing = append(missing, "shim")
 		}
 		if os.IsNotExist(extractErr) {
@@ -124,7 +132,7 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 		}
 		items = append(items, item{
 			display:     fmt.Sprintf("%s: missing %s", key, strings.Join(missing, ", ")),
-			shimPath:    filepath.Join(binDir, shimName),
+			shimPaths:   shimPaths,
 			extractPath: filepath.Join(pkgsDir, key, pkg.Version),
 			manifestKey: key,
 		})
@@ -133,21 +141,21 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 	// Shims in bin/ with no manifest entry
 	expected := map[string]bool{exeName(binGh): true, exeName(binGhpm): true}
 	for key, pkg := range manifest.Extracts {
-		if pkg.BinName == "" {
-			continue
-		}
-		if runtime.GOOS == "windows" {
-			expected[key+".cmd"] = true
-		} else {
-			expected[key] = true
+		for _, binName := range pkg.BinNames {
+			sn := binShimName(key, binName)
+			if runtime.GOOS == "windows" {
+				expected[sn+".cmd"] = true
+			} else {
+				expected[sn] = true
+			}
 		}
 	}
 	if binEntries, err := os.ReadDir(binDir); err == nil {
 		for _, e := range binEntries {
 			if !expected[e.Name()] {
 				items = append(items, item{
-					display:  fmt.Sprintf("%s: missing manifest", e.Name()),
-					shimPath: filepath.Join(binDir, e.Name()),
+					display:   fmt.Sprintf("%s: missing manifest", e.Name()),
+					shimPaths: []string{filepath.Join(binDir, e.Name())},
 				})
 			}
 		}
@@ -204,8 +212,8 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 
 	manifestTouched := false
 	for _, it := range items {
-		if it.shimPath != "" {
-			_ = os.Remove(it.shimPath)
+		for _, sp := range it.shimPaths {
+			_ = os.Remove(sp)
 		}
 		if it.extractPath != "" {
 			_ = os.RemoveAll(it.extractPath)
