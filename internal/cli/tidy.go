@@ -130,7 +130,7 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 		if allShimsMissing || extractMissing {
 			var missing []string
 			if allShimsMissing {
-				missing = append(missing, "shim")
+				missing = append(missing, fmt.Sprintf("shim (%s)", strings.Join(missingBinNames, ", ")))
 			}
 			if extractMissing {
 				missing = append(missing, "extract")
@@ -143,7 +143,7 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 			})
 		} else {
 			items = append(items, item{
-				display:      fmt.Sprintf("%s: missing shim %s", key, strings.Join(missingBinNames, ", ")),
+				display:      fmt.Sprintf("%s: missing shim (%s)", key, strings.Join(missingBinNames, ", ")),
 				manifestKey:  key,
 				trimBinNames: missingBinNames,
 			})
@@ -331,7 +331,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		rel, _ := filepath.Rel(releaseDir, p)
 		parts := strings.Split(rel, string(filepath.Separator))
 		if len(parts) >= 5 {
-			fmt.Printf("%s: unused download %s (%s)\n", parts[2], parts[3], parts[len(parts)-1])
+			fmt.Printf("%s: unused download (%s)\n", parts[2], parts[len(parts)-1])
 		} else {
 			fmt.Printf("%s\n", rel)
 		}
