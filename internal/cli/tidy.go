@@ -68,8 +68,9 @@ func runTidy(cmd *cobra.Command, args []string) error {
 			_ = os.MkdirAll(releaseDir, 0755)
 		}
 	} else {
-		if !cleanBrokenLinkage(cfg, manifest, releaseDir) &&
-			!cleanOrphanedReleases(cfg, releaseDir, manifest) {
+		b1 := cleanBrokenLinkage(cfg, manifest, releaseDir)
+		b2 := cleanOrphanedReleases(cfg, releaseDir, manifest)
+		if !b1 && !b2 {
 			printInfo(cfg, "nothing to tidy")
 		}
 		return nil
@@ -195,7 +196,7 @@ func cleanBrokenLinkage(cfg *config.Settings, manifest *config.Manifest, release
 			for _, ve := range verEntries {
 				if ve.IsDir() && ve.Name() != pkg.Version {
 					items = append(items, item{
-						display:     fmt.Sprintf("%s/%s: missing manifest", key, ve.Name()),
+						display:     fmt.Sprintf("%s@%s: missing manifest", key, ve.Name()),
 						extractPath: filepath.Join(pkgsDir, key, ve.Name()),
 					})
 				}
