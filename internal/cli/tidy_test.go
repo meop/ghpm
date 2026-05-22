@@ -29,95 +29,7 @@ func makeBinDir(t *testing.T, home string, files ...string) string {
 	return binDir
 }
 
-func TestCleanOrphanedShims_RemovesOrphans(t *testing.T) {
-	home := withHome(t)
-	yes = true
-	defer func() { yes = false }()
-
-	binDir := makeBinDir(t, home, "fzf", "orphan")
-
-	manifest := &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {BinName: "fzf"}},
-	}
-
-	cleanOrphanedShims(nil, manifest)
-
-	if _, err := os.Lstat(filepath.Join(binDir, "fzf")); err != nil {
-		t.Error("fzf shim was removed but should have been kept")
-	}
-	if _, err := os.Lstat(filepath.Join(binDir, "orphan")); !os.IsNotExist(err) {
-		t.Error("orphan was not removed")
-	}
-}
-
-func TestCleanOrphanedPackages_RemovesOrphans(t *testing.T) {
-	home := withHome(t)
-	yes = true
-	defer func() { yes = false }()
-
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "orphan", "1.0"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	cleanOrphanedPackages(nil, &config.Manifest{
-		Repos:    map[string]string{},
-		Extracts: map[string]config.PackageEntry{},
-	})
-
-	if _, err := os.Lstat(filepath.Join(pkgsDir, "orphan")); !os.IsNotExist(err) {
-		t.Error("orphan dir was not removed")
-	}
-}
-
-func TestCleanOrphanedPackages_KeepsCurrentVersion(t *testing.T) {
-	home := withHome(t)
-	yes = true
-	defer func() { yes = false }()
-
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	cleanOrphanedPackages(nil, &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
-	})
-
-	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.58.0")); err != nil {
-		t.Errorf("current version was removed: %v", err)
-	}
-}
-
-func TestCleanOrphanedPackages_RemovesStaleVersion(t *testing.T) {
-	home := withHome(t)
-	yes = true
-	defer func() { yes = false }()
-
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.57.0"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	cleanOrphanedPackages(nil, &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
-	})
-
-	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.57.0")); !os.IsNotExist(err) {
-		t.Error("stale version 0.57.0 was not removed")
-	}
-	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.58.0")); err != nil {
-		t.Errorf("current version 0.58.0 was removed: %v", err)
-	}
-}
-
-func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
+func TestCleanBrokenLinkage_MissingShim(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -133,7 +45,7 @@ func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
 	}
 
-	cleanBrokenInstalls(nil, manifest, downloadDir)
+	cleanBrokenLinkage(nil, manifest, downloadDir)
 
 	if _, ok := manifest.Extracts["fzf"]; ok {
 		t.Error("manifest entry was not removed")
@@ -143,7 +55,7 @@ func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
+func TestCleanBrokenLinkage_MissingExtract(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -156,7 +68,7 @@ func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
 	}
 
-	cleanBrokenInstalls(nil, manifest, downloadDir)
+	cleanBrokenLinkage(nil, manifest, downloadDir)
 
 	if _, ok := manifest.Extracts["fzf"]; ok {
 		t.Error("manifest entry was not removed")
@@ -167,7 +79,7 @@ func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
+func TestCleanBrokenLinkage_HealthyInstall(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -184,7 +96,7 @@ func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
 	}
 
-	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); cleaned {
+	if cleaned := cleanBrokenLinkage(nil, manifest, downloadDir); cleaned {
 		t.Error("should not have reported anything to clean")
 	}
 	if _, ok := manifest.Extracts["fzf"]; !ok {
@@ -192,17 +104,47 @@ func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 	}
 }
 
-func TestCleanOrphanedShims_KeepsSelfManaged(t *testing.T) {
+func TestCleanBrokenLinkage_OrphanedShim(t *testing.T) {
+	home := withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	binDir := makeBinDir(t, home, "fzf", "orphan")
+	downloadDir := filepath.Join(home, ".ghpm", "download")
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+	}
+
+	cleanBrokenLinkage(nil, manifest, downloadDir)
+
+	if _, err := os.Lstat(filepath.Join(binDir, "fzf")); err != nil {
+		t.Error("fzf shim was removed but should have been kept")
+	}
+	if _, err := os.Lstat(filepath.Join(binDir, "orphan")); !os.IsNotExist(err) {
+		t.Error("orphan shim was not removed")
+	}
+}
+
+func TestCleanBrokenLinkage_KeepsSelfManaged(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
 	binDir := makeBinDir(t, home, "gh", "ghpm", "orphan")
+	downloadDir := filepath.Join(home, ".ghpm", "download")
 
-	cleanOrphanedShims(nil, &config.Manifest{
+	manifest := &config.Manifest{
 		Repos:    map[string]string{},
 		Extracts: map[string]config.PackageEntry{},
-	})
+	}
+
+	cleanBrokenLinkage(nil, manifest, downloadDir)
 
 	for _, name := range []string{"gh", "ghpm"} {
 		if _, err := os.Lstat(filepath.Join(binDir, name)); err != nil {
@@ -211,5 +153,56 @@ func TestCleanOrphanedShims_KeepsSelfManaged(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(binDir, "orphan")); !os.IsNotExist(err) {
 		t.Error("orphan was not removed")
+	}
+}
+
+func TestCleanBrokenLinkage_OrphanedExtract(t *testing.T) {
+	home := withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "orphan", "1.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir := filepath.Join(home, ".ghpm", "download")
+
+	cleanBrokenLinkage(nil, &config.Manifest{
+		Repos:    map[string]string{},
+		Extracts: map[string]config.PackageEntry{},
+	}, downloadDir)
+
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "orphan")); !os.IsNotExist(err) {
+		t.Error("orphan extract dir was not removed")
+	}
+}
+
+func TestCleanBrokenLinkage_StaleVersion(t *testing.T) {
+	home := withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	makeBinDir(t, home, "fzf")
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.57.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir := filepath.Join(home, ".ghpm", "download")
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+	}
+
+	cleanBrokenLinkage(nil, manifest, downloadDir)
+
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.57.0")); !os.IsNotExist(err) {
+		t.Error("stale version 0.57.0 was not removed")
+	}
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.58.0")); err != nil {
+		t.Errorf("current version 0.58.0 was removed: %v", err)
 	}
 }
