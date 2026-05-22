@@ -63,6 +63,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		for _, name := range args {
+			baseName, _, _ := config.ParseVersionSuffix(name)
+			if baseName == binGhpm || baseName == binGh {
+				printInfo(cfg, "%s: managed by ghpm upgrade, skipping", name)
+				continue
+			}
 			p, ok := manifest.Extracts[name]
 			if !ok {
 				printInfo(cfg, "%s: not installed", name)
