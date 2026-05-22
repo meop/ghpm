@@ -29,7 +29,7 @@ func makeBinDir(t *testing.T, home string, files ...string) string {
 	return binDir
 }
 
-func TestCleanBrokenLinkage_MissingShim(t *testing.T) {
+func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -45,7 +45,7 @@ func TestCleanBrokenLinkage_MissingShim(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
-	cleanBrokenLinkage(nil, manifest, downloadDir)
+	cleanBrokenInstalls(nil, manifest, downloadDir)
 
 	if _, ok := manifest.Extracts["fzf"]; ok {
 		t.Error("manifest entry was not removed")
@@ -55,7 +55,7 @@ func TestCleanBrokenLinkage_MissingShim(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenLinkage_MissingExtract(t *testing.T) {
+func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -68,7 +68,7 @@ func TestCleanBrokenLinkage_MissingExtract(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
-	cleanBrokenLinkage(nil, manifest, downloadDir)
+	cleanBrokenInstalls(nil, manifest, downloadDir)
 
 	if _, ok := manifest.Extracts["fzf"]; ok {
 		t.Error("manifest entry was not removed")
@@ -79,7 +79,7 @@ func TestCleanBrokenLinkage_MissingExtract(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenLinkage_HealthyInstall(t *testing.T) {
+func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -96,7 +96,7 @@ func TestCleanBrokenLinkage_HealthyInstall(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
-	if cleaned := cleanBrokenLinkage(nil, manifest, downloadDir); cleaned {
+	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); cleaned {
 		t.Error("should not have reported anything to clean")
 	}
 	if _, ok := manifest.Extracts["fzf"]; !ok {
@@ -104,7 +104,7 @@ func TestCleanBrokenLinkage_HealthyInstall(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenLinkage_PartialShim(t *testing.T) {
+func TestCleanBrokenInstalls_PartialShim(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -121,7 +121,7 @@ func TestCleanBrokenLinkage_PartialShim(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"uv": {Version: "0.7.0", BinNames: []string{"uv", "uvx"}}},
 	}
 
-	if cleaned := cleanBrokenLinkage(nil, manifest, downloadDir); !cleaned {
+	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); !cleaned {
 		t.Error("should have reported partial shim to update manifest")
 	}
 	entry, ok := manifest.Extracts["uv"]
@@ -140,13 +140,12 @@ func TestCleanBrokenLinkage_PartialShim(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenLinkage_OrphanedShim(t *testing.T) {
+func TestCleanOrphanedBinShims_OrphanedShim(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
 	binDir := makeBinDir(t, home, "fzf", "orphan")
-	downloadDir := filepath.Join(home, ".ghpm", "download")
 	pkgsDir := filepath.Join(home, ".ghpm", "extract")
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
 		t.Fatal(err)
@@ -157,7 +156,7 @@ func TestCleanBrokenLinkage_OrphanedShim(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
-	cleanBrokenLinkage(nil, manifest, downloadDir)
+	cleanOrphanedBinShims(manifest)
 
 	if _, err := os.Lstat(filepath.Join(binDir, "fzf")); err != nil {
 		t.Error("fzf shim was removed but should have been kept")
@@ -167,20 +166,19 @@ func TestCleanBrokenLinkage_OrphanedShim(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenLinkage_KeepsSelfManaged(t *testing.T) {
+func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
 	binDir := makeBinDir(t, home, "gh", "ghpm", "orphan")
-	downloadDir := filepath.Join(home, ".ghpm", "download")
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{},
 		Extracts: map[string]config.PackageEntry{},
 	}
 
-	cleanBrokenLinkage(nil, manifest, downloadDir)
+	cleanOrphanedBinShims(manifest)
 
 	for _, name := range []string{"gh", "ghpm"} {
 		if _, err := os.Lstat(filepath.Join(binDir, name)); err != nil {
@@ -192,7 +190,7 @@ func TestCleanBrokenLinkage_KeepsSelfManaged(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenLinkage_OrphanedExtract(t *testing.T) {
+func TestCleanOrphanedExtracts_OrphanedExtract(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -201,19 +199,18 @@ func TestCleanBrokenLinkage_OrphanedExtract(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "orphan", "1.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	downloadDir := filepath.Join(home, ".ghpm", "download")
 
-	cleanBrokenLinkage(nil, &config.Manifest{
+	cleanOrphanedExtracts(&config.Manifest{
 		Repos:    map[string]string{},
 		Extracts: map[string]config.PackageEntry{},
-	}, downloadDir)
+	})
 
 	if _, err := os.Lstat(filepath.Join(pkgsDir, "orphan")); !os.IsNotExist(err) {
 		t.Error("orphan extract dir was not removed")
 	}
 }
 
-func TestCleanBrokenLinkage_StaleVersion(t *testing.T) {
+func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
 	home := withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -226,14 +223,13 @@ func TestCleanBrokenLinkage_StaleVersion(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	downloadDir := filepath.Join(home, ".ghpm", "download")
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
-	cleanBrokenLinkage(nil, manifest, downloadDir)
+	cleanOrphanedExtracts(manifest)
 
 	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.57.0")); !os.IsNotExist(err) {
 		t.Error("stale version 0.57.0 was not removed")
