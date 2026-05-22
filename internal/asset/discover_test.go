@@ -43,7 +43,7 @@ func fakeStdin(t *testing.T, input string) {
 	if _, err := w.WriteString(input); err != nil {
 		t.Fatal(err)
 	}
-	w.Close()
+	_ = w.Close()
 }
 
 func TestFindBinaries_Root(t *testing.T) {
