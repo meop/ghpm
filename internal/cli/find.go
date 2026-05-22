@@ -12,12 +12,14 @@ import (
 )
 
 func newFindCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "find [term...]",
 		Aliases: []string{"search"},
 		Short:   "List or search cached repos by name or source",
 		RunE:    runFind,
 	}
+	cmd.Flags().BoolVarP(&onlyNames, "only-names", "o", false, "Print names only, one per line")
+	return cmd
 }
 
 type repoMatch struct {
@@ -44,6 +46,12 @@ func runFind(cmd *cobra.Command, args []string) error {
 		slices.SortFunc(all, func(a, b repoMatch) int {
 			return cmp.Compare(a.name, b.name)
 		})
+		if onlyNames {
+			for _, m := range all {
+				fmt.Println(m.name)
+			}
+			return nil
+		}
 		rows := make([][]string, len(all))
 		for i, m := range all {
 			rows[i] = []string{m.name, m.source}
@@ -78,6 +86,12 @@ func runFind(cmd *cobra.Command, args []string) error {
 			return cmp.Compare(a.name, b.name)
 		})
 
+		if onlyNames {
+			for _, m := range matches {
+				fmt.Println(m.name)
+			}
+			continue
+		}
 		rows := make([][]string, len(matches))
 		for i, m := range matches {
 			rows[i] = []string{m.name, m.source}

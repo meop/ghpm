@@ -19,12 +19,14 @@ import (
 )
 
 func newUpgradeCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade ghpm and gh to their latest releases",
 		Args:  cobra.NoArgs,
 		RunE:  runUpgrade,
 	}
+	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	return cmd
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {

@@ -13,10 +13,11 @@ const (
 )
 
 var (
-	version  = "dev"
-	dryRun   bool
-	noVerify bool
-	yes      bool
+	version   = "dev"
+	dryRun    bool
+	noVerify  bool
+	onlyNames bool
+	yes       bool
 )
 
 func SetVersion(v string) { version = v }
@@ -67,7 +68,6 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 	root.Flags().Bool("version", false, "Print ghpm version")
 
 	root.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "Print execution only without running")
-	root.PersistentFlags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
 	root.PersistentFlags().BoolVarP(&yes, "yes", "y", false, "Yes for confirmation prompts")
 
 	root.SetHelpCommand(&cobra.Command{Hidden: true})

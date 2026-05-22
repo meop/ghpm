@@ -21,6 +21,7 @@ func newDownloadCmd() *cobra.Command {
 		RunE:  runDownload,
 	}
 	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/download/)")
+	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
 	return cmd
 }
 

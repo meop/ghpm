@@ -17,12 +17,14 @@ import (
 )
 
 func newSyncCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "sync [name...]",
 		Aliases: []string{"up", "update"},
 		Short:   "Sync packages to their latest releases",
 		RunE:    runSync,
 	}
+	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	return cmd
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
