@@ -117,6 +117,81 @@ func TestCleanOrphanedPackages_RemovesStaleVersion(t *testing.T) {
 	}
 }
 
+func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
+	home := withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir := filepath.Join(home, ".ghpm", "download")
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+	}
+
+	cleanBrokenInstalls(nil, manifest, downloadDir)
+
+	if _, ok := manifest.Extracts["fzf"]; ok {
+		t.Error("manifest entry was not removed")
+	}
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.58.0")); !os.IsNotExist(err) {
+		t.Error("extract dir was not removed")
+	}
+}
+
+func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
+	home := withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	makeBinDir(t, home, "fzf")
+	downloadDir := filepath.Join(home, ".ghpm", "download")
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+	}
+
+	cleanBrokenInstalls(nil, manifest, downloadDir)
+
+	if _, ok := manifest.Extracts["fzf"]; ok {
+		t.Error("manifest entry was not removed")
+	}
+	binDir := filepath.Join(home, ".ghpm", "bin")
+	if _, err := os.Lstat(filepath.Join(binDir, "fzf")); !os.IsNotExist(err) {
+		t.Error("shim was not removed")
+	}
+}
+
+func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
+	home := withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	makeBinDir(t, home, "fzf")
+	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir := filepath.Join(home, ".ghpm", "download")
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinName: "fzf"}},
+	}
+
+	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); cleaned {
+		t.Error("should not have reported anything to clean")
+	}
+	if _, ok := manifest.Extracts["fzf"]; !ok {
+		t.Error("manifest entry was incorrectly removed")
+	}
+}
+
 func TestCleanOrphanedShims_KeepsSelfManaged(t *testing.T) {
 	home := withHome(t)
 	yes = true

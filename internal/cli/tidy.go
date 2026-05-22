@@ -67,9 +67,10 @@ func runTidy(cmd *cobra.Command, args []string) error {
 			_ = os.MkdirAll(releaseDir, 0755)
 		}
 	} else {
+		cleaned := cleanBrokenInstalls(cfg, manifest, releaseDir)
 		if !cleanOrphanedReleases(cfg, releaseDir, manifest) &&
 			!cleanOrphanedPackages(cfg, manifest) &&
-			!cleanOrphanedShims(cfg, manifest) {
+			!cleanOrphanedShims(cfg, manifest) && !cleaned {
 			printInfo(cfg, "nothing to tidy")
 		}
 		return nil
@@ -79,6 +80,118 @@ func runTidy(cmd *cobra.Command, args []string) error {
 	cleanOrphanedShims(cfg, manifest)
 
 	return nil
+}
+
+func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releaseDir string) bool {
+	binDir, err := store.BinDir()
+	if err != nil {
+		return false
+	}
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		return false
+	}
+
+	type broken struct {
+		key           string
+		pkg           config.PackageEntry
+		shimMissing   bool
+		extractMissing bool
+	}
+	var entries []broken
+	for key, pkg := range manifest.Extracts {
+		if pkg.BinName == "" {
+			continue
+		}
+		shimName := key
+		if runtime.GOOS == "windows" {
+			shimName += ".cmd"
+		}
+		_, shimErr := os.Lstat(filepath.Join(binDir, shimName))
+		_, extractErr := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version))
+		if os.IsNotExist(shimErr) || os.IsNotExist(extractErr) {
+			entries = append(entries, broken{
+				key:            key,
+				pkg:            pkg,
+				shimMissing:    os.IsNotExist(shimErr),
+				extractMissing: os.IsNotExist(extractErr),
+			})
+		}
+	}
+	if len(entries) == 0 {
+		return false
+	}
+
+	fmt.Println()
+	for _, b := range entries {
+		var reasons []string
+		if b.shimMissing {
+			reasons = append(reasons, "shim missing")
+		}
+		if b.extractMissing {
+			reasons = append(reasons, "extract missing")
+		}
+		fmt.Printf("broken: %s (%s)\n", b.key, strings.Join(reasons, ", "))
+	}
+
+	if dryRun {
+		return true
+	}
+
+	if !promptConfirm(fmt.Sprintf("remove %d broken install(s) and their cached data", len(entries))) {
+		return true
+	}
+
+	for _, b := range entries {
+		shimName := b.key
+		if runtime.GOOS == "windows" {
+			shimName += ".cmd"
+		}
+		_ = os.Remove(filepath.Join(binDir, shimName))
+
+		extractVersionDir := filepath.Join(pkgsDir, b.key, b.pkg.Version)
+		_ = os.RemoveAll(extractVersionDir)
+		extractBaseDir := filepath.Join(pkgsDir, b.key)
+		if es, err := os.ReadDir(extractBaseDir); err == nil && len(es) == 0 {
+			_ = os.Remove(extractBaseDir)
+		}
+
+		baseName, _, _ := config.ParseVersionSuffix(b.key)
+		if src, ok := manifest.Repos[baseName]; ok {
+			relPath := strings.ReplaceAll(src, "/", string(filepath.Separator))
+			downloadVersionDir := filepath.Join(releaseDir, relPath, b.pkg.Version)
+			_ = os.RemoveAll(downloadVersionDir)
+			parent := filepath.Join(releaseDir, relPath)
+			for parent != releaseDir {
+				es, err := os.ReadDir(parent)
+				if err != nil || len(es) > 0 {
+					break
+				}
+				_ = os.Remove(parent)
+				parent = filepath.Dir(parent)
+			}
+		}
+
+		delete(manifest.Extracts, b.key)
+		baseName2, _, _ := config.ParseVersionSuffix(b.key)
+		hasOther := false
+		for k := range manifest.Extracts {
+			if n, _, _ := config.ParseVersionSuffix(k); n == baseName2 {
+				hasOther = true
+				break
+			}
+		}
+		if !hasOther {
+			delete(manifest.Repos, baseName2)
+		}
+	}
+
+	if err := config.SaveManifest(manifest); err != nil {
+		printFail(cfg, "could not save manifest: %v", err)
+		return true
+	}
+	printPass(cfg, "cleaned %d broken install(s)", len(entries))
+	return true
 }
 
 func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *config.Manifest) bool {
