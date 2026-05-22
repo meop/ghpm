@@ -23,6 +23,15 @@ func BinDir() (string, error) {
 	return dir, os.MkdirAll(dir, 0755)
 }
 
+func ShimDir() (string, error) {
+	base, err := ghpmDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "shim")
+	return dir, os.MkdirAll(dir, 0755)
+}
+
 func ExtractsDir() (string, error) {
 	base, err := ghpmDir()
 	if err != nil {

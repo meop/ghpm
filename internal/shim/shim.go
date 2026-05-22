@@ -3,35 +3,41 @@ package shim
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
 	"github.com/meop/ghpm/internal/store"
 )
 
-// Create installs a shim named shimName (the manifest key, e.g. "fzf" or "fzf@0.58")
-// pointing at binaryName inside pkgDir/binSubdir.
-// On Unix this is a symlink; on Windows a .cmd wrapper.
+func exeName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+// Create stamps a sheesh shim at ~/.ghpm/bin/shimName that execs the resolved
+// binary inside pkgDir/binSubdir when run. kebab selects the appropriate sheesh
+// template (console vs GUI on Windows) automatically.
 func Create(shimName, binaryName, pkgDir, binSubdir string) error {
+	shimDir, err := store.ShimDir()
+	if err != nil {
+		return err
+	}
+	kebabPath := filepath.Join(shimDir, exeName("kebab"))
+	if _, err := os.Stat(kebabPath); err != nil {
+		return fmt.Errorf("kebab not found at %s — run 'ghpm upgrade' to install sheesh", kebabPath)
+	}
+
 	binDir, err := store.BinDir()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(binDir, 0755); err != nil {
-		return err
-	}
 
-	if runtime.GOOS == "windows" {
-		target := filepath.Join(pkgDir, binSubdir, binaryName+".exe")
-		shimPath := filepath.Join(binDir, shimName+".cmd")
-		content := fmt.Sprintf("@\"%s\" %%*\r\n", target)
-		return os.WriteFile(shimPath, []byte(content), 0644)
-	}
-
-	target := filepath.Join(pkgDir, binSubdir, binaryName)
-	shimPath := filepath.Join(binDir, shimName)
-	_ = os.Remove(shimPath)
-	return os.Symlink(target, shimPath)
+	source := filepath.Join(pkgDir, binSubdir, exeName(binaryName))
+	target := filepath.Join(binDir, exeName(shimName))
+	return exec.Command(kebabPath, "--source-path", source, "--target-path", target).Run()
 }
 
 // Remove deletes the shim for shimName from ~/.ghpm/bin/.
@@ -40,12 +46,7 @@ func Remove(shimName string) error {
 	if err != nil {
 		return err
 	}
-	var err2 error
-	if runtime.GOOS == "windows" {
-		err2 = os.Remove(filepath.Join(binDir, shimName+".cmd"))
-	} else {
-		err2 = os.Remove(filepath.Join(binDir, shimName))
-	}
+	err2 := os.Remove(filepath.Join(binDir, exeName(shimName)))
 	if os.IsNotExist(err2) {
 		return nil
 	}
