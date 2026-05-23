@@ -56,6 +56,7 @@ func runTidy(cmd *cobra.Command, args []string) error {
 		if dryRun {
 			fmt.Printf("[dry-run] would remove all cached assets in %s\n", releaseDir)
 		} else {
+			fmt.Println()
 			if !promptConfirm(fmt.Sprintf("remove all cached assets in %s", releaseDir)) {
 				return nil
 			}
@@ -71,8 +72,17 @@ func runTidy(cmd *cobra.Command, args []string) error {
 	}
 
 	b1 := cleanBrokenInstalls(cfg, manifest, releaseDir)
+	if b1 {
+		fmt.Println()
+	}
 	b2 := cleanOrphanedBinShims(cfg, manifest)
+	if b2 {
+		fmt.Println()
+	}
 	b3 := cleanOrphanedExtracts(cfg, manifest)
+	if b3 {
+		fmt.Println()
+	}
 	b4 := cleanOrphanedReleases(cfg, releaseDir, manifest)
 	if !b1 && !b2 && !b3 && !b4 {
 		printInfo(cfg, "nothing to tidy")
@@ -158,6 +168,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		return true
 	}
 
+	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("fix %d broken install(s)", len(items))) {
 		return true
 	}
@@ -266,6 +277,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 		return true
 	}
 
+	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned shim(s)", len(paths))) {
 		return true
 	}
@@ -323,6 +335,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 		return true
 	}
 
+	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned extract(s)", len(paths))) {
 		return true
 	}
@@ -390,6 +403,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		return true
 	}
 
+	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d unused download(s)", len(toRemove))) {
 		return true
 	}

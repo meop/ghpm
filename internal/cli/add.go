@@ -255,7 +255,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
 
-	for _, res := range installResults {
+	for i, res := range installResults {
+		if i > 0 {
+			fmt.Println()
+		}
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
