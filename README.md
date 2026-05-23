@@ -22,7 +22,7 @@ irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubus
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a shim there — a symlink on Linux/macOS, a `.cmd` wrapper on Windows.
+After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a shim there — a symlink on Linux/macOS, an `.exe` shim on Windows.
 
 ## Usage
 
@@ -59,7 +59,6 @@ ghpm doctor               # check system health
 | Flag | Description |
 |---|---|
 | `--dry-run`, `-n` | Print what would be done without executing |
-| `--skip-verify`, `-s` | Skip SHA256 verification |
 | `--yes`, `-y` | Skip confirmation prompts |
 
 ### Version pinning
@@ -75,7 +74,7 @@ Manifest key and directory name both use the constraint as written (e.g., `fzf@1
 
 ### Portable app support
 
-ghpm extracts archives into `~/.ghpm/extracts/<key>/<version>/` and discovers the binary automatically. A shim is created in `~/.ghpm/bin/` pointing at the real binary inside the extract dir — a symlink on Linux/macOS, a `.cmd` wrapper on Windows. GitHub releases are portable apps — binaries locate their own resources via paths relative to the executable, so no other env vars are needed.
+ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the binary automatically. A shim is created in `~/.ghpm/bin/` pointing at the real binary inside the extract dir — a symlink on Linux/macOS, an `.exe` shim on Windows. GitHub releases are portable apps — binaries locate their own resources via paths relative to the executable, so no other env vars are needed.
 
 ### Configuration
 
@@ -113,8 +112,8 @@ Package repos map simple names like `fzf` to GitHub repos. `ghpm update` refresh
 ## How it works
 
 - All GitHub interaction goes through the `gh` CLI — no GitHub SDK
-- Release assets are cached in `~/.ghpm/releases/github.com/<owner>/<repo>/<version>/`
-- Packages are extracted to `~/.ghpm/extracts/<key>/<version>/` with full directory structure
+- Release assets are cached in `~/.ghpm/download/github.com/<owner>/<repo>/<version>/`
+- Packages are extracted to `~/.ghpm/extract/<key>/<version>/` with full directory structure
 - A shim in `~/.ghpm/bin/` points at the binary in each package's extract dir
 - State is tracked in `~/.ghpm/manifest.json`
 - Sigstore attestation verification runs by default via `gh release verify-asset`; silently skipped if no attestation exists
