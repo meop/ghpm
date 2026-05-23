@@ -156,7 +156,7 @@ func TestCleanOrphanedBinShims_OrphanedShim(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
-	cleanOrphanedBinShims(manifest)
+	cleanOrphanedBinShims(nil, manifest)
 
 	if _, err := os.Lstat(filepath.Join(binDir, "fzf")); err != nil {
 		t.Error("fzf shim was removed but should have been kept")
@@ -178,7 +178,7 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{},
 	}
 
-	cleanOrphanedBinShims(manifest)
+	cleanOrphanedBinShims(nil, manifest)
 
 	for _, name := range []string{"gh", "ghpm"} {
 		if _, err := os.Lstat(filepath.Join(binDir, name)); err != nil {
@@ -200,7 +200,7 @@ func TestCleanOrphanedExtracts_OrphanedExtract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cleanOrphanedExtracts(&config.Manifest{
+	cleanOrphanedExtracts(nil, &config.Manifest{
 		Repos:    map[string]string{},
 		Extracts: map[string]config.PackageEntry{},
 	})
@@ -229,7 +229,7 @@ func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", BinNames: []string{"fzf"}}},
 	}
 
-	cleanOrphanedExtracts(manifest)
+	cleanOrphanedExtracts(nil, manifest)
 
 	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.57.0")); !os.IsNotExist(err) {
 		t.Error("stale version 0.57.0 was not removed")
