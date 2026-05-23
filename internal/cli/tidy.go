@@ -71,8 +71,8 @@ func runTidy(cmd *cobra.Command, args []string) error {
 	}
 
 	b1 := cleanBrokenInstalls(cfg, manifest, releaseDir)
-	b2 := cleanOrphanedBinShims(manifest)
-	b3 := cleanOrphanedExtracts(manifest)
+	b2 := cleanOrphanedBinShims(cfg, manifest)
+	b3 := cleanOrphanedExtracts(cfg, manifest)
 	b4 := cleanOrphanedReleases(cfg, releaseDir, manifest)
 	if !b1 && !b2 && !b3 && !b4 {
 		printInfo(cfg, "nothing to tidy")
@@ -151,14 +151,13 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 
 	slices.SortFunc(items, func(a, b item) int { return strings.Compare(a.display, b.display) })
 	for _, it := range items {
-		fmt.Println(it.display)
+		printWarn(cfg, "%s", it.display)
 	}
 
 	if dryRun {
 		return true
 	}
 
-	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("fix %d broken install(s)", len(items))) {
 		return true
 	}
@@ -231,7 +230,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 }
 
 // cleanOrphanedBinShims removes files in bin/ that have no corresponding manifest entry.
-func cleanOrphanedBinShims(manifest *config.Manifest) bool {
+func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool {
 	binDir, err := store.BinDir()
 	if err != nil {
 		return false
@@ -260,14 +259,13 @@ func cleanOrphanedBinShims(manifest *config.Manifest) bool {
 	}
 
 	for _, d := range displays {
-		fmt.Println(d)
+		printWarn(cfg, "%s", d)
 	}
 
 	if dryRun {
 		return true
 	}
 
-	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned shim(s)", len(paths))) {
 		return true
 	}
@@ -279,7 +277,7 @@ func cleanOrphanedBinShims(manifest *config.Manifest) bool {
 }
 
 // cleanOrphanedExtracts removes extract dirs (or stale version subdirs) with no manifest entry.
-func cleanOrphanedExtracts(manifest *config.Manifest) bool {
+func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool {
 	pkgsDir, err := store.ExtractsDir()
 	if err != nil {
 		return false
@@ -318,14 +316,13 @@ func cleanOrphanedExtracts(manifest *config.Manifest) bool {
 	}
 
 	for _, d := range displays {
-		fmt.Println(d)
+		printWarn(cfg, "%s", d)
 	}
 
 	if dryRun {
 		return true
 	}
 
-	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned extract(s)", len(paths))) {
 		return true
 	}
@@ -383,9 +380,9 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		rel, _ := filepath.Rel(releaseDir, p)
 		parts := strings.Split(rel, string(filepath.Separator))
 		if len(parts) >= 5 {
-			fmt.Printf("%s: unused download (%s)\n", parts[2], parts[len(parts)-1])
+			printWarn(cfg, "%s: unused download (%s|%s)", parts[2], parts[3], parts[len(parts)-1])
 		} else {
-			fmt.Printf("%s\n", rel)
+			printWarn(cfg, "%s", rel)
 		}
 	}
 
@@ -393,7 +390,6 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		return true
 	}
 
-	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("remove %d unused download(s)", len(toRemove))) {
 		return true
 	}
