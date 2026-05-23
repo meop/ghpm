@@ -1,4 +1,4 @@
-# AGENTS.md
+# CLAUDE.md
 
 Build/test/lint commands for this project.
 
@@ -38,7 +38,7 @@ GOOS=windows GOARCH=arm64 go build -o ghpm-windows-arm64.exe ./cmd/ghpm
 - `internal/config/` — manifest, settings, name resolution, semver, locking
 - `internal/gh/` — gh CLI wrapper (all GitHub interaction via `os/exec`)
 - `internal/asset/` — asset matching, extraction, SHA verification
-- `internal/shim/` — shim creation/removal (symlink on Unix, .cmd on Windows)
+- `internal/shim/` — shim creation/removal (symlink on Unix, .exe on Windows via sheesh/kebab)
 - `internal/store/` — path helpers for ~/.ghpm/ directories
 - `internal/parallel/` — bounded worker pool
 
@@ -46,7 +46,8 @@ GOOS=windows GOARCH=arm64 go build -o ghpm-windows-arm64.exe ./cmd/ghpm
 
 - All GitHub interaction goes through `gh` CLI, never a Go SDK
 - Manifest is read/written by the orchestrator goroutine only (not by parallel workers)
-- Mutating commands (install, update, clean) acquire a file lock via `config.AcquireLock()` to prevent concurrent runs
+- Mutating commands (add, sync, tidy, upgrade) acquire a file lock via `config.AcquireLock()` to prevent concurrent runs
 - Package names must be simple filenames (no slashes) — enforced by `config.ValidateName`
-- Versioned binaries use `@` separator: `fzf@0.70.0`
-- Repos cached under `~/.ghpm/repos/github.com/<owner>/<repo>/repos.yaml`, refreshed only during `ghpm update`
+- Versioned packages use `@` separator in manifest keys: `fzf@14`, `fzf@14.1`, `fzf@14.1.0`
+- Bin names stored in manifest include the full filename (`bun.exe` on Windows, `bun` on Unix)
+- Repos cached under `~/.ghpm/repo/github.com/<owner>/<repo>/repos.yaml`, refreshed only during `ghpm refresh`
