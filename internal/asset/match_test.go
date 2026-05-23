@@ -86,8 +86,8 @@ func TestTokenize(t *testing.T) {
 		input string
 		want  []string
 	}{
-		{"claude-win32_x64.zip", []string{"claude", "win32", "x64.zip"}},
-		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"tool", "unknown", "linux", "gnu", "x86", "64.tar.gz"}},
+		{"claude-win32_x64.zip", []string{"claude", "win32_x64.zip"}},
+		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"tool", "unknown", "linux", "gnu", "x86_64.tar.gz"}},
 		{"MyTool Darwin ARM64", []string{"mytool", "darwin", "arm64"}},
 	}
 	for _, c := range cases {
@@ -104,24 +104,26 @@ func TestHasTokenPrefix(t *testing.T) {
 		prefixes []string
 		want     bool
 	}{
-		// darwin must NOT match "win" prefix
-		{"tool-darwin-amd64.tar.gz", []string{"win"}, false},
-		// darwin matches "dar"
-		{"tool-darwin-amd64.tar.gz", []string{"dar", "mac"}, true},
-		// windows matches "win"
-		{"tool-windows-x64.zip", []string{"win"}, true},
-		// linux matches "lin"
-		{"tool-linux-amd64.tar.gz", []string{"lin"}, true},
-		// macos matches "mac"
-		{"tool-macos-arm64.tar.gz", []string{"dar", "mac"}, true},
+		// darwin must NOT match "windows" prefix
+		{"tool-darwin-amd64.tar.gz", []string{"windows"}, false},
+		// darwin matches "darwin"
+		{"tool-darwin-amd64.tar.gz", []string{"darwin", "macos"}, true},
+		// windows matches "windows"
+		{"tool-windows-x64.zip", []string{"windows"}, true},
+		// linux matches "linux"
+		{"tool-linux-amd64.tar.gz", []string{"linux"}, true},
+		// lint must NOT match linux prefix (golangci-lint false-positive)
+		{"golangci-lint-1.0-darwin-amd64.tar.gz", []string{"linux"}, false},
+		// macos matches "macos"
+		{"tool-macos-arm64.tar.gz", []string{"darwin", "macos"}, true},
 		// osx matches "osx"
-		{"tool-osx-arm64.tar.gz", []string{"dar", "mac", "osx"}, true},
-		// win32 token matches "win"
-		{"claude-win32_x64.zip", []string{"win"}, true},
-		// x86_64 — "x86" token matches "x86"
-		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"x64", "x86", "amd"}, true},
-		// aarch64 matches "aarch"
-		{"tool-linux-aarch64.tar.gz", []string{"arm", "aarch"}, true},
+		{"tool-osx-arm64.tar.gz", []string{"darwin", "macos", "osx"}, true},
+		// win32_x64 does NOT match "windows" (ambiguous short prefix excluded)
+		{"claude-win32_x64.zip", []string{"windows"}, false},
+		// x86_64 stays whole (dash-only tokenize), matches x86_64 prefix
+		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"x86_64", "x64", "amd64"}, true},
+		// aarch64 matches "aarch64"
+		{"tool-linux-aarch64.tar.gz", []string{"arm64", "aarch64"}, true},
 	}
 	for _, c := range cases {
 		got := hasTokenPrefix(c.name, c.prefixes)
@@ -169,8 +171,8 @@ func TestStripVersionTokens(t *testing.T) {
 	}{
 		{"ghpm-0.1.6-darwin-amd64.tar.gz", []string{"ghpm", "darwin", "amd64.tar.gz"}},
 		{"ghpm-0.1.7-darwin-amd64.tar.gz", []string{"ghpm", "darwin", "amd64.tar.gz"}},
-		{"fzf-0.56.0-linux_amd64.tar.gz", []string{"fzf", "linux", "amd64.tar.gz"}},
-		{"fzf-0.71.0-linux_amd64.tar.gz", []string{"fzf", "linux", "amd64.tar.gz"}},
+		{"fzf-0.56.0-linux_amd64.tar.gz", []string{"fzf", "linux_amd64.tar.gz"}},
+		{"fzf-0.71.0-linux_amd64.tar.gz", []string{"fzf", "linux_amd64.tar.gz"}},
 		{"bun-v1.3.13-linux-x64.zip", []string{"bun", "linux", "x64.zip"}},
 		{"bun-v1.3.14-linux-x64.zip", []string{"bun", "linux", "x64.zip"}},
 		{"ghpm-0.1.7-darwin-amd64-something.tar.gz", []string{"ghpm", "darwin", "amd64", "something.tar.gz"}},
@@ -264,7 +266,7 @@ func TestScoreAsset_HasNegative(t *testing.T) {
 		{"tool-generic.tar.gz", false},
 	}
 	for _, c := range cases {
-		_, got := scoreAsset(c.name, "")
+		got := scoreAsset(c.name, "").hasNeg
 		if got != c.wantNeg {
 			t.Errorf("scoreAsset(%q) hasNeg = %v, want %v", c.name, got, c.wantNeg)
 		}

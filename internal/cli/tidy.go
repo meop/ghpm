@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 
@@ -110,9 +109,6 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		var missingBinNames []string
 		for _, binName := range pkg.BinNames {
 			sn := binShimName(key, binName)
-			if runtime.GOOS == "windows" {
-				sn += ".cmd"
-			}
 			sp := filepath.Join(binDir, sn)
 			shimPaths = append(shimPaths, sp)
 			if _, err := os.Lstat(sp); os.IsNotExist(err) {
@@ -244,12 +240,7 @@ func cleanOrphanedBinShims(manifest *config.Manifest) bool {
 	expected := map[string]bool{exeName(binGh): true, exeName(binGhpm): true}
 	for key, pkg := range manifest.Extracts {
 		for _, binName := range pkg.BinNames {
-			sn := binShimName(key, binName)
-			if runtime.GOOS == "windows" {
-				expected[sn+".cmd"] = true
-			} else {
-				expected[sn] = true
-			}
+			expected[binShimName(key, binName)] = true
 		}
 	}
 

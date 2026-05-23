@@ -48,7 +48,7 @@ func FindBinaries(pkgDir, name string) []BinaryCandidate {
 			}
 			seen[path] = true
 			ensureExecutable(path)
-			matches = append(matches, BinaryCandidate{BinDir: filepath.ToSlash(rel), BinName: base})
+			matches = append(matches, BinaryCandidate{BinDir: filepath.ToSlash(rel), BinName: e.Name()})
 		}
 	}
 
