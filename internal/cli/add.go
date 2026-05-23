@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -218,14 +219,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		installTasks[i] = parallel.Task{
 			Name: r.job.name,
 			Run: func() (any, error) {
-				printInfo(cfg, "%s: downloading %s...", r.job.name, config.NormalizeVersion(r.release.TagName))
 				owner, repo, _ := gh.SplitSource(r.job.source)
 				cacheDir, err := store.ReleaseDir(r.job.source, r.release.TagName)
 				if err != nil {
 					return nil, err
 				}
-				if err := gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
-					return nil, err
+				if _, err := os.Stat(filepath.Join(cacheDir, r.chosen.Name)); os.IsNotExist(err) {
+					printInfo(cfg, "%s: downloading %s...", r.job.name, config.NormalizeVersion(r.release.TagName))
+					if err := gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
+						return nil, err
+					}
 				}
 				if !noVerify {
 					_, err := asset.Verify(owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
