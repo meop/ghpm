@@ -2,6 +2,7 @@ package cli
 
 import (
 	"runtime"
+	"strings"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/spf13/cobra"
@@ -34,6 +35,9 @@ func binShimName(key, binName string) string {
 	_, ver, pinned := config.ParseVersionSuffix(key)
 	if !pinned {
 		return binName
+	}
+	if strings.HasSuffix(binName, ".exe") {
+		return binName[:len(binName)-4] + "@" + ver + ".exe"
 	}
 	return binName + "@" + ver
 }

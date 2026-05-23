@@ -35,8 +35,8 @@ func Create(shimName, binaryName, pkgDir, binSubdir string) error {
 		return err
 	}
 
-	source := filepath.Join(pkgDir, binSubdir, exeName(binaryName))
-	target := filepath.Join(binDir, exeName(shimName))
+	source := filepath.Join(pkgDir, binSubdir, binaryName)
+	target := filepath.Join(binDir, shimName)
 	return exec.Command(kebabPath, "--source-path", source, "--target-path", target).Run()
 }
 
@@ -46,7 +46,7 @@ func Remove(shimName string) error {
 	if err != nil {
 		return err
 	}
-	err2 := os.Remove(filepath.Join(binDir, exeName(shimName)))
+	err2 := os.Remove(filepath.Join(binDir, shimName))
 	if os.IsNotExist(err2) {
 		return nil
 	}

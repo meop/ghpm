@@ -17,14 +17,14 @@ import (
 var ErrSkip = errors.New("skipped")
 
 var osPrefixes = map[string][]string{
-	"linux":   {"lin"},
-	"darwin":  {"dar", "mac", "osx"},
-	"windows": {"win"},
+	"linux":   {"linux"},
+	"darwin":  {"darwin", "macos", "osx"},
+	"windows": {"windows"},
 }
 
 var archPrefixes = map[string][]string{
-	"amd64": {"amd", "x64", "x86"},
-	"arm64": {"arm", "aarch"},
+	"amd64": {"amd64", "x86_64", "x64"},
+	"arm64": {"arm64", "aarch64"},
 }
 
 var allowedSuffixes = []string{
@@ -46,7 +46,7 @@ func isSkipped(name string) bool {
 
 func Tokenize(name string) []string {
 	return strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
-		return r == '-' || r == '_' || r == ' '
+		return r == '-' || r == ' '
 	})
 }
 
@@ -59,47 +59,65 @@ func hasTokenPrefix(name string, prefixes []string) bool {
 				return true
 			}
 		}
+		// also check underscore sub-segments (e.g. linux_amd64 → amd64)
+		if strings.Contains(token, "_") {
+			for _, sub := range strings.Split(token, "_") {
+				for _, prefix := range prefixes {
+					if strings.HasPrefix(sub, prefix) {
+						return true
+					}
+				}
+			}
+		}
 	}
 	return false
 }
 
-func scoreAsset(name, pkgName string) (int, bool) {
+type scoreResult struct {
+	score     int
+	hasNeg    bool
+	osMatch   bool
+	archMatch bool
+}
+
+func scoreAsset(name, pkgName string) scoreResult {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	score := 0
-	hasNeg := false
+	var r scoreResult
 
 	if pkgName != "" && hasTokenPrefix(name, []string{pkgName}) {
-		score++
+		r.score++
 	}
 
 	if prefixes, ok := osPrefixes[goos]; ok && hasTokenPrefix(name, prefixes) {
-		score++
+		r.score++
+		r.osMatch = true
 	} else {
 		for os, prefixes := range osPrefixes {
 			if os != goos && hasTokenPrefix(name, prefixes) {
-				hasNeg = true
+				r.hasNeg = true
 				break
 			}
 		}
 	}
 
 	if prefixes, ok := archPrefixes[goarch]; ok && hasTokenPrefix(name, prefixes) {
-		score++
+		r.score++
+		r.archMatch = true
 	} else {
 		for arch, prefixes := range archPrefixes {
 			if arch != goarch && hasTokenPrefix(name, prefixes) {
-				hasNeg = true
+				r.hasNeg = true
 				break
 			}
 		}
 	}
 
 	if goos == "windows" && strings.HasSuffix(strings.ToLower(name), ".exe") {
-		score++
+		r.score++
 	}
 
-	return score, hasNeg
+	return r
 }
 
 type AssetCandidates struct {
@@ -127,14 +145,16 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	}
 
 	type candidateScore struct {
-		asset  gh.Asset
-		score  int
-		hasNeg bool
+		asset     gh.Asset
+		score     int
+		hasNeg    bool
+		osMatch   bool
+		archMatch bool
 	}
 	all := make([]candidateScore, 0, len(candidates))
 	for _, a := range candidates {
-		s, neg := scoreAsset(a.Name, pkgName)
-		all = append(all, candidateScore{a, s, neg})
+		sr := scoreAsset(a.Name, pkgName)
+		all = append(all, candidateScore{a, sr.score, sr.hasNeg, sr.osMatch, sr.archMatch})
 	}
 
 	var compatible, hidden []candidateScore
@@ -159,23 +179,27 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 		}
 	}
 
-	var best []gh.Asset
+	var best []candidateScore
 	for _, c := range workingSet {
 		if maxScore == 0 || c.score == maxScore {
-			best = append(best, c.asset)
+			best = append(best, c)
 		}
 	}
 
-	if len(best) == 1 {
-		return AssetCandidates{Chosen: best[0], All: candidates}, nil
+	if len(best) == 1 && best[0].osMatch && best[0].archMatch {
+		return AssetCandidates{Chosen: best[0].asset, All: candidates}, nil
 	}
 
+	var bestAssets []gh.Asset
+	for _, c := range best {
+		bestAssets = append(bestAssets, c.asset)
+	}
 	var hiddenAssets []gh.Asset
 	for _, c := range hidden {
 		hiddenAssets = append(hiddenAssets, c.asset)
 	}
 
-	return AssetCandidates{Compatible: best, Hidden: hiddenAssets, All: candidates}, nil
+	return AssetCandidates{Compatible: bestAssets, Hidden: hiddenAssets, All: candidates}, nil
 }
 
 func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint, pkgName string) (gh.Asset, error) {
