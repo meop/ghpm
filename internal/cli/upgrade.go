@@ -377,15 +377,14 @@ func replaceSelf(src, dst string) error {
 	if runtime.GOOS != "windows" {
 		return os.Rename(src, dst)
 	}
-	old := dst + ".old"
-	_ = os.Remove(old)
-	if err := os.Rename(dst, old); err != nil {
+	bak := filepath.Join(os.TempDir(), filepath.Base(dst)+".bak")
+	_ = os.Remove(bak)
+	if err := os.Rename(dst, bak); err != nil {
 		return err
 	}
 	if err := os.Rename(src, dst); err != nil {
-		_ = os.Rename(old, dst)
+		_ = os.Rename(bak, dst)
 		return err
 	}
-	_ = os.Remove(old)
 	return nil
 }
