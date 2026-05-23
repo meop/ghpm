@@ -182,16 +182,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	rows := make([][]string, len(ready))
+	for i, r := range ready {
+		rows[i] = []string{r.key, r.pkg.Pin, r.pkg.Version, config.NormalizeVersion(r.release.TagName), r.chosen.Name, r.source}
+	}
+	colors := []func(string) string{nil, nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
+	printTable([]string{"name", "pin", "version", "update", "asset", "repo"}, rows, colors)
+
 	if dryRun {
-		rows := make([][]string, len(ready))
-		for i, r := range ready {
-			rows[i] = []string{r.key, r.pkg.Pin, r.pkg.Version, config.NormalizeVersion(r.release.TagName), r.chosen.Name, r.source}
-		}
-		colors := []func(string) string{nil, nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
-		printTable([]string{"name", "pin", "version", "update", "asset", "repo"}, rows, colors)
 		return nil
 	}
 
+	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("update %d package(s)", len(ready))) {
 		return nil
 	}
@@ -235,7 +237,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for _, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
+	for i, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
+		if i > 0 {
+			fmt.Println()
+		}
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
