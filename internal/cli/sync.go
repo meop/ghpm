@@ -201,14 +201,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 		syncTasks[i] = parallel.Task{
 			Name: r.key,
 			Run: func() (any, error) {
-				printInfo(cfg, "%s: downloading %s...", r.key, config.NormalizeVersion(r.release.TagName))
 				owner, repo, _ := gh.SplitSource(r.source)
 				cacheDir, err := store.ReleaseDir(r.source, r.release.TagName)
 				if err != nil {
 					return nil, err
 				}
-				if err := gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
-					return nil, err
+				if _, err := os.Stat(filepath.Join(cacheDir, r.chosen.Name)); os.IsNotExist(err) {
+					printInfo(cfg, "%s: downloading %s...", r.key, config.NormalizeVersion(r.release.TagName))
+					if err := gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
+						return nil, err
+					}
 				}
 				if !noVerify {
 					_, err := asset.Verify(owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
