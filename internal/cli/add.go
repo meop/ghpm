@@ -318,7 +318,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		for i, s := range selected {
 			rawKeys[i] = s.Key()
 		}
-		printInfo(cfg, "%s: binary %s", r.job.name, strings.Join(rawKeys, ", "))
+		printInfo(cfg, "%s: bin %s", r.job.name, strings.Join(rawKeys, ", "))
 		key := r.job.key()
 		_, _, pinned := config.ParseVersionSuffix(key)
 		proposed := proposedShimNames(key, selected)
@@ -382,9 +382,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			rows[i] = []string{r.pkg, r.binary, r.shim}
 		}
 		fmt.Println()
-		printTable([]string{"name", "binary", "shim"}, rows, nil)
+		printTable([]string{"name", "bin", "target"}, rows, nil)
 		fmt.Println()
-		if !promptConfirm(fmt.Sprintf("create %d shim(s)", len(shimRows))) {
+		if !promptConfirm(fmt.Sprintf("create %d bin(s)", len(shimRows))) {
 			if hadErrors {
 				return errSilent
 			}

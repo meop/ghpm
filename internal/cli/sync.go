@@ -271,7 +271,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		for i, s := range selected {
 			rawKeys[i] = s.Key()
 		}
-		printInfo(cfg, "%s: binary %s", r.key, strings.Join(rawKeys, ", "))
+		printInfo(cfg, "%s: bin %s", r.key, strings.Join(rawKeys, ", "))
 		for shimName := range r.pkg.Bins {
 			_ = shim.Remove(shimName)
 		}
