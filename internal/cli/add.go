@@ -118,6 +118,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			name = repoName
 		}
 
+		printTitle(name)
+
 		if name == binGhpm || name == binGh {
 			printInfo(cfg, "%s: self managed, skipping", name)
 			continue
@@ -138,7 +140,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			var found bool
 			source, found = config.LookupSource(name, manifest, repos)
 			if !found {
-				printInfo(cfg, "repo not defined")
 				var err error
 				source, err = config.SearchGitHub(name)
 				if err != nil {
@@ -147,7 +148,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					continue
 				}
 			}
-			printInfo(cfg, "repo defined: %s", source)
+			printInfo(cfg, "repo: %s", source)
 		}
 
 		jobKey := name
@@ -198,6 +199,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			printFail(cfg, "%v", err)
 			hadErrors = true
 			continue
+		}
+		if ac.Chosen.Name == "" {
+			sep()
 		}
 		chosen, err := asset.PromptFromCandidates(ac)
 		if errors.Is(err, asset.ErrSkip) {
@@ -290,10 +294,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	var shimPlans []shimPlan
 
-	for i, res := range installResults {
-		if i > 0 {
-			fmt.Println()
-		}
+	for _, res := range installResults {
+		sep()
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
@@ -305,6 +307,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		pkgDir, _ := store.ExtractDir(r.job.key(), config.NormalizeVersion(r.release.TagName))
 		candidates := asset.FindBinaries(pkgDir, r.job.name)
+		if len(candidates) > 1 {
+			sep()
+		}
 		selected, discoverErr := asset.SelectBinaries(candidates, r.job.name, nil)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue
@@ -342,6 +347,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		shimNames := proposed
 		if hasReservedConflict(proposed, reserved) || (!pinned && needsShimRenamePrompt(r.job.name, selected)) {
+			sep()
 			var promptErr error
 			shimNames, promptErr = asset.PromptShimRenames(r.job.name, rawKeys, proposed, reserved)
 			if errors.Is(promptErr, asset.ErrSkip) {
@@ -446,8 +452,6 @@ func promptInstall(ready []jobWithRelease) bool {
 		rows[i] = []string{r.job.key(), r.job.pin(), config.NormalizeVersion(r.release.TagName), r.chosen.Name, r.job.source}
 	}
 	colors := []func(string) string{nil, nil, colorfn(installCfg, "new"), nil, nil}
-	fmt.Println()
 	printTable([]string{"name", "pin", "update", "asset", "repo"}, rows, colors)
-	fmt.Println()
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

@@ -12,6 +12,20 @@ import (
 
 var errSilent = errors.New("")
 
+var hasOutput bool
+
+func sep() {
+	if hasOutput {
+		fmt.Println()
+	}
+	hasOutput = true
+}
+
+func printTitle(s string) {
+	sep()
+	fmt.Println(s)
+}
+
 var defaultColorNames = map[string]color.Attribute{
 	"black":   color.FgBlack,
 	"red":     color.FgRed,
@@ -41,6 +55,7 @@ func colorfn(cfg *config.Settings, role string) func(string) string {
 }
 
 func printInfo(cfg *config.Settings, format string, args ...any) {
+	hasOutput = true
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "info"); fn != nil {
 		fmt.Println(fn("› " + msg))
@@ -50,6 +65,7 @@ func printInfo(cfg *config.Settings, format string, args ...any) {
 }
 
 func printWarn(cfg *config.Settings, format string, args ...any) {
+	hasOutput = true
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "warn"); fn != nil {
 		fmt.Println(fn("‼ " + msg))
@@ -59,6 +75,7 @@ func printWarn(cfg *config.Settings, format string, args ...any) {
 }
 
 func printFail(cfg *config.Settings, format string, args ...any) {
+	hasOutput = true
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "fail"); fn != nil {
 		fmt.Println(fn("✗ " + msg))
@@ -68,6 +85,7 @@ func printFail(cfg *config.Settings, format string, args ...any) {
 }
 
 func printPass(cfg *config.Settings, format string, args ...any) {
+	hasOutput = true
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "pass"); fn != nil {
 		fmt.Println(fn("✓ " + msg))
@@ -76,10 +94,8 @@ func printPass(cfg *config.Settings, format string, args ...any) {
 	}
 }
 
-// printTable prints a table with dynamic column widths.
-// colColors is per-column; nil entry or nil slice means no color for that column.
-// Colors are applied only to data rows, not headers or separator.
 func printTable(headers []string, rows [][]string, colColors []func(string) string) {
+	sep()
 	widths := make([]int, len(headers))
 	for i, h := range headers {
 		widths[i] = len(h)
