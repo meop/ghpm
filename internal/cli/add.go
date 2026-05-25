@@ -307,9 +307,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		pkgDir, _ := store.ExtractDir(r.job.key(), config.NormalizeVersion(r.release.TagName))
 		candidates := asset.FindBinaries(pkgDir, r.job.name)
-		if len(candidates) > 1 {
-			sep()
-		}
 		selected, discoverErr := asset.SelectBinaries(candidates, r.job.name, nil)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue

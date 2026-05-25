@@ -103,9 +103,9 @@ func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[
 		}
 		first = false
 		if anyConflict {
-			fmt.Printf("%s: bin conflicts — rename required (0 to cancel):\n", pkgName)
+			fmt.Printf("%s: bin conflicts — rename required:\n", pkgName)
 		} else {
-			fmt.Printf("%s: bin name(s) — enter number(s) to rename (empty to accept):\n", pkgName)
+			fmt.Printf("%s: bin name(s)\n", pkgName)
 		}
 		for i, shimName := range result {
 			entry := fmt.Sprintf("  %d) %s", i+1, shimName)
@@ -119,7 +119,11 @@ func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[
 			}
 			fmt.Println(entry)
 		}
-		fmt.Print("enter number(s): ")
+		if anyConflict {
+			fmt.Print("enter number(s) to rename (0=cancel): ")
+		} else {
+			fmt.Print("enter number(s) to rename (empty=none): ")
+		}
 
 		input, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		input = strings.TrimSpace(input)
@@ -222,9 +226,13 @@ func SelectBinaries(candidates []BinaryCandidate, name string, prevKeys []string
 
 	fmt.Printf("%s: choose bin(s)\n", name)
 	for i, c := range candidates {
-		fmt.Printf("  %d) %s\n", i+1, c.Key())
+		entry := fmt.Sprintf("  %d) %s", i+1, c.BinName)
+		if c.Key() != c.BinName {
+			entry += fmt.Sprintf("  [%s]", c.Key())
+		}
+		fmt.Println(entry)
 	}
-	fmt.Printf("enter number(s) (0 to skip, 1-%d or 1,x for multiple, empty=all): ", len(candidates))
+	fmt.Printf("enter number(s) (0=skip, empty=all, 1-%d or 1,x for multiple): ", len(candidates))
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 
@@ -306,8 +314,7 @@ func sameStringSet(a, b []string) bool {
 func isBinaryFile(path string) bool {
 	switch runtime.GOOS {
 	case "windows":
-		_, err := os.Stat(path)
-		return err == nil
+		return strings.HasSuffix(strings.ToLower(path), ".exe")
 	case "darwin":
 		return hasMachOMagic(path)
 	default:

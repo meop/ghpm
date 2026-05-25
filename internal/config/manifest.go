@@ -11,7 +11,7 @@ type PackageEntry struct {
 	Version   string            `json:"version"`
 	AssetName string            `json:"asset_name"`
 	BinDir    string            `json:"bin_dir,omitempty"`
-	Bins      map[string]string `json:"bins,omitempty"`
+	Bins      map[string]string `json:"bin,omitempty"`
 }
 
 type Manifest struct {

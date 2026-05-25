@@ -53,12 +53,12 @@ func TestSelectAsset_ExactHint(t *testing.T) {
 		{Name: "fzf-0.56.0-linux_amd64.tar.gz", Size: 1000},
 		{Name: "fzf-0.56.0-darwin_amd64.tar.gz", Size: 1000},
 	}
-	chosen, err := SelectAsset(assets, testCfg(), "fzf-0.56.0-linux_amd64.tar.gz", "")
+	ac, err := SelectAssetAuto(assets, testCfg(), "fzf-0.56.0-linux_amd64.tar.gz", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chosen.Name != "fzf-0.56.0-linux_amd64.tar.gz" {
-		t.Errorf("unexpected choice: %s", chosen.Name)
+	if ac.Chosen.Name != "fzf-0.56.0-linux_amd64.tar.gz" {
+		t.Errorf("unexpected choice: %s", ac.Chosen.Name)
 	}
 }
 
@@ -72,12 +72,12 @@ func TestSelectAsset_PlatformMatch(t *testing.T) {
 		{Name: "tool-windows-amd64.zip", Size: 100},
 		{Name: "tool-linux-amd64.tar.gz.sha256", Size: 10},
 	}
-	chosen, err := SelectAsset(assets, testCfg(), "", "")
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chosen.Name != "tool-linux-amd64.tar.gz" {
-		t.Errorf("unexpected choice: %s", chosen.Name)
+	if ac.Chosen.Name != "tool-linux-amd64.tar.gz" {
+		t.Errorf("unexpected choice: %s", ac.Chosen.Name)
 	}
 }
 
