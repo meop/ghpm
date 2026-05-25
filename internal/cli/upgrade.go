@@ -78,11 +78,11 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
-	sep()
 	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
 		fmt.Printf("ghpm: %s is already the latest\n", version)
 		return nil
 	}
+	sep()
 	fmt.Printf("ghpm: upgrading %s → %s\n", version, latestVer)
 
 	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGhpm)
@@ -186,11 +186,11 @@ func upgradeGh(cfg *config.Settings) error {
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
-	sep()
 	if currentVer == latestVer {
 		fmt.Printf("gh: %s is already the latest\n", currentVer)
 		return nil
 	}
+	sep()
 	fmt.Printf("gh: upgrading %s → %s\n", currentVer, latestVer)
 
 	acGh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGh)
@@ -277,11 +277,11 @@ func upgradeShim(cfg *config.Settings) error {
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
-	sep()
 	if currentVer == latestVer {
 		fmt.Printf("sheesh: %s is already the latest\n", currentVer)
 		return nil
 	}
+	sep()
 	if currentVer == "" {
 		fmt.Printf("sheesh: installing %s\n", latestVer)
 	} else {
