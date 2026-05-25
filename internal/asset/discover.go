@@ -97,6 +97,7 @@ func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[
 			}
 		}
 
+		fmt.Println()
 		if anyConflict {
 			fmt.Printf("%s: shim conflicts — rename required (0 to cancel):\n", pkgName)
 		} else {
@@ -215,6 +216,7 @@ func SelectBinaries(candidates []BinaryCandidate, name string, prevKeys []string
 		return candidates, nil
 	}
 
+	fmt.Println()
 	fmt.Printf("%s: choose shim target(s)\n", name)
 	for i, c := range candidates {
 		fmt.Printf("  %d) %s\n", i+1, c.Key())

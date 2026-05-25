@@ -379,10 +379,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		slices.SortFunc(shimRows, func(a, b shimRow) int { return strings.Compare(a.shim, b.shim) })
 		rows := make([][]string, len(shimRows))
 		for i, r := range shimRows {
-			rows[i] = []string{r.shim, r.binary, r.pkg}
+			rows[i] = []string{r.pkg, r.binary, r.shim}
 		}
 		fmt.Println()
-		printTable([]string{"shim", "binary", "package"}, rows, nil)
+		printTable([]string{"name", "binary", "shim"}, rows, nil)
 		fmt.Println()
 		if !promptConfirm(fmt.Sprintf("create %d shim(s)", len(shimRows))) {
 			if hadErrors {
