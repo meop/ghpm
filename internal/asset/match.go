@@ -202,14 +202,6 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	return AssetCandidates{Compatible: bestAssets, Hidden: hiddenAssets, All: candidates}, nil
 }
 
-func SelectAsset(assets []gh.Asset, cfg *config.Settings, hint, pkgName string) (gh.Asset, error) {
-	ac, err := SelectAssetAuto(assets, cfg, hint, pkgName)
-	if err != nil {
-		return gh.Asset{}, err
-	}
-	return PromptFromCandidates(ac)
-}
-
 func PromptFromCandidates(ac AssetCandidates) (gh.Asset, error) {
 	if ac.Chosen.Name != "" {
 		return ac.Chosen, nil
@@ -227,7 +219,7 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 		showMoreIdx = len(compatible) + 1
 		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
 	}
-	fmt.Print("enter number (0 to skip): ")
+	fmt.Print("enter number (0=skip): ")
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
@@ -252,7 +244,7 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	for i, a := range assets {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	fmt.Print("enter number (0 to skip): ")
+	fmt.Print("enter number (0=skip): ")
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)

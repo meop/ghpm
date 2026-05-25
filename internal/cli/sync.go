@@ -248,9 +248,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 			prevBinKeys = append(prevBinKeys, binsKey)
 		}
 		candidates := asset.FindBinaries(newPkgDir, name)
-		if len(candidates) > 1 {
-			sep()
-		}
 		selected, discoverErr := asset.SelectBinaries(candidates, name, prevBinKeys)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue

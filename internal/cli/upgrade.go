@@ -124,12 +124,14 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, binGhpm, ""); err != nil {
-		if errors.Is(err, asset.ErrSkip) {
-			return nil
-		}
+	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
 		return err
 	}
+	ghpmCandidates := asset.FindBinaries(tmpDir, binGhpm)
+	if len(ghpmCandidates) == 0 {
+		return fmt.Errorf("no binary found in %s", chosen.Name)
+	}
+	ghpmBin := filepath.Join(tmpDir, filepath.FromSlash(ghpmCandidates[0].Key()))
 
 	self, err := os.Executable()
 	if err != nil {
@@ -141,7 +143,7 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 
 	tmp := self + ".new"
-	if err := copyFile(filepath.Join(tmpDir, exeName(binGhpm)), tmp); err != nil {
+	if err := copyFile(ghpmBin, tmp); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0755); err != nil {
@@ -229,17 +231,19 @@ func upgradeGh(cfg *config.Settings) error {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	if _, err := asset.Extract(cacheDir, chosen.Name, tmpDir, binGh, ""); err != nil {
-		if errors.Is(err, asset.ErrSkip) {
-			return nil
-		}
+	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
 		return err
 	}
+	ghCandidates := asset.FindBinaries(tmpDir, binGh)
+	if len(ghCandidates) == 0 {
+		return fmt.Errorf("no binary found in %s", chosen.Name)
+	}
+	ghBin := filepath.Join(tmpDir, filepath.FromSlash(ghCandidates[0].Key()))
 
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return err
 	}
-	if err := copyFile(filepath.Join(tmpDir, exeName(binGh)), ghPath); err != nil {
+	if err := copyFile(ghBin, ghPath); err != nil {
 		return err
 	}
 	if err := os.Chmod(ghPath, 0755); err != nil {

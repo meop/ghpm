@@ -23,7 +23,7 @@ func sep() {
 
 func printTitle(s string) {
 	sep()
-	fmt.Println(s)
+	fmt.Println(s + ":")
 }
 
 var defaultColorNames = map[string]color.Attribute{
