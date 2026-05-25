@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 
+	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -40,6 +42,75 @@ func binShimName(key, binName string) string {
 		return binName[:len(binName)-4] + "@" + ver + ".exe"
 	}
 	return binName + "@" + ver
+}
+
+// hasReservedConflict reports whether any of the proposed shim names is already
+// claimed by another package (present in reserved).
+func hasReservedConflict(proposed []string, reserved map[string]string) bool {
+	for _, name := range proposed {
+		if _, ok := reserved[name]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// splitBinKey recovers BinDir and BinName from a Bins map value (relative binary path).
+func splitBinKey(key string) (binDir, binName string) {
+	i := strings.LastIndex(key, "/")
+	if i < 0 {
+		return "", key
+	}
+	return key[:i], key[i+1:]
+}
+
+// proposedShimNames returns the default shim name for each selected binary.
+// When multiple binaries share the same filename, a disambiguating suffix is
+// appended from the last segment of their BinDir (or a numeric index as fallback).
+func proposedShimNames(manifestKey string, selected []asset.BinaryCandidate) []string {
+	counts := make(map[string]int)
+	for _, s := range selected {
+		counts[s.BinName]++
+	}
+	result := make([]string, len(selected))
+	for i, s := range selected {
+		base := binShimName(manifestKey, s.BinName)
+		if counts[s.BinName] > 1 {
+			suffix := lastPathSegment(s.BinDir)
+			if suffix == "" {
+				suffix = fmt.Sprintf("%d", i+1)
+			}
+			base = shimWithSuffix(base, suffix)
+		}
+		result[i] = base
+	}
+	return result
+}
+
+func lastPathSegment(p string) string {
+	i := strings.LastIndex(p, "/")
+	if i < 0 {
+		return p
+	}
+	return p[i+1:]
+}
+
+func shimWithSuffix(name, suffix string) string {
+	if strings.HasSuffix(name, ".exe") {
+		return name[:len(name)-4] + "-" + suffix + ".exe"
+	}
+	return name + "-" + suffix
+}
+
+// needsShimRenamePrompt reports whether any binary's default shim name differs
+// from the package name, indicating the user might want to rename it.
+func needsShimRenamePrompt(pkgName string, selected []asset.BinaryCandidate) bool {
+	for _, s := range selected {
+		if s.BinName != pkgName {
+			return true
+		}
+	}
+	return false
 }
 
 func NewRootCmd() *cobra.Command {

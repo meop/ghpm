@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -105,28 +106,49 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
+
+		// Detect org/repo or github.com/org/repo form — source is explicit, bypass all lookups.
+		var explicitSource string
+		if src, repoName, err := parseSourceArg(name); err != nil {
+			printFail(cfg, "%v", err)
+			hadErrors = true
+			continue
+		} else if src != "" {
+			explicitSource = src
+			name = repoName
+		}
+
 		if name == binGhpm || name == binGh {
 			printInfo(cfg, "%s: self managed, skipping", name)
 			continue
 		}
-		if err := config.ValidateName(name); err != nil {
-			printFail(cfg, "%v", err)
-			hadErrors = true
-			continue
-		}
-
-		source, found := config.LookupSource(name, manifest, repos)
-		if !found {
-			printInfo(cfg, "repo not defined")
-			var err error
-			source, err = config.SearchGitHub(name)
-			if err != nil {
+		if explicitSource == "" {
+			if err := config.ValidateName(name); err != nil {
 				printFail(cfg, "%v", err)
 				hadErrors = true
 				continue
 			}
 		}
-		printInfo(cfg, "repo defined: %s", source)
+
+		var source string
+		if explicitSource != "" {
+			source = explicitSource
+			printInfo(cfg, "repo: %s", source)
+		} else {
+			var found bool
+			source, found = config.LookupSource(name, manifest, repos)
+			if !found {
+				printInfo(cfg, "repo not defined")
+				var err error
+				source, err = config.SearchGitHub(name)
+				if err != nil {
+					printFail(cfg, "%v", err)
+					hadErrors = true
+					continue
+				}
+			}
+			printInfo(cfg, "repo defined: %s", source)
+		}
 
 		jobKey := name
 		if pinned {
@@ -255,6 +277,19 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
 
+	type shimPlan struct {
+		key       string
+		jobName   string
+		source    string
+		pkgDir    string
+		bins      map[string]string
+		pin       string
+		version   string
+		assetName string
+		binDir    string
+	}
+	var shimPlans []shimPlan
+
 	for i, res := range installResults {
 		if i > 0 {
 			fmt.Println()
@@ -279,37 +314,130 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		binNames := make([]string, len(selected))
+		rawKeys := make([]string, len(selected))
 		for i, s := range selected {
-			binNames[i] = s.BinName
+			rawKeys[i] = s.Key()
 		}
-		printInfo(cfg, "%s: binary %s", r.job.name, strings.Join(binNames, ", "))
+		printInfo(cfg, "%s: binary %s", r.job.name, strings.Join(rawKeys, ", "))
 		key := r.job.key()
-		manifest.Repos[r.job.name] = r.job.source
-		manifest.Extracts[key] = config.PackageEntry{
-			Pin:       r.job.pin(),
-			Version:   config.NormalizeVersion(r.release.TagName),
-			AssetName: r.chosen.Name,
-			BinDir:    selected[0].BinDir,
-			BinNames:  binNames,
-		}
-		for _, s := range selected {
-			if err := shim.Create(binShimName(key, s.BinName), s.BinName, pkgDir, s.BinDir); err != nil {
-				printWarn(cfg, "%s: could not create shim: %v", s.BinName, err)
+		_, _, pinned := config.ParseVersionSuffix(key)
+		proposed := proposedShimNames(key, selected)
+		reserved := make(map[string]string)
+		for mKey, entry := range manifest.Extracts {
+			ownerPkg, _, _ := config.ParseVersionSuffix(mKey)
+			if ownerPkg == r.job.name {
+				continue
+			}
+			for shimName := range entry.Bins {
+				reserved[shimName] = ownerPkg
 			}
 		}
-		printPass(cfg, "%s: installed %s", r.job.name, config.NormalizeVersion(r.release.TagName))
+		for _, prev := range shimPlans {
+			if prev.jobName == r.job.name {
+				continue
+			}
+			for shimName := range prev.bins {
+				reserved[shimName] = prev.jobName
+			}
+		}
+		shimNames := proposed
+		if hasReservedConflict(proposed, reserved) || (!pinned && needsShimRenamePrompt(r.job.name, selected)) {
+			var promptErr error
+			shimNames, promptErr = asset.PromptShimRenames(r.job.name, rawKeys, proposed, reserved)
+			if errors.Is(promptErr, asset.ErrSkip) {
+				continue
+			}
+			if shimNames == nil {
+				shimNames = proposed
+			}
+		}
+		bins := make(map[string]string, len(shimNames))
+		for i, s := range selected {
+			bins[shimNames[i]] = s.Key() // shimName → binKey
+		}
+		shimPlans = append(shimPlans, shimPlan{
+			key:       key,
+			jobName:   r.job.name,
+			source:    r.job.source,
+			pkgDir:    pkgDir,
+			bins:      bins,
+			pin:       r.job.pin(),
+			version:   config.NormalizeVersion(r.release.TagName),
+			assetName: r.chosen.Name,
+			binDir:    selected[0].BinDir,
+		})
 	}
 
-	if err := config.SaveManifest(manifest); err != nil {
-		printFail(cfg, "could not save manifest: %v", err)
-		return errSilent
+	if len(shimPlans) > 0 {
+		type shimRow struct{ shim, binary, pkg string }
+		var shimRows []shimRow
+		for _, p := range shimPlans {
+			for shimName, binKey := range p.bins {
+				shimRows = append(shimRows, shimRow{shimName, binKey, p.key})
+			}
+		}
+		slices.SortFunc(shimRows, func(a, b shimRow) int { return strings.Compare(a.shim, b.shim) })
+		rows := make([][]string, len(shimRows))
+		for i, r := range shimRows {
+			rows[i] = []string{r.shim, r.binary, r.pkg}
+		}
+		fmt.Println()
+		printTable([]string{"shim", "binary", "package"}, rows, nil)
+		fmt.Println()
+		if !promptConfirm(fmt.Sprintf("create %d shim(s)", len(shimRows))) {
+			if hadErrors {
+				return errSilent
+			}
+			return nil
+		}
+
+		for _, p := range shimPlans {
+			manifest.Repos[p.jobName] = p.source
+			manifest.Extracts[p.key] = config.PackageEntry{
+				Pin:       p.pin,
+				Version:   p.version,
+				AssetName: p.assetName,
+				BinDir:    p.binDir,
+				Bins:      p.bins,
+			}
+			for shimName, binsKey := range p.bins {
+				binDir, binName := splitBinKey(binsKey)
+				if err := shim.Create(shimName, binName, p.pkgDir, binDir); err != nil {
+					printWarn(cfg, "%s: could not create shim: %v", shimName, err)
+				}
+			}
+			printPass(cfg, "%s: installed %s", p.jobName, p.version)
+		}
+	}
+
+	if len(shimPlans) > 0 {
+		if err := config.SaveManifest(manifest); err != nil {
+			printFail(cfg, "could not save manifest: %v", err)
+			return errSilent
+		}
 	}
 
 	if hadErrors {
 		return errSilent
 	}
 	return nil
+}
+
+func parseSourceArg(name string) (source, repoName string, err error) {
+	if !strings.Contains(name, "/") {
+		return "", "", nil
+	}
+	src := name
+	firstSegment := src[:strings.Index(src, "/")]
+	if !strings.Contains(firstSegment, ".") {
+		// No dot → org/repo shorthand; github.com implied.
+		src = "github.com/" + src
+	}
+	_, repo, splitErr := gh.SplitSource(src)
+	if splitErr != nil {
+		return "", "", fmt.Errorf("invalid source %q: must be org/repo or host/org/repo", name)
+	}
+	return src, repo, nil
 }
 
 func promptInstall(ready []jobWithRelease) bool {
