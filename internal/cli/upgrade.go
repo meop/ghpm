@@ -50,38 +50,40 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		noVerify = true
 	}
 
-	upgraded := false
+	hadErrors := false
 
 	if err := upgradeGh(cfg); err != nil {
 		printFail(cfg, "gh: %v", err)
-		upgraded = true
+		hadErrors = true
 	}
 	if err := upgradeSelf(cfg); err != nil {
 		printFail(cfg, "ghpm: %v", err)
-		upgraded = true
+		hadErrors = true
 	}
 	if err := upgradeShim(cfg); err != nil {
 		printFail(cfg, "sheesh: %v", err)
-		upgraded = true
+		hadErrors = true
 	}
 
-	if upgraded {
+	if hadErrors {
 		return errSilent
 	}
 	return nil
 }
 
 func upgradeSelf(cfg *config.Settings) error {
-	printInfo(cfg, "checking ghpm...")
 	rel, err := gh.GetLatestRelease("meop", binGhpm)
 	if err != nil {
 		return err
 	}
+	latestVer := config.NormalizeVersion(rel.TagName)
 
+	sep()
 	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
-		printInfo(cfg, "ghpm %s is already the latest version", version)
+		fmt.Printf("ghpm: %s is already the latest\n", version)
 		return nil
 	}
+	fmt.Printf("ghpm: upgrading %s → %s\n", version, latestVer)
 
 	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGhpm)
 	if err != nil {
@@ -99,11 +101,11 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 
 	if dryRun {
-		fmt.Printf("[dry-run] would upgrade ghpm %s → %s (asset: %s)\n", version, config.NormalizeVersion(rel.TagName), chosen.Name)
+		fmt.Printf("[dry-run] would upgrade ghpm %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
 		return nil
 	}
 
-	if !promptConfirm(fmt.Sprintf("upgrade ghpm %s → %s", version, config.NormalizeVersion(rel.TagName))) {
+	if !promptConfirm(fmt.Sprintf("upgrade ghpm %s → %s", version, latestVer)) {
 		return nil
 	}
 
@@ -153,7 +155,7 @@ func upgradeSelf(cfg *config.Settings) error {
 		return err
 	}
 
-	printPass(cfg, "upgraded ghpm %s → %s", version, config.NormalizeVersion(rel.TagName))
+	printPass(cfg, "ghpm: upgraded %s → %s", version, latestVer)
 	return nil
 }
 
@@ -178,17 +180,18 @@ func upgradeGh(cfg *config.Settings) error {
 		}
 	}
 
-	printInfo(cfg, "checking gh...")
 	rel, err := gh.GetLatestRelease("cli", "cli")
 	if err != nil {
 		return err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
+	sep()
 	if currentVer == latestVer {
-		printInfo(cfg, "gh %s is already the latest version", currentVer)
+		fmt.Printf("gh: %s is already the latest\n", currentVer)
 		return nil
 	}
+	fmt.Printf("gh: upgrading %s → %s\n", currentVer, latestVer)
 
 	acGh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGh)
 	if err != nil {
@@ -250,7 +253,7 @@ func upgradeGh(cfg *config.Settings) error {
 		return err
 	}
 
-	printPass(cfg, "upgraded gh %s → %s", currentVer, latestVer)
+	printPass(cfg, "gh: upgraded %s → %s", currentVer, latestVer)
 	return nil
 }
 
@@ -268,16 +271,21 @@ func upgradeShim(cfg *config.Settings) error {
 		}
 	}
 
-	printInfo(cfg, "checking sheesh...")
 	rel, err := gh.GetLatestRelease("meop", binSheesh)
 	if err != nil {
 		return err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
+	sep()
 	if currentVer == latestVer {
-		printInfo(cfg, "sheesh %s is already the latest version", currentVer)
+		fmt.Printf("sheesh: %s is already the latest\n", currentVer)
 		return nil
+	}
+	if currentVer == "" {
+		fmt.Printf("sheesh: installing %s\n", latestVer)
+	} else {
+		fmt.Printf("sheesh: upgrading %s → %s\n", currentVer, latestVer)
 	}
 
 	acSheesh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binSheesh)
@@ -333,9 +341,9 @@ func upgradeShim(cfg *config.Settings) error {
 	}
 
 	if currentVer == "" {
-		printPass(cfg, "installed sheesh %s", latestVer)
+		printPass(cfg, "sheesh: installed %s", latestVer)
 	} else {
-		printPass(cfg, "upgraded sheesh %s → %s", currentVer, latestVer)
+		printPass(cfg, "sheesh: upgraded %s → %s", currentVer, latestVer)
 	}
 	return nil
 }
