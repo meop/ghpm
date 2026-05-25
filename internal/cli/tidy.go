@@ -134,7 +134,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		if allShimsMissing || extractMissing {
 			var missing []string
 			if allShimsMissing {
-				missing = append(missing, fmt.Sprintf("shim (%s)", strings.Join(missingShimNames, ", ")))
+				missing = append(missing, fmt.Sprintf("bin (%s)", strings.Join(missingShimNames, ", ")))
 			}
 			if extractMissing {
 				missing = append(missing, "extract")
@@ -147,7 +147,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 			})
 		} else {
 			items = append(items, item{
-				display:      fmt.Sprintf("%s: missing shim (%s)", key, strings.Join(missingShimNames, ", ")),
+				display:      fmt.Sprintf("%s: missing bin (%s)", key, strings.Join(missingShimNames, ", ")),
 				manifestKey:  key,
 				trimBinNames: missingShimNames, // these are shim names (map keys)
 			})
@@ -273,7 +273,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	}
 
 	fmt.Println()
-	if !promptConfirm(fmt.Sprintf("remove %d orphaned shim(s)", len(paths))) {
+	if !promptConfirm(fmt.Sprintf("remove %d orphaned bin(s)", len(paths))) {
 		return true
 	}
 
