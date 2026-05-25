@@ -48,14 +48,13 @@ func CheckInstalled() error {
 	return err
 }
 
-// SplitSource splits "github.com/owner/repo" → owner, repo.
+// SplitSource splits "host/owner/repo" → owner, repo.
 func SplitSource(source string) (string, string, error) {
-	s := strings.TrimPrefix(source, "github.com/")
-	parts := strings.SplitN(s, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid source %q (want github.com/owner/repo)", source)
+	parts := strings.SplitN(source, "/", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", fmt.Errorf("invalid source %q (want host/owner/repo)", source)
 	}
-	return parts[0], parts[1], nil
+	return parts[1], parts[2], nil
 }
 
 // ListReleases returns all releases for owner/repo (tagName only).

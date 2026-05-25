@@ -253,8 +253,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		newVer := config.NormalizeVersion(r.release.TagName)
 		newPkgDir, _ := store.ExtractDir(r.key, newVer)
 		name, _, _ := config.ParseVersionSuffix(r.key)
+		prevBinKeys := make([]string, 0, len(r.pkg.Bins))
+		for _, binsKey := range r.pkg.Bins { // values are the relative binary paths
+			prevBinKeys = append(prevBinKeys, binsKey)
+		}
 		candidates := asset.FindBinaries(newPkgDir, name)
-		selected, discoverErr := asset.SelectBinaries(candidates, name, r.pkg.BinNames)
+		selected, discoverErr := asset.SelectBinaries(candidates, name, prevBinKeys)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue
 		}
@@ -263,13 +267,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		binNames := make([]string, len(selected))
+		rawKeys := make([]string, len(selected))
 		for i, s := range selected {
-			binNames[i] = s.BinName
+			rawKeys[i] = s.Key()
 		}
-		printInfo(cfg, "%s: binary %s", r.key, strings.Join(binNames, ", "))
-		for _, oldName := range r.pkg.BinNames {
-			_ = shim.Remove(binShimName(r.key, oldName))
+		printInfo(cfg, "%s: binary %s", r.key, strings.Join(rawKeys, ", "))
+		for shimName := range r.pkg.Bins {
+			_ = shim.Remove(shimName)
 		}
 		if oldBase, err := store.ExtractBaseDir(r.key); err == nil {
 			oldPkgDir := filepath.Join(oldBase, r.pkg.Version)
@@ -277,16 +281,30 @@ func runSync(cmd *cobra.Command, args []string) error {
 				printWarn(cfg, "%s: could not remove old extract dir: %v", r.key, err)
 			}
 		}
+		// Carry over custom shim names: build reverse map binKey → shimName from old entry.
+		oldBinKeyToShim := make(map[string]string, len(r.pkg.Bins))
+		for shimName, binsKey := range r.pkg.Bins {
+			oldBinKeyToShim[binsKey] = shimName
+		}
+		newBins := make(map[string]string, len(selected))
+		for _, s := range selected {
+			if oldShim, ok := oldBinKeyToShim[s.Key()]; ok {
+				newBins[oldShim] = s.Key() // preserve custom shim name
+			} else {
+				newBins[binShimName(r.key, s.BinName)] = s.Key() // default for new binary
+			}
+		}
 		manifest.Extracts[r.key] = config.PackageEntry{
 			Pin:       r.pkg.Pin,
 			Version:   newVer,
 			AssetName: r.chosen.Name,
 			BinDir:    selected[0].BinDir,
-			BinNames:  binNames,
+			Bins:      newBins,
 		}
-		for _, s := range selected {
-			if err := shim.Create(binShimName(r.key, s.BinName), s.BinName, newPkgDir, s.BinDir); err != nil {
-				printWarn(cfg, "%s: could not update shim: %v", s.BinName, err)
+		for shimName, binsKey := range newBins {
+			binDir, binName := splitBinKey(binsKey)
+			if err := shim.Create(shimName, binName, newPkgDir, binDir); err != nil {
+				printWarn(cfg, "%s: could not update shim: %v", shimName, err)
 			}
 		}
 		printPass(cfg, "%s: updated %s → %s", r.key, r.pkg.Version, newVer)

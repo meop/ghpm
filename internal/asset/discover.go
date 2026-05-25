@@ -14,8 +14,17 @@ import (
 
 // BinaryCandidate is a discovered executable inside an extracted package dir.
 type BinaryCandidate struct {
-	BinDir  string // relative to pkgDir
+	BinDir  string // relative to pkgDir, always slash-separated
 	BinName string
+}
+
+// Key returns the unique relative path for this candidate (BinDir/BinName, or just
+// BinName when root-level). Used as the manifest Bins map key.
+func (c BinaryCandidate) Key() string {
+	if c.BinDir == "" {
+		return c.BinName
+	}
+	return c.BinDir + "/" + c.BinName
 }
 
 // FindBinaries searches pkgDir for executables whose name contains name
@@ -66,12 +75,131 @@ func FindBinaries(pkgDir, name string) []BinaryCandidate {
 	return matches
 }
 
+// PromptShimRenames shows proposed shim names and lets the user rename them.
+// Conflicting entries (reserved by another package OR duplicate) must be renamed before returning.
+func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[string]string) ([]string, error) {
+	result := make([]string, len(proposed))
+	copy(result, proposed)
+
+	for {
+		conflicts := make([]bool, len(result))
+		anyConflict := false
+		seen := make(map[string]bool, len(result))
+		for i, name := range result {
+			if _, inReserved := reserved[name]; inReserved {
+				conflicts[i] = true
+				anyConflict = true
+			} else if seen[name] {
+				conflicts[i] = true
+				anyConflict = true
+			} else {
+				seen[name] = true
+			}
+		}
+
+		if anyConflict {
+			fmt.Printf("%s: shim conflicts — rename required (0 to cancel):\n", pkgName)
+		} else {
+			fmt.Printf("%s: shim name(s) — enter number(s) to rename (empty to accept):\n", pkgName)
+		}
+		for i, shimName := range result {
+			entry := fmt.Sprintf("  %d) %s", i+1, shimName)
+			if binKeys[i] != shimName {
+				entry += fmt.Sprintf("  [%s]", binKeys[i])
+			}
+			if owner, ok := reserved[shimName]; ok {
+				entry += fmt.Sprintf("  ! already used by %s", owner)
+			} else if conflicts[i] {
+				entry += "  ! duplicate"
+			}
+			fmt.Println(entry)
+		}
+		fmt.Print("enter number(s): ")
+
+		input, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" && !anyConflict {
+			break
+		}
+
+		var toRename []int
+		if input == "" {
+			for i, c := range conflicts {
+				if c {
+					toRename = append(toRename, i+1)
+				}
+			}
+		} else {
+			indices, err := parseMultiSelect(input, len(proposed))
+			if err != nil || indices == nil {
+				if anyConflict {
+					fmt.Println("  cancelled")
+					return nil, ErrSkip
+				}
+				break
+			}
+			toRename = indices
+		}
+
+		renamingIdx := make(map[int]bool, len(toRename))
+		for _, idx := range toRename {
+			renamingIdx[idx-1] = true
+		}
+		taken := make(map[string]bool, len(reserved)+len(result))
+		for name := range reserved {
+			taken[name] = true
+		}
+		for i, name := range result {
+			if !renamingIdx[i] {
+				taken[name] = true
+			}
+		}
+
+		reader := bufio.NewReader(os.Stdin)
+		for _, idx := range toRename {
+			name := collectNewName(reader, idx, taken)
+			if name == "" {
+				if conflicts[idx-1] {
+					return nil, ErrSkip
+				}
+				taken[result[idx-1]] = true
+				continue
+			}
+			result[idx-1] = name
+			taken[name] = true
+		}
+
+		if !anyConflict {
+			break
+		}
+	}
+
+	return result, nil
+}
+
+func collectNewName(reader *bufio.Reader, idx int, taken map[string]bool) string {
+	for {
+		fmt.Printf("  %d) new name: ", idx)
+		name, _ := reader.ReadString('\n')
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return ""
+		}
+		if taken[name] {
+			fmt.Printf("  %q is already taken, choose another\n", name)
+			continue
+		}
+		return name
+	}
+}
+
 // SelectBinaries returns the binaries the user wants to install.
 //   - 0 candidates → nil, nil
 //   - 1 candidate → auto-select
-//   - Multiple: auto-select if candidate names exactly match prevNames;
+//   - Multiple: auto-select if candidate keys exactly match prevKeys;
 //     otherwise prompt with yay-style multi-select (1,3-5 / empty=all / 0=skip)
-func SelectBinaries(candidates []BinaryCandidate, name string, prevNames []string) ([]BinaryCandidate, error) {
+func SelectBinaries(candidates []BinaryCandidate, name string, prevKeys []string) ([]BinaryCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
@@ -79,17 +207,17 @@ func SelectBinaries(candidates []BinaryCandidate, name string, prevNames []strin
 		return candidates, nil
 	}
 
-	candidateNames := make([]string, len(candidates))
+	candidateKeys := make([]string, len(candidates))
 	for i, c := range candidates {
-		candidateNames[i] = c.BinName
+		candidateKeys[i] = c.Key()
 	}
-	if len(prevNames) > 0 && sameStringSet(candidateNames, prevNames) {
+	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
 		return candidates, nil
 	}
 
 	fmt.Printf("%s: choose shim target(s)\n", name)
 	for i, c := range candidates {
-		fmt.Printf("  %d) %s\n", i+1, c.BinName)
+		fmt.Printf("  %d) %s\n", i+1, c.Key())
 	}
 	fmt.Printf("enter number(s) (0 to skip, 1-%d or 1,x for multiple, empty=all): ", len(candidates))
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')

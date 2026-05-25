@@ -21,15 +21,17 @@ func fakeGH(t *testing.T, script string) string {
 
 func TestSplitSource(t *testing.T) {
 	cases := []struct {
-		source    string
-		owner     string
-		repo      string
-		wantErr   bool
+		source  string
+		owner   string
+		repo    string
+		wantErr bool
 	}{
 		{"github.com/junegunn/fzf", "junegunn", "fzf", false},
 		{"github.com/cli/cli", "cli", "cli", false},
+		{"ghe.example.com/myorg/mytool", "myorg", "mytool", false},
 		{"github.com/", "", "", true},
 		{"notgithub", "", "", true},
+		{"github.com/onlyone", "", "", true},
 	}
 	for _, c := range cases {
 		owner, repo, err := SplitSource(c.source)
