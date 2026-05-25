@@ -80,6 +80,7 @@ func FindBinaries(pkgDir, name string) []BinaryCandidate {
 func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[string]string) ([]string, error) {
 	result := make([]string, len(proposed))
 	copy(result, proposed)
+	first := true
 
 	for {
 		conflicts := make([]bool, len(result))
@@ -97,7 +98,10 @@ func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[
 			}
 		}
 
-		fmt.Println()
+		if !first {
+			fmt.Println()
+		}
+		first = false
 		if anyConflict {
 			fmt.Printf("%s: bin conflicts — rename required (0 to cancel):\n", pkgName)
 		} else {
@@ -216,7 +220,6 @@ func SelectBinaries(candidates []BinaryCandidate, name string, prevKeys []string
 		return candidates, nil
 	}
 
-	fmt.Println()
 	fmt.Printf("%s: choose bin(s)\n", name)
 	for i, c := range candidates {
 		fmt.Printf("  %d) %s\n", i+1, c.Key())

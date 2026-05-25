@@ -78,7 +78,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
 	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
-	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("uninstall %d package(s)", len(targets))) {
 		return nil
 	}

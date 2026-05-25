@@ -79,10 +79,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	keyToSource := make(map[string]string, len(targets))
 	items := make([]gh.BatchItem, 0, len(targets))
 	for key := range targets {
 		name, verStr, isPinned := config.ParseVersionSuffix(key)
 		source := manifest.Repos[name]
+		keyToSource[key] = source
 		var c config.Constraint
 		if isPinned {
 			c, _ = config.ParseConstraint(verStr)
@@ -126,13 +128,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if config.CompareVersions(latest, pkg.Version) <= 0 {
 			continue
 		}
-		owner, repo, _ := gh.SplitSource(items[0].Source)
-		for _, it := range items {
-			if it.Key == res.Key {
-				owner, repo, _ = gh.SplitSource(it.Source)
-				break
-			}
-		}
+		source := keyToSource[res.Key]
+		owner, repo, _ := gh.SplitSource(source)
 		rel, err := gh.GetReleaseByTag(owner, repo, res.LatestTag)
 		if err != nil {
 			printFail(cfg, "%s: %v", res.Key, err)
@@ -146,6 +143,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
+		if ac.Chosen.Name == "" {
+			sep()
+		}
 		chosen, err := asset.PromptFromCandidates(ac)
 		if errors.Is(err, asset.ErrSkip) {
 			continue
@@ -158,14 +158,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if ac.Chosen.Name != "" {
 			printInfo(cfg, "asset: %s", chosen.Name)
 		}
-		job := syncJob{key: res.Key, source: items[0].Source, pkg: pkg, release: rel, chosen: chosen}
-		for _, it := range items {
-			if it.Key == res.Key {
-				job.source = it.Source
-				break
-			}
-		}
-		ready = append(ready, job)
+		ready = append(ready, syncJob{key: res.Key, source: source, pkg: pkg, release: rel, chosen: chosen})
 	}
 
 	if skipped > 0 {
@@ -193,7 +186,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Println()
 	if !promptConfirm(fmt.Sprintf("update %d package(s)", len(ready))) {
 		return nil
 	}
@@ -237,10 +229,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for i, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
-		if i > 0 {
-			fmt.Println()
-		}
+	for _, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
+		sep()
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
@@ -258,6 +248,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 			prevBinKeys = append(prevBinKeys, binsKey)
 		}
 		candidates := asset.FindBinaries(newPkgDir, name)
+		if len(candidates) > 1 {
+			sep()
+		}
 		selected, discoverErr := asset.SelectBinaries(candidates, name, prevBinKeys)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue
