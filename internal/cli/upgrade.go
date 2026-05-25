@@ -155,7 +155,7 @@ func upgradeSelf(cfg *config.Settings) error {
 		return err
 	}
 
-	printPass(cfg, "ghpm: upgraded %s → %s", version, latestVer)
+	printPass(cfg, "upgraded %s → %s", version, latestVer)
 	return nil
 }
 
@@ -253,7 +253,7 @@ func upgradeGh(cfg *config.Settings) error {
 		return err
 	}
 
-	printPass(cfg, "gh: upgraded %s → %s", currentVer, latestVer)
+	printPass(cfg, "upgraded %s → %s", currentVer, latestVer)
 	return nil
 }
 
@@ -341,9 +341,9 @@ func upgradeShim(cfg *config.Settings) error {
 	}
 
 	if currentVer == "" {
-		printPass(cfg, "sheesh: installed %s", latestVer)
+		printPass(cfg, "installed %s", latestVer)
 	} else {
-		printPass(cfg, "sheesh: upgraded %s → %s", currentVer, latestVer)
+		printPass(cfg, "upgraded %s → %s", currentVer, latestVer)
 	}
 	return nil
 }

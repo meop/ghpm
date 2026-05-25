@@ -77,7 +77,7 @@ func FindBinaries(pkgDir, name string) []BinaryCandidate {
 
 // PromptShimRenames shows proposed shim names and lets the user rename them.
 // Conflicting entries (reserved by another package OR duplicate) must be renamed before returning.
-func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[string]string) ([]string, error) {
+func PromptShimRenames(binKeys, proposed []string, reserved map[string]string) ([]string, error) {
 	result := make([]string, len(proposed))
 	copy(result, proposed)
 	first := true
@@ -103,9 +103,9 @@ func PromptShimRenames(pkgName string, binKeys, proposed []string, reserved map[
 		}
 		first = false
 		if anyConflict {
-			fmt.Printf("%s: bin conflicts — rename required:\n", pkgName)
+			fmt.Println("bin conflicts — rename required:")
 		} else {
-			fmt.Printf("%s: bin name(s)\n", pkgName)
+			fmt.Println("bin name(s)")
 		}
 		for i, shimName := range result {
 			entry := fmt.Sprintf("  %d) %s", i+1, shimName)
@@ -208,7 +208,7 @@ func collectNewName(reader *bufio.Reader, idx int, taken map[string]bool) string
 //   - 1 candidate → auto-select
 //   - Multiple: auto-select if candidate keys exactly match prevKeys;
 //     otherwise prompt with yay-style multi-select (1,3-5 / empty=all / 0=skip)
-func SelectBinaries(candidates []BinaryCandidate, name string, prevKeys []string) ([]BinaryCandidate, error) {
+func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
@@ -224,7 +224,7 @@ func SelectBinaries(candidates []BinaryCandidate, name string, prevKeys []string
 		return candidates, nil
 	}
 
-	fmt.Printf("%s: choose bin(s)\n", name)
+	fmt.Println("choose bin(s)")
 	for i, c := range candidates {
 		entry := fmt.Sprintf("  %d) %s", i+1, c.BinName)
 		if c.Key() != c.BinName {

@@ -101,7 +101,7 @@ func TestFindBinaries_Multiple(t *testing.T) {
 }
 
 func TestSelectBinaries_None(t *testing.T) {
-	got, err := SelectBinaries(nil, "x", nil)
+	got, err := SelectBinaries(nil, nil)
 	if got != nil || err != nil {
 		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
@@ -109,7 +109,7 @@ func TestSelectBinaries_None(t *testing.T) {
 
 func TestSelectBinaries_One(t *testing.T) {
 	c := []BinaryCandidate{{BinDir: "", BinName: "tool"}}
-	got, err := SelectBinaries(c, "tool", nil)
+	got, err := SelectBinaries(c, nil)
 	if err != nil || len(got) != 1 || got[0].BinName != "tool" {
 		t.Errorf("got %v,%v", got, err)
 	}
@@ -117,7 +117,7 @@ func TestSelectBinaries_One(t *testing.T) {
 
 func TestSelectBinaries_SamePrevNames(t *testing.T) {
 	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBinaries(c, "uv", []string{"uv", "uvx"})
+	got, err := SelectBinaries(c, []string{"uv", "uvx"})
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected auto-select all; got %v,%v", got, err)
 	}
@@ -126,7 +126,7 @@ func TestSelectBinaries_SamePrevNames(t *testing.T) {
 func TestSelectBinaries_PromptAll(t *testing.T) {
 	fakeStdin(t, "\n")
 	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBinaries(c, "uv", nil)
+	got, err := SelectBinaries(c, nil)
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected 2; got %v,%v", got, err)
 	}
@@ -135,7 +135,7 @@ func TestSelectBinaries_PromptAll(t *testing.T) {
 func TestSelectBinaries_PromptSkip(t *testing.T) {
 	fakeStdin(t, "0\n")
 	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	_, err := SelectBinaries(c, "uv", nil)
+	_, err := SelectBinaries(c, nil)
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -144,7 +144,7 @@ func TestSelectBinaries_PromptSkip(t *testing.T) {
 func TestSelectBinaries_PromptSubset(t *testing.T) {
 	fakeStdin(t, "1\n")
 	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBinaries(c, "uv", nil)
+	got, err := SelectBinaries(c, nil)
 	if err != nil || len(got) != 1 || got[0].BinName != "uv" {
 		t.Errorf("expected [uv]; got %v,%v", got, err)
 	}

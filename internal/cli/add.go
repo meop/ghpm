@@ -121,7 +121,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		printTitle(name)
 
 		if name == binGhpm || name == binGh {
-			printInfo(cfg, "%s: self managed, skipping", name)
+			printInfo(cfg, "self managed, skipping")
 			continue
 		}
 		if explicitSource == "" {
@@ -156,12 +156,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			jobKey = name + "@" + strings.TrimPrefix(ver, "v")
 		}
 		if entry, exists := manifest.Extracts[jobKey]; exists && !forceInstall {
-			printInfo(cfg, "%s: already installed %s", jobKey, entry.Version)
+			printInfo(cfg, "already installed %s", entry.Version)
 			continue
 		}
 		if !pinned {
 			if existing, found := config.FindBySource(source, manifest); found && existing != name && !forceInstall {
-				printInfo(cfg, "%s: already installed as %s — skipping", name, existing)
+				printInfo(cfg, "already installed as %s — skipping", existing)
 				continue
 			}
 		}
@@ -295,9 +295,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	var shimPlans []shimPlan
 
 	for _, res := range installResults {
-		sep()
+		printTitle(res.Name)
 		if res.Err != nil {
-			printFail(cfg, "%s: %v", res.Name, res.Err)
+			printFail(cfg, "%v", res.Err)
 			hadErrors = true
 			continue
 		}
@@ -307,12 +307,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		pkgDir, _ := store.ExtractDir(r.job.key(), config.NormalizeVersion(r.release.TagName))
 		candidates := asset.FindBinaries(pkgDir, r.job.name)
-		selected, discoverErr := asset.SelectBinaries(candidates, r.job.name, nil)
+		selected, discoverErr := asset.SelectBinaries(candidates, nil)
 		if errors.Is(discoverErr, asset.ErrSkip) {
 			continue
 		}
 		if len(selected) == 0 {
-			printFail(cfg, "%s: no binary found in %s", r.job.name, r.chosen.Name)
+			printFail(cfg, "no binary found in %s", r.chosen.Name)
 			hadErrors = true
 			continue
 		}
@@ -320,7 +320,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		for i, s := range selected {
 			rawKeys[i] = s.Key()
 		}
-		printInfo(cfg, "%s: bin %s", r.job.name, strings.Join(rawKeys, ", "))
+		printInfo(cfg, "bin %s", strings.Join(rawKeys, ", "))
 		key := r.job.key()
 		_, _, pinned := config.ParseVersionSuffix(key)
 		proposed := proposedShimNames(key, selected)
@@ -346,7 +346,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if hasReservedConflict(proposed, reserved) || (!pinned && needsShimRenamePrompt(r.job.name, selected)) {
 			sep()
 			var promptErr error
-			shimNames, promptErr = asset.PromptShimRenames(r.job.name, rawKeys, proposed, reserved)
+			shimNames, promptErr = asset.PromptShimRenames(rawKeys, proposed, reserved)
 			if errors.Is(promptErr, asset.ErrSkip) {
 				continue
 			}
@@ -409,7 +409,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					printWarn(cfg, "%s: could not create shim: %v", shimName, err)
 				}
 			}
-			printPass(cfg, "%s: installed %s", p.jobName, p.version)
+			printPass(cfg, "installed %s", p.version)
 		}
 	}
 
