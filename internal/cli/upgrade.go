@@ -72,7 +72,10 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
 		return nil
 	}
 	sep()
-	fmt.Printf("ghpm: upgrading %s → %s\n", version, latestVer)
+
+	if !promptConfirm(fmt.Sprintf("ghpm: upgrade %s → %s", version, latestVer)) {
+		return nil
+	}
 
 	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGhpm)
 	if err != nil {
@@ -90,11 +93,7 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
 	}
 
 	if dryRun {
-		fmt.Printf("[dry-run] would upgrade %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
-		return nil
-	}
-
-	if !promptConfirm(fmt.Sprintf("upgrade %s → %s", version, latestVer)) {
+		fmt.Printf("ghpm: upgrade %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
 		return nil
 	}
 
@@ -144,7 +143,7 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
 		return err
 	}
 
-	printPass(cfg, "upgraded %s → %s", version, latestVer)
+	printPass(cfg, "ghpm: upgraded %s → %s", version, latestVer)
 	return nil
 }
 
@@ -180,7 +179,10 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 		return nil
 	}
 	sep()
-	fmt.Printf("gh: upgrading %s → %s\n", currentVer, latestVer)
+
+	if !promptConfirm(fmt.Sprintf("gh: upgrade %s → %s", currentVer, latestVer)) {
+		return nil
+	}
 
 	acGh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGh)
 	if err != nil {
@@ -198,11 +200,7 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 	}
 
 	if dryRun {
-		fmt.Printf("[dry-run] would upgrade gh %s → %s (asset: %s)\n", currentVer, latestVer, chosen.Name)
-		return nil
-	}
-
-	if !promptConfirm(fmt.Sprintf("upgrade gh %s → %s", currentVer, latestVer)) {
+		fmt.Printf("gh: upgrade %s → %s (asset: %s)\n", currentVer, latestVer, chosen.Name)
 		return nil
 	}
 
@@ -242,7 +240,7 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 		return err
 	}
 
-	printPass(cfg, "upgraded %s → %s", currentVer, latestVer)
+	printPass(cfg, "gh: upgraded %s → %s", currentVer, latestVer)
 	return nil
 }
 
@@ -271,10 +269,16 @@ func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 		return nil
 	}
 	sep()
+
+	var action string
 	if currentVer == "" {
-		fmt.Printf("sheesh: installing %s\n", latestVer)
+		action = fmt.Sprintf("install %s", latestVer)
 	} else {
-		fmt.Printf("sheesh: upgrading %s → %s\n", currentVer, latestVer)
+		action = fmt.Sprintf("upgrade %s → %s", currentVer, latestVer)
+	}
+
+	if !promptConfirm("sheesh: " + action) {
+		return nil
 	}
 
 	acSheesh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binSheesh)
@@ -289,19 +293,8 @@ func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 		return err
 	}
 
-	var prompt string
-	if currentVer == "" {
-		prompt = fmt.Sprintf("install %s", latestVer)
-	} else {
-		prompt = fmt.Sprintf("upgrade %s → %s", currentVer, latestVer)
-	}
-
 	if dryRun {
-		fmt.Printf("[dry-run] would %s (asset: %s)\n", prompt, chosen.Name)
-		return nil
-	}
-
-	if !promptConfirm(prompt) {
+		fmt.Printf("sheesh: %s (asset: %s)\n", action, chosen.Name)
 		return nil
 	}
 
@@ -330,9 +323,9 @@ func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 	}
 
 	if currentVer == "" {
-		printPass(cfg, "installed %s", latestVer)
+		printPass(cfg, "sheesh: installed %s", latestVer)
 	} else {
-		printPass(cfg, "upgraded %s → %s", currentVer, latestVer)
+		printPass(cfg, "sheesh: upgraded %s → %s", currentVer, latestVer)
 	}
 	return nil
 }

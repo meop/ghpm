@@ -109,9 +109,7 @@ func PromptShimRenames(binKeys, proposed []string, reserved map[string]string) (
 		}
 		for i, shimName := range result {
 			entry := fmt.Sprintf("  %d) %s", i+1, shimName)
-			if binKeys[i] != shimName {
-				entry += fmt.Sprintf("  [%s]", binKeys[i])
-			}
+			entry += fmt.Sprintf("  [%s]", binKeys[i])
 			if owner, ok := reserved[shimName]; ok {
 				entry += fmt.Sprintf("  ! already used by %s", owner)
 			} else if conflicts[i] {

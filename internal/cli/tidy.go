@@ -43,7 +43,7 @@ func runTidy(cmd *cobra.Command, args []string) error {
 
 	if all {
 		if dryRun {
-			fmt.Printf("[dry-run] would remove all cached assets in %s\n", releaseDir)
+			fmt.Printf("remove all cached assets in %s\n", releaseDir)
 		} else {
 			if !promptConfirm(fmt.Sprintf("remove all cached assets in %s", releaseDir)) {
 				return nil
@@ -147,7 +147,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		return true
 	}
 
-	if !promptConfirm(fmt.Sprintf("fix %d broken install(s)", len(items))) {
+	if !promptConfirm(fmt.Sprintf("purge %d broken install(s)", len(items))) {
 		return true
 	}
 
