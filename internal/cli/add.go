@@ -264,7 +264,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		pin       string
 		version   string
 		assetName string
-		binDir    string
 	}
 	var shimPlans []shimPlan
 
@@ -341,7 +340,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			pin:       r.job.pin(),
 			version:   config.NormalizeVersion(r.release.TagName),
 			assetName: r.chosen.Name,
-			binDir:    selected[0].BinDir,
 		})
 	}
 
@@ -372,7 +370,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				Pin:       p.pin,
 				Version:   p.version,
 				AssetName: p.assetName,
-				BinDir:    p.binDir,
 				Bins:      p.bins,
 			}
 			for shimName, binsKey := range p.bins {

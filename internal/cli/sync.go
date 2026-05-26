@@ -271,7 +271,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 			Pin:       r.pkg.Pin,
 			Version:   newVer,
 			AssetName: r.chosen.Name,
-			BinDir:    selected[0].BinDir,
 			Bins:      newBins,
 		}
 		for shimName, binsKey := range newBins {

@@ -10,7 +10,6 @@ type PackageEntry struct {
 	Pin       string            `json:"pin"`
 	Version   string            `json:"version"`
 	AssetName string            `json:"asset_name"`
-	BinDir    string            `json:"bin_dir,omitempty"`
 	Bins      map[string]string `json:"bin,omitempty"`
 }
 
