@@ -91,9 +91,9 @@ func TestTokenize(t *testing.T) {
 		{"MyTool Darwin ARM64", []string{"mytool", "darwin", "arm64"}},
 	}
 	for _, c := range cases {
-		got := tokenize(c.input)
+		got := Tokenize(c.input)
 		if !reflect.DeepEqual(got, c.want) {
-			t.Errorf("tokenize(%q) = %v, want %v", c.input, got, c.want)
+			t.Errorf("Tokenize(%q) = %v, want %v", c.input, got, c.want)
 		}
 	}
 }
@@ -178,10 +178,10 @@ func TestStripVersionTokens(t *testing.T) {
 		{"ghpm-0.1.7-darwin-amd64-something.tar.gz", []string{"ghpm", "darwin", "amd64", "something.tar.gz"}},
 	}
 	for _, c := range cases {
-		tokens := tokenize(c.input)
+		tokens := Tokenize(c.input)
 		got := stripVersionTokens(tokens)
 		if !reflect.DeepEqual(got, c.want) {
-			t.Errorf("stripVersionTokens(tokenize(%q)) = %v, want %v", c.input, got, c.want)
+			t.Errorf("stripVersionTokens(Tokenize(%q)) = %v, want %v", c.input, got, c.want)
 		}
 	}
 }

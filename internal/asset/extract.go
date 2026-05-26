@@ -5,10 +5,10 @@ import (
 	"archive/zip"
 	"compress/bzip2"
 	"compress/gzip"
+	"github.com/ulikunitz/xz"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -31,6 +31,15 @@ func ExtractPackage(srcDir, assetName, destDir string) error {
 	default:
 		return copyRawPackage(src, destDir, assetName)
 	}
+}
+
+func safeJoin(destDir, name string) (string, error) {
+	target := filepath.Join(destDir, name)
+	clean := filepath.Clean(target)
+	if !strings.HasPrefix(clean, filepath.Clean(destDir)+string(os.PathSeparator)) && clean != filepath.Clean(destDir) {
+		return "", fmt.Errorf("path traversal in archive: %s", name)
+	}
+	return target, nil
 }
 
 func extractTarPackage(src, destDir, compression string) error {
@@ -64,7 +73,10 @@ func extractTarPackage(src, destDir, compression string) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(destDir, hdr.Name)
+		target, err := safeJoin(destDir, hdr.Name)
+		if err != nil {
+			return err
+		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
@@ -74,7 +86,7 @@ func extractTarPackage(src, destDir, compression string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
 			}
-			if err := writeFile(tr, target, os.FileMode(hdr.Mode)); err != nil {
+			if err := streamFile(tr, target, os.FileMode(hdr.Mode)); err != nil {
 				return err
 			}
 		case tar.TypeSymlink:
@@ -90,11 +102,52 @@ func extractTarPackage(src, destDir, compression string) error {
 }
 
 func extractTarXZPackage(src, destDir string) error {
-	cmd := exec.Command("tar", "xJf", src, "-C", destDir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("tar xJf: %s", out)
+	f, err := os.Open(src)
+	if err != nil {
+		return err
 	}
-	return nil
+	defer func() { _ = f.Close() }()
+
+	xr, err := xz.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("xz decompress: %w", err)
+	}
+
+	tr := tar.NewReader(xr)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		target, err := safeJoin(destDir, hdr.Name)
+		if err != nil {
+			return err
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			if err := streamFile(tr, target, os.FileMode(hdr.Mode)); err != nil {
+				return err
+			}
+		case tar.TypeSymlink:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			_ = os.Remove(target)
+			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func extractZipPackage(src, destDir string) error {
@@ -105,7 +158,10 @@ func extractZipPackage(src, destDir string) error {
 	defer func() { _ = zr.Close() }()
 
 	for _, f := range zr.File {
-		target := filepath.Join(destDir, f.Name)
+		target, err := safeJoin(destDir, f.Name)
+		if err != nil {
+			return err
+		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, f.Mode()); err != nil {
 				return err
@@ -119,7 +175,7 @@ func extractZipPackage(src, destDir string) error {
 		if err != nil {
 			return err
 		}
-		err = writeFile(rc, target, f.Mode())
+		err = streamFile(rc, target, f.Mode())
 		_ = rc.Close()
 		if err != nil {
 			return err
@@ -130,17 +186,30 @@ func extractZipPackage(src, destDir string) error {
 
 func copyRawPackage(src, destDir, name string) error {
 	dest := filepath.Join(destDir, filepath.Base(name))
-	data, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dest, data, 0755)
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = out.Close() }()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }
 
-func writeFile(r io.Reader, path string, mode os.FileMode) error {
-	data, err := io.ReadAll(r)
+func streamFile(r io.Reader, path string, mode os.FileMode) error {
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, mode)
+	defer func() { _ = out.Close() }()
+	if _, err := io.Copy(out, r); err != nil {
+		return err
+	}
+	return out.Sync()
 }

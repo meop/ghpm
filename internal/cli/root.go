@@ -21,6 +21,7 @@ var (
 	dryRun    bool
 	noVerify  bool
 	onlyNames bool
+	quiet     bool
 	yes       bool
 )
 
@@ -152,6 +153,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 	root.Flags().Bool("version", false, "Print ghpm version")
 
 	root.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "Print execution only without running")
+	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	root.PersistentFlags().BoolVarP(&yes, "yes", "y", false, "Yes for confirmation prompts")
 
 	root.SetHelpCommand(&cobra.Command{Hidden: true})

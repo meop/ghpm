@@ -19,7 +19,6 @@ import (
 )
 
 var forceInstall bool
-var installCfg *config.Settings
 
 func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -66,40 +65,15 @@ type jobWithRelease struct {
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	unlock, err := config.AcquireLock()
+	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, Dirs: true, Repos: true, NoVerify: true})
 	if err != nil {
-		printFail(nil, "%v", err)
-		return errSilent
+		return err
 	}
-	defer unlock()
-
-	cfg, err := config.LoadSettings()
-	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
-	}
-	installCfg = cfg
-	if cfg.NoVerify {
-		noVerify = true
-	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
-		return errSilent
-	}
-	if err := config.EnsureDirs(); err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
-	if err := gh.CheckInstalled(); err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
-
-	repos, repoErr := config.LoadRepos()
-	if repoErr != nil {
-		printInfo(cfg, "could not load repos: %v", repoErr)
-	}
+	defer ci.close()
+	cfg := ci.cfg
+	manifest := ci.manifest
+	repos := ci.repos
+	ctx := cmd.Context()
 
 	var ready []jobWithRelease
 	var hadErrors bool
@@ -174,7 +148,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		var rel gh.Release
 		if !pinned {
-			rel, err = gh.GetLatestRelease(owner, repo)
+			rel, err = gh.GetLatestRelease(ctx, owner, repo)
 		} else {
 			c, perr := config.ParseConstraint(ver)
 			if perr != nil {
@@ -183,9 +157,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			if c.Level == config.PinExact {
-				rel, err = gh.GetReleaseByTag(owner, repo, ver)
+				rel, err = gh.GetReleaseByTag(ctx, owner, repo, ver)
 			} else {
-				rel, err = gh.FindLatestMatching(owner, repo, c)
+				rel, err = gh.FindLatestMatching(ctx, owner, repo, c)
 			}
 		}
 		if err != nil {
@@ -236,7 +210,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if !promptInstall(ready) {
+	if !promptInstall(cfg, ready) {
 		return nil
 	}
 
@@ -252,12 +226,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				}
 				if _, err := os.Stat(filepath.Join(cacheDir, r.chosen.Name)); os.IsNotExist(err) {
 					printInfo(cfg, "%s: downloading %s...", r.job.name, config.NormalizeVersion(r.release.TagName))
-					if err := gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
+					if err := gh.DownloadAsset(ctx, owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
 						return nil, err
 					}
 				}
 				if !noVerify {
-					_, err := asset.Verify(owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
+					_, err := gh.VerifyAsset(ctx, owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
 					if err != nil {
 						return nil, err
 					}
@@ -443,12 +417,12 @@ func parseSourceArg(name string) (source, repoName string, err error) {
 	return src, repo, nil
 }
 
-func promptInstall(ready []jobWithRelease) bool {
+func promptInstall(cfg *config.Settings, ready []jobWithRelease) bool {
 	rows := make([][]string, len(ready))
 	for i, r := range ready {
 		rows[i] = []string{r.job.key(), r.job.pin(), config.NormalizeVersion(r.release.TagName), r.chosen.Name, r.job.source}
 	}
-	colors := []func(string) string{nil, nil, colorfn(installCfg, "new"), nil, nil}
+	colors := []func(string) string{nil, nil, colorfn(cfg, "new"), nil, nil}
 	printTable([]string{"name", "pin", "update", "asset", "repo"}, rows, colors)
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

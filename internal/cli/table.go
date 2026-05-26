@@ -55,6 +55,9 @@ func colorfn(cfg *config.Settings, role string) func(string) string {
 }
 
 func printInfo(cfg *config.Settings, format string, args ...any) {
+	if quiet {
+		return
+	}
 	hasOutput = true
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "info"); fn != nil {
@@ -65,6 +68,9 @@ func printInfo(cfg *config.Settings, format string, args ...any) {
 }
 
 func printWarn(cfg *config.Settings, format string, args ...any) {
+	if quiet {
+		return
+	}
 	hasOutput = true
 	msg := fmt.Sprintf(format, args...)
 	if fn := colorfn(cfg, "warn"); fn != nil {

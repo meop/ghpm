@@ -24,20 +24,13 @@ func newOutdatedCmd() *cobra.Command {
 }
 
 func runOutdated(cmd *cobra.Command, args []string) error {
-	cfg, err := config.LoadSettings()
+	ci, err := initCommand(cmdOptions{Manifest: true, GH: true})
 	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
+		return err
 	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
-		return errSilent
-	}
-	if err := gh.CheckInstalled(); err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
+	cfg := ci.cfg
+	manifest := ci.manifest
+	ctx := cmd.Context()
 
 	type outdatedResult struct {
 		name      string
@@ -74,7 +67,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	results := gh.BatchLatestVersions(items, cfg.CacheTTL)
+	results := gh.BatchLatestVersions(ctx, items, cfg.CacheTTL)
 
 	var outdated []outdatedResult
 	checked := 0

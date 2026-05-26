@@ -1,6 +1,7 @@
 package gh
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -41,12 +42,12 @@ type releaseField struct {
 	} `json:"nvRefs"`
 }
 
-func BatchLatestVersions(items []BatchItem, cacheTTL string) []BatchResult {
+func BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult {
 	results := make([]BatchResult, len(items))
 
 	for start := 0; start < len(items); start += batchSize {
 		end := min(start+batchSize, len(items))
-		batchResults := executeBatch(items[start:end], cacheTTL)
+		batchResults := executeBatch(ctx, items[start:end], cacheTTL)
 		for i, r := range batchResults {
 			results[start+i] = r
 		}
@@ -55,7 +56,7 @@ func BatchLatestVersions(items []BatchItem, cacheTTL string) []BatchResult {
 	return results
 }
 
-func executeBatch(items []BatchItem, cacheTTL string) []BatchResult {
+func executeBatch(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult {
 	results := make([]BatchResult, len(items))
 
 	aliases := make([]string, len(items))
@@ -79,7 +80,7 @@ func executeBatch(items []BatchItem, cacheTTL string) []BatchResult {
 		args = append(args, "--cache", cacheTTL)
 	}
 
-	out, err := run("gh", args...)
+	out, err := runCmd(ctx, "gh", args...)
 	if err != nil {
 		for i := range items {
 			if results[i].Err != nil {

@@ -23,23 +23,13 @@ func newRemoveCmd() *cobra.Command {
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
-	unlock, err := config.AcquireLock()
+	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true})
 	if err != nil {
-		printFail(nil, "%v", err)
-		return errSilent
+		return err
 	}
-	defer unlock()
-
-	cfg, err := config.LoadSettings()
-	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
-	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
-		return errSilent
-	}
+	defer ci.close()
+	cfg := ci.cfg
+	manifest := ci.manifest
 	pkgsDir, err := store.ExtractsDir()
 	if err != nil {
 		printFail(cfg, "%v", err)

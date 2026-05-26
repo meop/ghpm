@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/meop/ghpm/internal/store"
 )
@@ -149,7 +149,7 @@ func ValidateName(name string) error {
 
 // builtinRepos maps names that ghpm always knows about without user repos or search.
 var builtinRepos = map[string]string{
-	"gh": "github.com/cli/cli",
+	"gh": RepoGh.URI,
 }
 
 // LookupSource resolves a name from non-interactive sources only.

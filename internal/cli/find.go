@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-
-	"github.com/meop/ghpm/internal/config"
 )
 
 func newFindCmd() *cobra.Command {
@@ -28,11 +26,12 @@ type repoMatch struct {
 }
 
 func runFind(cmd *cobra.Command, args []string) error {
-	cfg, _ := config.LoadSettings()
-	repos, err := config.LoadRepos()
+	ci, err := initCommand(cmdOptions{Repos: true})
 	if err != nil {
 		return err
 	}
+	cfg := ci.cfg
+	repos := ci.repos
 	if len(repos) == 0 {
 		printInfo(cfg, "no repos cached")
 		return nil

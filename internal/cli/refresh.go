@@ -16,18 +16,12 @@ func newRefreshCmd() *cobra.Command {
 }
 
 func runRefresh(cmd *cobra.Command, args []string) error {
-	unlock, err := config.AcquireLock()
+	ci, err := initCommand(cmdOptions{Lock: true})
 	if err != nil {
-		printFail(nil, "%v", err)
-		return errSilent
+		return err
 	}
-	defer unlock()
-
-	cfg, err := config.LoadSettings()
-	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
-	}
+	defer ci.close()
+	cfg := ci.cfg
 
 	syncResults, _ := config.RefreshRepos()
 	var hadErrors bool
