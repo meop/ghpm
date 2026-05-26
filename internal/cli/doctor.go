@@ -17,7 +17,7 @@ import (
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "doctor",
-		Aliases: []string{"check"},
+		Aliases: []string{"doc", "check"},
 		Short:   "Check system health and configuration",
 		Args:    cobra.NoArgs,
 		RunE:    runDoctor,

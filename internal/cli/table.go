@@ -54,6 +54,14 @@ func colorfn(cfg *config.Settings, role string) func(string) string {
 	return func(s string) string { return fn(s) }
 }
 
+func print(format string, args ...any) {
+	if quiet {
+		return
+	}
+	hasOutput = true
+	fmt.Println(fmt.Sprintf(format, args...))
+}
+
 func printInfo(cfg *config.Settings, format string, args ...any) {
 	if quiet {
 		return

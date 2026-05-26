@@ -64,7 +64,7 @@ func runTidy(cmd *cobra.Command, args []string) error {
 	b3 := cleanOrphanedExtracts(cfg, manifest)
 	b4 := cleanOrphanedReleases(cfg, releaseDir, manifest)
 	if !b1 && !b2 && !b3 && !b4 {
-		printInfo(cfg, "nothing to tidy")
+		print("nothing to tidy")
 	}
 	return nil
 }

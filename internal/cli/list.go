@@ -12,7 +12,7 @@ import (
 func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls"},
+		Aliases: []string{"li", "ls"},
 		Short:   "List installed packages",
 		Args:    cobra.NoArgs,
 		RunE:    runList,
@@ -29,7 +29,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	cfg := ci.cfg
 	manifest := ci.manifest
 	if len(manifest.Extracts) == 0 {
-		printInfo(cfg, "no packages installed")
+		print("no packages installed")
 		return nil
 	}
 
