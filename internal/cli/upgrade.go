@@ -41,12 +41,12 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	hadErrors := false
 	ctx := cmd.Context()
 
-	if err := upgradeSelf(ctx, cfg); err != nil {
-		printFail(cfg, "ghpm: %v", err)
-		hadErrors = true
-	}
 	if err := upgradeGh(ctx, cfg); err != nil {
 		printFail(cfg, "gh: %v", err)
+		hadErrors = true
+	}
+	if err := upgradeSelf(ctx, cfg); err != nil {
+		printFail(cfg, "ghpm: %v", err)
 		hadErrors = true
 	}
 	if err := upgradeShim(ctx, cfg); err != nil {
@@ -57,92 +57,6 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if hadErrors {
 		return errSilent
 	}
-	return nil
-}
-
-func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
-	rel, err := gh.GetLatestRelease(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo)
-	if err != nil {
-		return err
-	}
-	latestVer := config.NormalizeVersion(rel.TagName)
-
-	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
-		fmt.Printf("ghpm: already latest → %s\n", version)
-		return nil
-	}
-
-	if !promptConfirm(fmt.Sprintf("ghpm: upgrade %s → %s", version, latestVer)) {
-		return nil
-	}
-
-	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGhpm)
-	if err != nil {
-		return err
-	}
-	chosen, err := asset.PromptFromCandidates(acGhpm)
-	if errors.Is(err, asset.ErrSkip) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if acGhpm.Chosen.Name != "" {
-		printInfo(cfg, "asset: %s", chosen.Name)
-	}
-
-	if dryRun {
-		fmt.Printf("ghpm: upgrade %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
-		return nil
-	}
-
-	cacheDir, err := store.ReleaseDir(config.RepoGhpm.URI, rel.TagName)
-	if err != nil {
-		return err
-	}
-	if err := gh.DownloadAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
-		return err
-	}
-	if !noVerify {
-		_, _ = gh.VerifyAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, cacheDir, chosen.Name)
-	}
-
-	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
-		return err
-	}
-	ghpmCandidates := asset.FindBinaries(tmpDir, binGhpm)
-	if len(ghpmCandidates) == 0 {
-		return fmt.Errorf("no binary found in %s", chosen.Name)
-	}
-	ghpmBin := filepath.Join(tmpDir, filepath.FromSlash(ghpmCandidates[0].Key()))
-
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	self, err = filepath.EvalSymlinks(self)
-	if err != nil {
-		return err
-	}
-
-	tmp := self + ".new"
-	if err := copyFile(ghpmBin, tmp); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0755); err != nil {
-		return err
-	}
-	if err := replaceSelf(tmp, self); err != nil {
-		return err
-	}
-
-	printPass(cfg, "ghpm: upgraded %s → %s", version, latestVer)
 	return nil
 }
 
@@ -239,6 +153,92 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 	}
 
 	printPass(cfg, "gh: upgraded %s → %s", currentVer, latestVer)
+	return nil
+}
+
+func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
+	rel, err := gh.GetLatestRelease(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo)
+	if err != nil {
+		return err
+	}
+	latestVer := config.NormalizeVersion(rel.TagName)
+
+	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
+		fmt.Printf("ghpm: already latest → %s\n", version)
+		return nil
+	}
+
+	if !promptConfirm(fmt.Sprintf("ghpm: upgrade %s → %s", version, latestVer)) {
+		return nil
+	}
+
+	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGhpm)
+	if err != nil {
+		return err
+	}
+	chosen, err := asset.PromptFromCandidates(acGhpm)
+	if errors.Is(err, asset.ErrSkip) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if acGhpm.Chosen.Name != "" {
+		printInfo(cfg, "asset: %s", chosen.Name)
+	}
+
+	if dryRun {
+		fmt.Printf("ghpm: upgrade %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
+		return nil
+	}
+
+	cacheDir, err := store.ReleaseDir(config.RepoGhpm.URI, rel.TagName)
+	if err != nil {
+		return err
+	}
+	if err := gh.DownloadAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
+		return err
+	}
+	if !noVerify {
+		_, _ = gh.VerifyAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, cacheDir, chosen.Name)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
+		return err
+	}
+	ghpmCandidates := asset.FindBinaries(tmpDir, binGhpm)
+	if len(ghpmCandidates) == 0 {
+		return fmt.Errorf("no binary found in %s", chosen.Name)
+	}
+	ghpmBin := filepath.Join(tmpDir, filepath.FromSlash(ghpmCandidates[0].Key()))
+
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	self, err = filepath.EvalSymlinks(self)
+	if err != nil {
+		return err
+	}
+
+	tmp := self + ".new"
+	if err := copyFile(ghpmBin, tmp); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0755); err != nil {
+		return err
+	}
+	if err := replaceSelf(tmp, self); err != nil {
+		return err
+	}
+
+	printPass(cfg, "ghpm: upgraded %s → %s", version, latestVer)
 	return nil
 }
 
