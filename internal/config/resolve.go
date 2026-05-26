@@ -207,13 +207,13 @@ func SearchGitHub(name string) (string, error) {
 	for i, r := range repos {
 		fmt.Printf("  %d) %s\n", i+1, r.FullName)
 	}
-	fmt.Print("select a repo (0=cancel): ")
+	fmt.Print("select a repo (0=skip): ")
 
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 	var idx int
 	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(repos) {
-		return "", fmt.Errorf("cancelled")
+		return "", fmt.Errorf("skipped")
 	}
 	return "github.com/" + repos[idx-1].FullName, nil
 }

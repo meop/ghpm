@@ -178,6 +178,13 @@ func TestParseMultiSelect_Comma(t *testing.T) {
 	}
 }
 
+func TestParseMultiSelect_Space(t *testing.T) {
+	got, err := parseMultiSelect("1 3", 3)
+	if err != nil || len(got) != 2 || got[0] != 1 || got[1] != 3 {
+		t.Errorf("got %v,%v", got, err)
+	}
+}
+
 func TestParseMultiSelect_Range(t *testing.T) {
 	got, err := parseMultiSelect("2-4", 5)
 	if err != nil || len(got) != 3 || got[0] != 2 || got[1] != 3 || got[2] != 4 {

@@ -118,7 +118,7 @@ func PromptShimRenames(binKeys, proposed []string, reserved map[string]string) (
 			fmt.Println(entry)
 		}
 		if anyConflict {
-			fmt.Print("enter number(s) to rename (0=cancel): ")
+			fmt.Print("enter number(s) to rename (0=skip): ")
 		} else {
 			fmt.Print("enter number(s) to rename (empty=none): ")
 		}
@@ -141,7 +141,7 @@ func PromptShimRenames(binKeys, proposed []string, reserved map[string]string) (
 			indices, err := parseMultiSelect(input, len(proposed))
 			if err != nil || indices == nil {
 				if anyConflict {
-					fmt.Println("  cancelled")
+					fmt.Println("  skipped")
 					return nil, ErrSkip
 				}
 				break
@@ -205,7 +205,7 @@ func collectNewName(reader *bufio.Reader, idx int, taken map[string]bool) string
 //   - 0 candidates → nil, nil
 //   - 1 candidate → auto-select
 //   - Multiple: auto-select if candidate keys exactly match prevKeys;
-//     otherwise prompt with yay-style multi-select (1,3-5 / empty=all / 0=skip)
+//     otherwise prompt with yay-style multi-select
 func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil
@@ -230,7 +230,7 @@ func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCa
 		}
 		fmt.Println(entry)
 	}
-	fmt.Printf("enter number(s) (0=skip, empty=all, 1-%d or 1,x for multiple): ", len(candidates))
+	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,]2-%d): ", len(candidates))
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 
@@ -246,7 +246,7 @@ func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCa
 	return selected, nil
 }
 
-// parseMultiSelect parses yay-style input: empty=all, 0=skip (nil,nil), e.g. "1,3-5".
+// parseMultiSelect parses yay-style input
 func parseMultiSelect(input string, max int) ([]int, error) {
 	if strings.TrimSpace(input) == "" {
 		all := make([]int, max)
