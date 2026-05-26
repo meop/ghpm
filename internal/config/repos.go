@@ -1,14 +1,14 @@
 package config
 
 type RepoRef struct {
-	URI   string
 	Owner string
 	Repo  string
+	URI   string
 }
 
 var (
-	RepoGhpm       = RepoRef{"github.com/meop/ghpm", "meop", "ghpm"}
 	RepoGh         = RepoRef{"github.com/cli/cli", "cli", "cli"}
-	RepoSheesh     = RepoRef{"github.com/meop/sheesh", "meop", "sheesh"}
+	RepoGhpm       = RepoRef{"github.com/meop/ghpm", "meop", "ghpm"}
 	RepoGhpmConfig = RepoRef{"github.com/meop/ghpm-config", "meop", "ghpm-config"}
+	RepoSheesh     = RepoRef{"github.com/meop/sheesh", "meop", "sheesh"}
 )

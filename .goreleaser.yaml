@@ -11,16 +11,16 @@ builds:
     ldflags:
       - -X main.version={{.Version}}
     goos:
-      - linux
       - darwin
+      - linux
       - windows
     goarch:
-      - amd64
       - arm64
+      - amd64
 
 archives:
   - id: ghpm
-    name_template: "ghpm-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    name_template: 'ghpm-{{ .Version }}-{{ .Os }}-{{ .Arch }}'
     formats:
       - tar.gz
     format_overrides:
@@ -31,7 +31,7 @@ archives:
       - none*
 
 checksum:
-  name_template: "checksums.txt"
+  name_template: 'checksums.txt'
 
 release:
   draft: false
@@ -41,6 +41,6 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

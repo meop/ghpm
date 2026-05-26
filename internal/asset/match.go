@@ -15,14 +15,14 @@ import (
 var ErrSkip = errors.New("skipped")
 
 var osPrefixes = map[string][]string{
-	"linux":   {"linux"},
 	"darwin":  {"darwin", "macos", "osx"},
+	"linux":   {"linux"},
 	"windows": {"windows"},
 }
 
 var archPrefixes = map[string][]string{
-	"amd64": {"amd64", "x86_64", "x64"},
 	"arm64": {"arm64", "aarch64"},
+	"amd64": {"amd64", "x86_64", "x64"},
 }
 
 var allowedSuffixes = []string{
