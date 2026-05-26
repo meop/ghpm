@@ -29,30 +29,14 @@ func newSyncCmd() *cobra.Command {
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
-	unlock, err := config.AcquireLock()
+	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, NoVerify: true})
 	if err != nil {
-		printFail(nil, "%v", err)
-		return errSilent
+		return err
 	}
-	defer unlock()
-
-	cfg, err := config.LoadSettings()
-	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
-	}
-	if cfg.NoVerify {
-		noVerify = true
-	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
-		return errSilent
-	}
-	if err := gh.CheckInstalled(); err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
+	defer ci.close()
+	cfg := ci.cfg
+	manifest := ci.manifest
+	ctx := cmd.Context()
 
 	targets := map[string]config.PackageEntry{}
 	if len(args) == 0 {
@@ -96,7 +80,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	batchResults := gh.BatchLatestVersions(items, cfg.CacheTTL)
+	batchResults := gh.BatchLatestVersions(ctx, items, cfg.CacheTTL)
 
 	type syncJob struct {
 		key     string
@@ -130,7 +114,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		source := keyToSource[res.Key]
 		owner, repo, _ := gh.SplitSource(source)
-		rel, err := gh.GetReleaseByTag(owner, repo, res.LatestTag)
+		rel, err := gh.GetReleaseByTag(ctx, owner, repo, res.LatestTag)
 		if err != nil {
 			printFail(cfg, "%s: %v", res.Key, err)
 			hadErrors = true
@@ -202,12 +186,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 				}
 				if _, err := os.Stat(filepath.Join(cacheDir, r.chosen.Name)); os.IsNotExist(err) {
 					printInfo(cfg, "%s: downloading %s...", r.key, config.NormalizeVersion(r.release.TagName))
-					if err := gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
+					if err := gh.DownloadAsset(ctx, owner, repo, r.release.TagName, r.chosen.Name, cacheDir); err != nil {
 						return nil, err
 					}
 				}
 				if !noVerify {
-					_, err := asset.Verify(owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
+					_, err := gh.VerifyAsset(ctx, owner, repo, r.release.TagName, cacheDir, r.chosen.Name)
 					if err != nil {
 						return nil, err
 					}

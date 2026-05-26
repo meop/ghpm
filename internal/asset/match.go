@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -50,10 +48,8 @@ func Tokenize(name string) []string {
 	})
 }
 
-func tokenize(name string) []string { return Tokenize(name) }
-
 func hasTokenPrefix(name string, prefixes []string) bool {
-	for _, token := range tokenize(name) {
+	for _, token := range Tokenize(name) {
 		for _, prefix := range prefixes {
 			if strings.HasPrefix(token, prefix) {
 				return true
@@ -262,7 +258,7 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 }
 
 func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
-	hintTokens := stripVersionTokens(tokenize(hint))
+	hintTokens := stripVersionTokens(Tokenize(hint))
 	if len(hintTokens) == 0 {
 		return gh.Asset{}, false
 	}
@@ -270,7 +266,7 @@ func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
 	var match gh.Asset
 	matchCount := 0
 	for _, a := range candidates {
-		candidateTokens := stripVersionTokens(tokenize(a.Name))
+		candidateTokens := stripVersionTokens(Tokenize(a.Name))
 		if tokensMatch(hintTokens, candidateTokens) {
 			match = a
 			matchCount++
@@ -325,21 +321,4 @@ func isVersionToken(t string) bool {
 		return true
 	}
 	return false
-}
-
-func Verify(owner, repo, tag, cacheDir, assetName string) (bool, error) {
-	assetPath := filepath.Join(cacheDir, assetName)
-	if _, err := os.Stat(assetPath); os.IsNotExist(err) {
-		return false, fmt.Errorf("asset not found: %s", assetPath)
-	}
-
-	cmd := exec.Command("gh", "release", "verify-asset", tag, assetPath, "-R", owner+"/"+repo)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		if strings.Contains(string(out), "no attestation") || strings.Contains(string(out), "not found") {
-			return false, nil
-		}
-		return false, fmt.Errorf("verification failed: %s", string(out))
-	}
-	return true, nil
 }

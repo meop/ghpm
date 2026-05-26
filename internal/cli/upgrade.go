@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -30,37 +31,25 @@ func newUpgradeCmd() *cobra.Command {
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
-	unlock, err := config.AcquireLock()
+	ci, err := initCommand(cmdOptions{Lock: true, GH: true, NoVerify: true})
 	if err != nil {
-		printFail(nil, "%v", err)
-		return errSilent
+		return err
 	}
-	defer unlock()
-
-	if err := gh.CheckInstalled(); err != nil {
-		printFail(nil, "%v", err)
-		return errSilent
-	}
-	cfg, err := config.LoadSettings()
-	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
-	}
-	if cfg.NoVerify {
-		noVerify = true
-	}
+	defer ci.close()
+	cfg := ci.cfg
 
 	hadErrors := false
+	ctx := cmd.Context()
 
-	if err := upgradeGh(cfg); err != nil {
-		printFail(cfg, "gh: %v", err)
-		hadErrors = true
-	}
-	if err := upgradeSelf(cfg); err != nil {
+	if err := upgradeSelf(ctx, cfg); err != nil {
 		printFail(cfg, "ghpm: %v", err)
 		hadErrors = true
 	}
-	if err := upgradeShim(cfg); err != nil {
+	if err := upgradeGh(ctx, cfg); err != nil {
+		printFail(cfg, "gh: %v", err)
+		hadErrors = true
+	}
+	if err := upgradeShim(ctx, cfg); err != nil {
 		printFail(cfg, "sheesh: %v", err)
 		hadErrors = true
 	}
@@ -71,15 +60,15 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func upgradeSelf(cfg *config.Settings) error {
-	rel, err := gh.GetLatestRelease("meop", binGhpm)
+func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
+	rel, err := gh.GetLatestRelease(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo)
 	if err != nil {
 		return err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
-		fmt.Printf("ghpm: %s is already the latest\n", version)
+		fmt.Printf("ghpm: already latest → %s\n", version)
 		return nil
 	}
 	sep()
@@ -101,23 +90,23 @@ func upgradeSelf(cfg *config.Settings) error {
 	}
 
 	if dryRun {
-		fmt.Printf("[dry-run] would upgrade ghpm %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
+		fmt.Printf("[dry-run] would upgrade %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
 		return nil
 	}
 
-	if !promptConfirm(fmt.Sprintf("upgrade ghpm %s → %s", version, latestVer)) {
+	if !promptConfirm(fmt.Sprintf("upgrade %s → %s", version, latestVer)) {
 		return nil
 	}
 
-	cacheDir, err := store.ReleaseDir("github.com/meop/ghpm", rel.TagName)
+	cacheDir, err := store.ReleaseDir(config.RepoGhpm.URI, rel.TagName)
 	if err != nil {
 		return err
 	}
-	if err := gh.DownloadAsset("meop", binGhpm, rel.TagName, chosen.Name, cacheDir); err != nil {
+	if err := gh.DownloadAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
 		return err
 	}
 	if !noVerify {
-		_, _ = asset.Verify("meop", binGhpm, rel.TagName, cacheDir, chosen.Name)
+		_, _ = gh.VerifyAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, cacheDir, chosen.Name)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
@@ -159,7 +148,7 @@ func upgradeSelf(cfg *config.Settings) error {
 	return nil
 }
 
-func upgradeGh(cfg *config.Settings) error {
+func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 	binDir, err := store.BinDir()
 	if err != nil {
 		return err
@@ -180,14 +169,14 @@ func upgradeGh(cfg *config.Settings) error {
 		}
 	}
 
-	rel, err := gh.GetLatestRelease("cli", "cli")
+	rel, err := gh.GetLatestRelease(ctx, config.RepoGh.Owner, config.RepoGh.Repo)
 	if err != nil {
 		return err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		fmt.Printf("gh: %s is already the latest\n", currentVer)
+		fmt.Printf("gh: already latest → %s\n", currentVer)
 		return nil
 	}
 	sep()
@@ -217,15 +206,15 @@ func upgradeGh(cfg *config.Settings) error {
 		return nil
 	}
 
-	cacheDir, err := store.ReleaseDir("github.com/cli/cli", rel.TagName)
+	cacheDir, err := store.ReleaseDir(config.RepoGh.URI, rel.TagName)
 	if err != nil {
 		return err
 	}
-	if err := gh.DownloadAsset("cli", "cli", rel.TagName, chosen.Name, cacheDir); err != nil {
+	if err := gh.DownloadAsset(ctx, config.RepoGh.Owner, config.RepoGh.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
 		return err
 	}
 	if !noVerify {
-		_, _ = asset.Verify("cli", "cli", rel.TagName, cacheDir, chosen.Name)
+		_, _ = gh.VerifyAsset(ctx, config.RepoGh.Owner, config.RepoGh.Repo, rel.TagName, cacheDir, chosen.Name)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "ghpm-gh-upgrade-*")
@@ -257,7 +246,7 @@ func upgradeGh(cfg *config.Settings) error {
 	return nil
 }
 
-func upgradeShim(cfg *config.Settings) error {
+func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 	shimDir, err := store.ShimDir()
 	if err != nil {
 		return err
@@ -271,14 +260,14 @@ func upgradeShim(cfg *config.Settings) error {
 		}
 	}
 
-	rel, err := gh.GetLatestRelease("meop", binSheesh)
+	rel, err := gh.GetLatestRelease(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo)
 	if err != nil {
 		return err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		fmt.Printf("sheesh: %s is already the latest\n", currentVer)
+		fmt.Printf("sheesh: already latest → %s\n", currentVer)
 		return nil
 	}
 	sep()
@@ -302,9 +291,9 @@ func upgradeShim(cfg *config.Settings) error {
 
 	var prompt string
 	if currentVer == "" {
-		prompt = fmt.Sprintf("install sheesh %s", latestVer)
+		prompt = fmt.Sprintf("install %s", latestVer)
 	} else {
-		prompt = fmt.Sprintf("upgrade sheesh %s → %s", currentVer, latestVer)
+		prompt = fmt.Sprintf("upgrade %s → %s", currentVer, latestVer)
 	}
 
 	if dryRun {
@@ -316,15 +305,15 @@ func upgradeShim(cfg *config.Settings) error {
 		return nil
 	}
 
-	cacheDir, err := store.ReleaseDir("github.com/meop/sheesh", rel.TagName)
+	cacheDir, err := store.ReleaseDir(config.RepoSheesh.URI, rel.TagName)
 	if err != nil {
 		return err
 	}
-	if err := gh.DownloadAsset("meop", binSheesh, rel.TagName, chosen.Name, cacheDir); err != nil {
+	if err := gh.DownloadAsset(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
 		return err
 	}
 	if !noVerify {
-		_, _ = asset.Verify("meop", binSheesh, rel.TagName, cacheDir, chosen.Name)
+		_, _ = gh.VerifyAsset(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo, rel.TagName, cacheDir, chosen.Name)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "ghpm-shim-upgrade-*")

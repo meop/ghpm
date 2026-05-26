@@ -130,6 +130,15 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		pass("shims", fmt.Sprintf("%d in %s", len(entries), binDir))
 	}
 
+	if shimDir, err := store.ShimDir(); err == nil {
+		kebabPath := filepath.Join(shimDir, exeName("kebab"))
+		if _, err := os.Stat(kebabPath); err != nil {
+			warn("kebab", "not found — run 'ghpm upgrade' to install sheesh")
+		} else {
+			pass("kebab", "present — "+kebabPath)
+		}
+	}
+
 	if releaseDir, err := store.ReleaseBaseDir(); err == nil {
 		pass("cache", humanBytes(dirSize(releaseDir))+" — "+releaseDir)
 	}

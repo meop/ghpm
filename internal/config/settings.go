@@ -31,7 +31,7 @@ func defaultSettings() *Settings {
 		NoVerify:    false,
 		NumParallel: 5,
 		CacheTTL:    "5m",
-		RepoSources: []string{"github.com/meop/ghpm-config"},
+		RepoSources: []string{RepoGhpmConfig.URI},
 	}
 }
 

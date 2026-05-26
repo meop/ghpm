@@ -22,14 +22,12 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	cfg, err := config.LoadSettings()
+	ci, err := initCommand(cmdOptions{Manifest: true})
 	if err != nil {
 		return err
 	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		return err
-	}
+	cfg := ci.cfg
+	manifest := ci.manifest
 	if len(manifest.Extracts) == 0 {
 		printInfo(cfg, "no packages installed")
 		return nil

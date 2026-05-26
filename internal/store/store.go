@@ -101,3 +101,11 @@ func normalizeVersion(v string) string {
 	}
 	return v
 }
+
+func SourceFromPath(rel string) string {
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[0] + "/" + parts[1] + "/" + parts[2]
+}

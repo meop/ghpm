@@ -1,6 +1,7 @@
 package gh
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,7 +55,7 @@ func TestSplitSource(t *testing.T) {
 func TestGetLatestRelease_MockGH(t *testing.T) {
 	fakeGH(t, `echo '{"tagName":"v1.2.3","assets":[{"name":"tool-linux-amd64.tar.gz","size":1234,"url":"https://x.com/a"}]}'`)
 
-	rel, err := GetLatestRelease("owner", "repo")
+	rel, err := GetLatestRelease(context.Background(), "owner", "repo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestGetLatestRelease_MockGH(t *testing.T) {
 func TestListReleases_MockGH(t *testing.T) {
 	fakeGH(t, `echo '[{"tagName":"v2.0.0"},{"tagName":"v1.0.0"}]'`)
 
-	releases, err := ListReleases("owner", "repo")
+	releases, err := ListReleases(context.Background(), "owner", "repo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +123,7 @@ func TestIsRateLimited_NilError(t *testing.T) {
 
 func TestRun_RateLimitDetection(t *testing.T) {
 	fakeGH(t, `echo "API rate limit exceeded" >&2 && exit 1`)
-	_, err := GetLatestRelease("owner", "repo")
+	_, err := GetLatestRelease(context.Background(), "owner", "repo")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -133,7 +134,7 @@ func TestRun_RateLimitDetection(t *testing.T) {
 
 func TestRun_NormalError(t *testing.T) {
 	fakeGH(t, `echo "some network error" >&2 && exit 1`)
-	_, err := GetLatestRelease("owner", "repo")
+	_, err := GetLatestRelease(context.Background(), "owner", "repo")
 	if err == nil {
 		t.Fatal("expected error")
 	}

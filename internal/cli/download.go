@@ -27,27 +27,14 @@ func newDownloadCmd() *cobra.Command {
 
 func runDownload(cmd *cobra.Command, args []string) error {
 	destPath, _ := cmd.Flags().GetString("path")
-	cfg, err := config.LoadSettings()
+	ci, err := initCommand(cmdOptions{Manifest: true, GH: true, Repos: true, NoVerify: true})
 	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
+		return err
 	}
-	if cfg.NoVerify {
-		noVerify = true
-	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
-		return errSilent
-	}
-	if err := gh.CheckInstalled(); err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
-	repos, repoErr := config.LoadRepos()
-	if repoErr != nil {
-		printInfo(cfg, "could not load repos: %v", repoErr)
-	}
+	cfg := ci.cfg
+	manifest := ci.manifest
+	repos := ci.repos
+	ctx := cmd.Context()
 
 	type dlJob struct {
 		name    string
@@ -83,9 +70,9 @@ func runDownload(cmd *cobra.Command, args []string) error {
 				}
 				var rel gh.Release
 				if ver != "" {
-					rel, err = gh.GetReleaseByTag(owner, repo, ver)
+					rel, err = gh.GetReleaseByTag(ctx, owner, repo, ver)
 				} else {
-					rel, err = gh.GetLatestRelease(owner, repo)
+					rel, err = gh.GetLatestRelease(ctx, owner, repo)
 				}
 				if err != nil {
 					return nil, err
@@ -155,7 +142,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 						return nil, err
 					}
 				}
-				return nil, gh.DownloadAsset(owner, repo, r.release.TagName, r.chosen.Name, dest)
+				return nil, gh.DownloadAsset(ctx, owner, repo, r.release.TagName, r.chosen.Name, dest)
 			},
 		}
 	}

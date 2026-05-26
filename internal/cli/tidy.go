@@ -26,29 +26,18 @@ func newTidyCmd() *cobra.Command {
 }
 
 func runTidy(cmd *cobra.Command, args []string) error {
-	unlock, err := config.AcquireLock()
+	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true})
 	if err != nil {
-		printFail(nil, "%v", err)
-		return errSilent
+		return err
 	}
-	defer unlock()
-
-	cfg, err := config.LoadSettings()
-	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
-	}
+	defer ci.close()
+	cfg := ci.cfg
+	manifest := ci.manifest
 
 	all, _ := cmd.Flags().GetBool("all")
 	releaseDir, err := store.ReleaseBaseDir()
 	if err != nil {
 		printFail(cfg, "%v", err)
-		return errSilent
-	}
-
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
 		return errSilent
 	}
 
@@ -362,7 +351,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		if len(parts) < 5 {
 			return nil
 		}
-		source := "github.com/" + parts[1] + "/" + parts[2]
+		source := store.SourceFromPath(rel)
 		ver := parts[3]
 		if !installed[source+"/"+ver] {
 			toRemove = append(toRemove, path)

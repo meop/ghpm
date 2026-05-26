@@ -1,10 +1,12 @@
 package gh
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/meop/ghpm/internal/config"
@@ -26,7 +28,6 @@ type Release struct {
 	Assets       []Asset `json:"assets"`
 }
 
-// ghBin returns the path to the gh binary, checking PATH first then ~/.ghpm/bin.
 func ghBin() (string, error) {
 	if p, err := exec.LookPath("gh"); err == nil {
 		return p, nil
@@ -42,13 +43,11 @@ func ghBin() (string, error) {
 	return "", fmt.Errorf("gh CLI not found — install it from https://cli.github.com/")
 }
 
-// CheckInstalled verifies gh is available.
 func CheckInstalled() error {
 	_, err := ghBin()
 	return err
 }
 
-// SplitSource splits "host/owner/repo" → owner, repo.
 func SplitSource(source string) (string, string, error) {
 	parts := strings.SplitN(source, "/", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
@@ -57,9 +56,8 @@ func SplitSource(source string) (string, string, error) {
 	return parts[1], parts[2], nil
 }
 
-// ListReleases returns all releases for owner/repo (tagName only).
-func ListReleases(owner, repo string) ([]Release, error) {
-	out, err := run("gh", "release", "list",
+func ListReleases(ctx context.Context, owner, repo string) ([]Release, error) {
+	out, err := runCmd(ctx, "gh", "release", "list",
 		"-R", owner+"/"+repo,
 		"--json", "tagName,isPrerelease",
 		"--limit", "200",
@@ -74,9 +72,8 @@ func ListReleases(owner, repo string) ([]Release, error) {
 	return releases, nil
 }
 
-// GetLatestRelease fetches the latest release with full asset info.
-func GetLatestRelease(owner, repo string) (Release, error) {
-	out, err := run("gh", "release", "view",
+func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) {
+	out, err := runCmd(ctx, "gh", "release", "view",
 		"-R", owner+"/"+repo,
 		"--json", "tagName,assets",
 	)
@@ -90,22 +87,17 @@ func GetLatestRelease(owner, repo string) (Release, error) {
 	return rel, nil
 }
 
-// GetReleaseByTag fetches a specific release by tag with full asset info.
-// It tries the tag as given, then the alternate v-prefix form if the first fails.
-// e.g. "14.1.0" → tries "14.1.0" then "v14.1.0".
-func GetReleaseByTag(owner, repo, tag string) (Release, error) {
-	rel, err := getReleaseView(owner, repo, tag)
+func GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, error) {
+	rel, err := getReleaseView(ctx, owner, repo, tag)
 	if err != nil {
 		alt := alternateVTag(tag)
-		return getReleaseView(owner, repo, alt)
+		return getReleaseView(ctx, owner, repo, alt)
 	}
 	return rel, nil
 }
 
-// FindLatestMatching lists all releases and returns the full release data for
-// the highest-versioned one that satisfies the given constraint.
-func FindLatestMatching(owner, repo string, c config.Constraint) (Release, error) {
-	releases, err := ListReleases(owner, repo)
+func FindLatestMatching(ctx context.Context, owner, repo string, c config.Constraint) (Release, error) {
+	releases, err := ListReleases(ctx, owner, repo)
 	if err != nil {
 		return Release{}, err
 	}
@@ -125,15 +117,14 @@ func FindLatestMatching(owner, repo string, c config.Constraint) (Release, error
 	if bestTag == "" {
 		return Release{}, fmt.Errorf("no release found matching %q", c.Raw)
 	}
-	return getReleaseView(owner, repo, bestTag)
+	return getReleaseView(ctx, owner, repo, bestTag)
 }
 
-// DownloadAsset downloads a release asset to dest directory.
-func DownloadAsset(owner, repo, tag, pattern, dest string) error {
+func DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest string) error {
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}
-	_, err := run("gh", "release", "download", tag,
+	_, err := runCmd(ctx, "gh", "release", "download", tag,
 		"-R", owner+"/"+repo,
 		"-p", pattern,
 		"-D", dest,
@@ -142,8 +133,29 @@ func DownloadAsset(owner, repo, tag, pattern, dest string) error {
 	return err
 }
 
-func getReleaseView(owner, repo, tag string) (Release, error) {
-	out, err := run("gh", "release", "view", tag,
+func VerifyAsset(ctx context.Context, owner, repo, tag, cacheDir, assetName string) (bool, error) {
+	assetPath := filepath.Join(cacheDir, assetName)
+	if _, err := os.Stat(assetPath); os.IsNotExist(err) {
+		return false, fmt.Errorf("asset not found: %s", assetPath)
+	}
+
+	ghPath, err := ghBin()
+	if err != nil {
+		return false, err
+	}
+	cmd := exec.CommandContext(ctx, ghPath, "release", "verify-asset", tag, assetPath, "-R", owner+"/"+repo)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if strings.Contains(string(out), "no attestation") || strings.Contains(string(out), "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("verification failed: %s", string(out))
+	}
+	return true, nil
+}
+
+func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, error) {
+	out, err := runCmd(ctx, "gh", "release", "view", tag,
 		"-R", owner+"/"+repo,
 		"--json", "tagName,assets",
 	)
@@ -164,13 +176,13 @@ func alternateVTag(tag string) string {
 	return "v" + tag
 }
 
-func run(name string, args ...string) ([]byte, error) {
+func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if name == "gh" {
 		if p, err := ghBin(); err == nil {
 			name = p
 		}
 	}
-	cmd := exec.Command(name, args...)
+	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {

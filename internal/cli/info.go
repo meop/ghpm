@@ -21,24 +21,14 @@ func newInfoCmd() *cobra.Command {
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
-	cfg, err := config.LoadSettings()
+	ci, err := initCommand(cmdOptions{Manifest: true, GH: true, Repos: true})
 	if err != nil {
-		printFail(nil, "could not load settings: %v", err)
-		return errSilent
+		return err
 	}
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		printFail(cfg, "could not load manifest: %v", err)
-		return errSilent
-	}
-	if err := gh.CheckInstalled(); err != nil {
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
-	repos, repoErr := config.LoadRepos()
-	if repoErr != nil {
-		printInfo(cfg, "could not load repos: %v", repoErr)
-	}
+	cfg := ci.cfg
+	manifest := ci.manifest
+	repos := ci.repos
+	ctx := cmd.Context()
 
 	var hadErrors bool
 	for _, arg := range args {
@@ -66,7 +56,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		fmt.Println(repeatStr("─", 60))
 
 		if ver != "" {
-			rel, err := gh.GetReleaseByTag(owner, repo, ver)
+			rel, err := gh.GetReleaseByTag(ctx, owner, repo, ver)
 			if err != nil {
 				printFail(cfg, "%v", err)
 				hadErrors = true
@@ -74,7 +64,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 			}
 			printReleaseInfo(rel)
 		} else {
-			releases, err := gh.ListReleases(owner, repo)
+			releases, err := gh.ListReleases(ctx, owner, repo)
 			if err != nil {
 				printFail(cfg, "%v", err)
 				hadErrors = true
@@ -86,7 +76,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 				fmt.Printf("    %s\n", config.NormalizeVersion(r.TagName))
 			}
 			if len(releases) > 0 {
-				rel, err := gh.GetLatestRelease(owner, repo)
+				rel, err := gh.GetLatestRelease(ctx, owner, repo)
 				if err == nil {
 					fmt.Println()
 					printReleaseInfo(rel)
