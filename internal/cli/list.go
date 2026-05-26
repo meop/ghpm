@@ -49,7 +49,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	for i, k := range keys {
 		p := manifest.Extracts[k]
 		baseName, _, _ := config.ParseVersionSuffix(k)
-		rows[i] = []string{k, p.Version, p.Pin, manifest.Repos[baseName], p.AssetName}
+		rows[i] = []string{k, p.Version, p.Pin, manifest.Repos[baseName], p.Asset}
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
 	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)

@@ -7,10 +7,10 @@ import (
 )
 
 type PackageEntry struct {
-	Pin       string            `json:"pin"`
-	Version   string            `json:"version"`
-	AssetName string            `json:"asset_name"`
-	Bins      map[string]string `json:"bin,omitempty"`
+	Pin     string            `json:"pin"`
+	Version string            `json:"version"`
+	Asset   string            `json:"asset"`
+	Bins    map[string]string `json:"bin,omitempty"`
 }
 
 type Manifest struct {

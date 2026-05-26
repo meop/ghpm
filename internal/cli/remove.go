@@ -64,7 +64,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	rows := make([][]string, len(targets))
 	for i, t := range targets {
 		baseName, _, _ := config.ParseVersionSuffix(t.key)
-		rows[i] = []string{t.key, t.pkg.Pin, t.pkg.Version, t.pkg.AssetName, manifest.Repos[baseName]}
+		rows[i] = []string{t.key, t.pkg.Pin, t.pkg.Version, t.pkg.Asset, manifest.Repos[baseName]}
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
 	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)

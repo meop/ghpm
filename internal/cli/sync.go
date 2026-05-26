@@ -121,7 +121,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		pkg = targets[res.Key]
-		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, pkg.AssetName, res.Key)
+		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, pkg.Asset, res.Key)
 		if err != nil {
 			printFail(cfg, "%s: %v", res.Key, err)
 			hadErrors = true
@@ -268,10 +268,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 		manifest.Extracts[r.key] = config.PackageEntry{
-			Pin:       r.pkg.Pin,
-			Version:   newVer,
-			AssetName: r.chosen.Name,
-			Bins:      newBins,
+			Pin:     r.pkg.Pin,
+			Version: newVer,
+			Asset:   r.chosen.Name,
+			Bins:    newBins,
 		}
 		for shimName, binsKey := range newBins {
 			binDir, binName := splitBinKey(binsKey)

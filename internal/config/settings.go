@@ -6,15 +6,13 @@ import (
 	"path/filepath"
 )
 
-
-
 type Settings struct {
-	CacheTTL     string            `json:"cache_ttl"`
-	Color        map[string]string `json:"color"`
-	NoColor      bool              `json:"no_color"`
-	NoVerify     bool              `json:"no_verify"`
-	NumParallel  int               `json:"num_parallel"`
-	RepoSources  []string          `json:"repo_sources"`
+	CacheTTL    string            `json:"cache_ttl"`
+	Color       map[string]string `json:"color"`
+	NoColor     bool              `json:"no_color"`
+	NoVerify    bool              `json:"no_verify"`
+	NumParallel int               `json:"num_parallel"`
+	RepoSources []string          `json:"repo_sources"`
 }
 
 func defaultSettings() *Settings {

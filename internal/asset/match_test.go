@@ -133,8 +133,6 @@ func TestHasTokenPrefix(t *testing.T) {
 	}
 }
 
-
-
 func TestIsVersionToken(t *testing.T) {
 	cases := []struct {
 		token string

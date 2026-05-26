@@ -13,12 +13,12 @@ type cmdInit struct {
 }
 
 type cmdOptions struct {
-	Lock      bool
-	Manifest  bool
-	GH        bool
-	Dirs      bool
-	Repos     bool
-	NoVerify  bool
+	Lock     bool
+	Manifest bool
+	GH       bool
+	Dirs     bool
+	Repos    bool
+	NoVerify bool
 }
 
 func initCommand(opts cmdOptions) (*cmdInit, error) {
