@@ -12,7 +12,7 @@ import (
 func newFindCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "find [term...]",
-		Aliases: []string{"search"},
+		Aliases: []string{"fi", "se", "search"},
 		Short:   "List or search cached repos by name or source",
 		RunE:    runFind,
 	}
@@ -30,10 +30,9 @@ func runFind(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg := ci.cfg
 	repos := ci.repos
 	if len(repos) == 0 {
-		printInfo(cfg, "no repos cached")
+		print("no repos cached")
 		return nil
 	}
 
@@ -77,7 +76,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		}
 
 		if len(matches) == 0 {
-			printInfo(cfg, "no repos matching %q", term)
+			print("no repos matching %q", term)
 			continue
 		}
 

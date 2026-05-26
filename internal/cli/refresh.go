@@ -8,10 +8,11 @@ import (
 
 func newRefreshCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "refresh",
-		Short: "Refresh repo sources to latest versions",
-		Args:  cobra.NoArgs,
-		RunE:  runRefresh,
+		Use:     "refresh",
+		Aliases: []string{"rf", "ref"},
+		Short:   "Refresh repo sources to latest versions",
+		Args:    cobra.NoArgs,
+		RunE:    runRefresh,
 	}
 }
 

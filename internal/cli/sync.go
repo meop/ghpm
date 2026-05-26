@@ -151,7 +151,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	if len(ready) == 0 {
 		if skipped == 0 {
-			printInfo(cfg, "all packages are up to date")
+			print("all packages are up to date")
 		}
 		if hadErrors {
 			return errSilent

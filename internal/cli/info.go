@@ -13,7 +13,7 @@ import (
 func newInfoCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "info <name> [name...]",
-		Aliases: []string{"show"},
+		Aliases: []string{"in", "show"},
 		Short:   "Show releases and available assets for packages",
 		Args:    cobra.MinimumNArgs(1),
 		RunE:    runInfo,

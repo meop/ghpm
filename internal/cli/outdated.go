@@ -14,7 +14,7 @@ import (
 func newOutdatedCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "outdated",
-		Aliases: []string{"out", "ou", "stale"},
+		Aliases: []string{"ou", "out", "stale"},
 		Short:   "List packages with newer releases available",
 		Args:    cobra.NoArgs,
 		RunE:    runOutdated,
@@ -63,7 +63,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(items) == 0 {
-		printInfo(cfg, "all packages are up to date")
+		print("all packages are up to date")
 		return nil
 	}
 
@@ -108,7 +108,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 
 	if len(outdated) == 0 {
 		if !rateLimited {
-			printInfo(cfg, "all packages are up to date")
+			print("all packages are up to date")
 		}
 		if hadErrors {
 			return errSilent
