@@ -205,7 +205,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, r := range ready {
-			fmt.Printf("[dry-run] %s: would install %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
+			fmt.Printf("%s: install %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
 		}
 		return nil
 	}
@@ -358,9 +358,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		for i, r := range shimRows {
 			rows[i] = []string{r.pkg, r.binary, r.shim}
 		}
-		fmt.Println()
+		sep()
 		printTable([]string{"name", "bin", "target"}, rows, nil)
-		fmt.Println()
 		if !promptConfirm(fmt.Sprintf("create %d bin(s)", len(shimRows))) {
 			if hadErrors {
 				return errSilent
@@ -383,7 +382,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					printWarn(cfg, "%s: could not create shim: %v", shimName, err)
 				}
 			}
-			printPass(cfg, "installed %s", p.version)
+			printPass(cfg, "%s: installed %s", p.jobName, p.version)
 		}
 	}
 

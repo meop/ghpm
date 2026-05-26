@@ -20,7 +20,7 @@ import (
 func newSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "sync [name...]",
-		Aliases: []string{"up", "update"},
+		Aliases: []string{"sy", "up", "update"},
 		Short:   "Sync packages to their latest releases",
 		RunE:    runSync,
 	}
@@ -280,7 +280,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				printWarn(cfg, "could not update shim: %v", err)
 			}
 		}
-		printPass(cfg, "updated %s → %s", r.pkg.Version, newVer)
+		printPass(cfg, "%s: updated %s → %s", r.key, r.pkg.Version, newVer)
 	}
 
 	if err := config.SaveManifest(manifest); err != nil {

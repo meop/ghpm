@@ -15,10 +15,11 @@ import (
 
 func newDownloadCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "download <name> [name...]",
-		Short: "Download release assets without extracting",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runDownload,
+		Use:     "download <name> [name...]",
+		Aliases: []string{"down"},
+		Short:   "Download release assets without extracting",
+		Args:    cobra.MinimumNArgs(1),
+		RunE:    runDownload,
 	}
 	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/download/)")
 	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
@@ -119,7 +120,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, r := range ready {
-			fmt.Printf("[dry-run] would download %s %s (asset: %s)\n", r.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
+			fmt.Printf("%s: download %s (asset: %s)\n", r.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
 		}
 		return nil
 	}

@@ -15,7 +15,7 @@ import (
 func newRemoveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "remove <name> [name...]",
-		Aliases: []string{"rem", "rm", "un", "unin", "uninstall"},
+		Aliases: []string{"rm", "rem", "un", "unin", "uninstall"},
 		Short:   "Remove installed packages",
 		Args:    cobra.MinimumNArgs(1),
 		RunE:    runRemove,
@@ -56,7 +56,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, t := range targets {
-			fmt.Printf("[dry-run] %s: would remove %s (extract dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
+			fmt.Printf("%s: remove %s (extract dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
 		}
 		return nil
 	}
