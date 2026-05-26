@@ -53,6 +53,8 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: stable
+      - name: Format check
+        run: test -z "$(gofmt -l .)"
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
