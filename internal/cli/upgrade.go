@@ -71,7 +71,6 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
 		fmt.Printf("ghpm: already latest → %s\n", version)
 		return nil
 	}
-	sep()
 
 	if !promptConfirm(fmt.Sprintf("ghpm: upgrade %s → %s", version, latestVer)) {
 		return nil
@@ -178,7 +177,6 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 		fmt.Printf("gh: already latest → %s\n", currentVer)
 		return nil
 	}
-	sep()
 
 	if !promptConfirm(fmt.Sprintf("gh: upgrade %s → %s", currentVer, latestVer)) {
 		return nil
@@ -268,7 +266,6 @@ func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 		fmt.Printf("sheesh: already latest → %s\n", currentVer)
 		return nil
 	}
-	sep()
 
 	var action string
 	if currentVer == "" {
