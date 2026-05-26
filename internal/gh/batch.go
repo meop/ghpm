@@ -35,10 +35,14 @@ type releaseField struct {
 		TagName string `json:"tagName"`
 	} `json:"latestRelease"`
 	VRefs *struct {
-		Nodes []struct{ Name string `json:"name"` } `json:"nodes"`
+		Nodes []struct {
+			Name string `json:"name"`
+		} `json:"nodes"`
 	} `json:"vRefs"`
 	NvRefs *struct {
-		Nodes []struct{ Name string `json:"name"` } `json:"nodes"`
+		Nodes []struct {
+			Name string `json:"name"`
+		} `json:"nodes"`
 	} `json:"nvRefs"`
 }
 

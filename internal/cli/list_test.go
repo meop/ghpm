@@ -23,7 +23,7 @@ func TestRunList_WithPackages(t *testing.T) {
 	writeManifest(t, home, &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{
-			"fzf": {Version: "0.58.0", Pin: "latest", AssetName: "fzf.tar.gz"},
+			"fzf": {Version: "0.58.0", Pin: "latest", Asset: "fzf.tar.gz"},
 		},
 	})
 	onlyNames = true

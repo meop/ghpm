@@ -256,14 +256,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
 
 	type shimPlan struct {
-		key       string
-		jobName   string
-		source    string
-		pkgDir    string
-		bins      map[string]string
-		pin       string
-		version   string
-		assetName string
+		key     string
+		jobName string
+		source  string
+		pkgDir  string
+		bins    map[string]string
+		pin     string
+		version string
+		asset   string
 	}
 	var shimPlans []shimPlan
 
@@ -332,14 +332,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			bins[shimNames[i]] = s.Key() // shimName → binKey
 		}
 		shimPlans = append(shimPlans, shimPlan{
-			key:       key,
-			jobName:   r.job.name,
-			source:    r.job.source,
-			pkgDir:    pkgDir,
-			bins:      bins,
-			pin:       r.job.pin(),
-			version:   config.NormalizeVersion(r.release.TagName),
-			assetName: r.chosen.Name,
+			key:     key,
+			jobName: r.job.name,
+			source:  r.job.source,
+			pkgDir:  pkgDir,
+			bins:    bins,
+			pin:     r.job.pin(),
+			version: config.NormalizeVersion(r.release.TagName),
+			asset:   r.chosen.Name,
 		})
 	}
 
@@ -367,10 +367,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		for _, p := range shimPlans {
 			manifest.Repos[p.jobName] = p.source
 			manifest.Extracts[p.key] = config.PackageEntry{
-				Pin:       p.pin,
-				Version:   p.version,
-				AssetName: p.assetName,
-				Bins:      p.bins,
+				Pin:     p.pin,
+				Version: p.version,
+				Asset:   p.asset,
+				Bins:    p.bins,
 			}
 			for shimName, binsKey := range p.bins {
 				binDir, binName := splitBinKey(binsKey)

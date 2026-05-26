@@ -30,8 +30,8 @@ func TestSaveAndLoadManifest(t *testing.T) {
 			"bun": "github.com/oven-sh/bun",
 		},
 		Extracts: map[string]PackageEntry{
-			"fzf": {Pin: "latest", Version: "0.56.0", AssetName: "fzf-0.56.0-linux_amd64.tar.gz"},
-			"bun": {Pin: "latest", Version: "1.3.13", AssetName: "bun-linux-x64.zip"},
+			"fzf": {Pin: "latest", Version: "0.56.0", Asset: "fzf-0.56.0-linux_amd64.tar.gz"},
+			"bun": {Pin: "latest", Version: "1.3.13", Asset: "bun-linux-x64.zip"},
 		},
 	}
 
@@ -54,16 +54,16 @@ func TestSaveAndLoadManifest(t *testing.T) {
 	if entry.Pin != "latest" {
 		t.Errorf("unexpected pin: %s", entry.Pin)
 	}
-	if entry.AssetName != "fzf-0.56.0-linux_amd64.tar.gz" {
-		t.Errorf("unexpected asset: %s", entry.AssetName)
+	if entry.Asset != "fzf-0.56.0-linux_amd64.tar.gz" {
+		t.Errorf("unexpected asset: %s", entry.Asset)
 	}
 	if loaded.Repos["fzf"] != "github.com/junegunn/fzf" {
 		t.Errorf("unexpected source: %s", loaded.Repos["fzf"])
 	}
 
 	bunEntry := loaded.Extracts["bun"]
-	if bunEntry.AssetName != "bun-linux-x64.zip" {
-		t.Errorf("unexpected bun asset: %s", bunEntry.AssetName)
+	if bunEntry.Asset != "bun-linux-x64.zip" {
+		t.Errorf("unexpected bun asset: %s", bunEntry.Asset)
 	}
 }
 
@@ -72,7 +72,7 @@ func TestAtomicSave(t *testing.T) {
 	path := filepath.Join(dir, "manifest.json")
 
 	m := &Manifest{
-		Repos:  map[string]string{},
+		Repos:    map[string]string{},
 		Extracts: map[string]PackageEntry{},
 	}
 	if err := saveManifestFile(m, path); err != nil {
