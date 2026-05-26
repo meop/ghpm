@@ -358,7 +358,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		for i, r := range shimRows {
 			rows[i] = []string{r.pkg, r.binary, r.shim}
 		}
-		sep()
 		printTable([]string{"name", "bin", "target"}, rows, nil)
 		if !promptConfirm(fmt.Sprintf("create %d bin(s)", len(shimRows))) {
 			if hadErrors {
