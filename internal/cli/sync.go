@@ -139,9 +139,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		if ac.Chosen.Name != "" {
-			printInfo(cfg, "asset: %s", chosen.Name)
-		}
 		ready = append(ready, syncJob{key: res.Key, source: source, pkg: pkg, release: rel, chosen: chosen})
 	}
 
