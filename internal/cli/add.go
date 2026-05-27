@@ -213,6 +213,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	if !promptInstall(cfg, ready) {
 		return nil
 	}
+	hasOutput = false
 
 	installTasks := make([]parallel.Task, len(ready))
 	for i, r := range ready {

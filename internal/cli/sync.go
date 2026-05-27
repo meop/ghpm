@@ -174,6 +174,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if !promptConfirm(fmt.Sprintf("update %d package(s)", len(ready))) {
 		return nil
 	}
+	hasOutput = false
 
 	syncTasks := make([]parallel.Task, len(ready))
 	for i, r := range ready {

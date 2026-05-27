@@ -48,6 +48,15 @@ GOOS=windows GOARCH=amd64 go build -o ghpm-windows-amd64.exe ./cmd/ghpm
 - `internal/store/` — path helpers for ~/.ghpm/ directories
 - `internal/parallel/` — bounded worker pool
 
+## Print formatting
+
+- No blank line at the start or end of any command's output
+- Blank lines only between logical blocks; never two in a row — this applies inside loops and nested loops too; a block that starts or ends with `sep()` inside a loop will double-blank when adjacent iterations also call `sep()`
+- `sep()` in `table.go` guards the leading blank via `hasOutput`; it prints a blank only when `hasOutput` is true, then sets it true
+- After `promptConfirm`/`promptInstall` returns true and the next output is a `printTitle` loop, reset `hasOutput = false` immediately — the user's Enter already provides a line break
+- `printPass`/`printFail`/`printInfo` do not call `sep()`; safe to use directly after a prompt with no extra blank
+- Never call `sep()` as the last statement before returning if it would be the final output
+
 ## Conventions
 
 - All GitHub interaction goes through `gh` CLI, never a Go SDK
