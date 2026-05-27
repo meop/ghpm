@@ -50,15 +50,16 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	var hadErrors bool
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
-		fmt.Printf("download: %s\n", name)
 		if err := config.ValidateName(name); err != nil {
-			printFail(cfg, "%s: %v", arg, err)
+			printTitle(name)
+			printFail(cfg, "%v", err)
 			hadErrors = true
 			continue
 		}
 		source, err := config.ResolveSource(name, ver, manifest, repos)
 		if err != nil {
-			printFail(cfg, "%s: %v", arg, err)
+			printTitle(name)
+			printFail(cfg, "%v", err)
 			hadErrors = true
 			continue
 		}
@@ -86,9 +87,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return nil, err
 				}
-				if ac.Chosen.Name != "" {
-					printInfo(cfg, "asset: %s", chosen.Name)
-				}
 				return dlJob{name: name, source: source, version: ver, pinned: pinned, release: rel, chosen: chosen}, nil
 			},
 		})
@@ -100,8 +98,9 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		if errors.Is(res.Err, asset.ErrSkip) {
 			continue
 		}
+		printTitle(res.Name)
 		if res.Err != nil {
-			printFail(cfg, "%s: %v", res.Name, res.Err)
+			printFail(cfg, "%v", res.Err)
 			hadErrors = true
 			continue
 		}
@@ -109,6 +108,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		if !ok {
 			continue
 		}
+		printInfo(cfg, "asset: %s", r.chosen.Name)
 		ready = append(ready, r)
 	}
 	if len(ready) == 0 {
