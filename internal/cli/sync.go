@@ -167,6 +167,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	sep()
 	if !promptConfirm(fmt.Sprintf("update %d package(s)", len(ready))) {
 		return nil
 	}
@@ -270,13 +271,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 			Asset:   r.chosen.Name,
 			Bins:    newBins,
 		}
+		shimFailed := false
 		for shimName, binsKey := range newBins {
 			binDir, binName := splitBinKey(binsKey)
 			if err := shim.Create(shimName, binName, newPkgDir, binDir); err != nil {
-				printWarn(cfg, "could not update shim: %v", err)
+				printFail(cfg, "%s: could not update shim: %v", shimName, err)
+				shimFailed = true
+				hadErrors = true
 			}
 		}
-		printPass(cfg, "%s: updated %s → %s", r.key, r.pkg.Version, newVer)
+		if !shimFailed {
+			printPass(cfg, "%s: updated %s → %s", r.key, r.pkg.Version, newVer)
+		}
 	}
 
 	if err := config.SaveManifest(manifest); err != nil {

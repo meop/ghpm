@@ -357,6 +357,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			rows[i] = []string{r.pkg, r.binary, r.shim}
 		}
 		printTable([]string{"name", "bin", "target"}, rows, nil)
+		sep()
 		if !promptConfirm(fmt.Sprintf("create %d bin(s)", len(shimRows))) {
 			if hadErrors {
 				return errSilent
@@ -372,13 +373,18 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				Asset:   p.asset,
 				Bins:    p.bins,
 			}
+			shimFailed := false
 			for shimName, binsKey := range p.bins {
 				binDir, binName := splitBinKey(binsKey)
 				if err := shim.Create(shimName, binName, p.pkgDir, binDir); err != nil {
-					printWarn(cfg, "%s: could not create shim: %v", shimName, err)
+					printFail(cfg, "%s: could not create shim: %v", shimName, err)
+					shimFailed = true
+					hadErrors = true
 				}
 			}
-			printPass(cfg, "%s: installed %s", p.jobName, p.version)
+			if !shimFailed {
+				printPass(cfg, "%s: installed %s", p.jobName, p.version)
+			}
 		}
 	}
 
@@ -419,5 +425,6 @@ func promptInstall(cfg *config.Settings, ready []jobWithRelease) bool {
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "new"), nil, nil}
 	printTable([]string{"name", "pin", "update", "asset", "repo"}, rows, colors)
+	sep()
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

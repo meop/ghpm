@@ -33,6 +33,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	var hadErrors bool
 	for _, arg := range args {
 		name, ver, _ := config.ParseVersionSuffix(arg)
+		sep()
 		fmt.Printf("info: %s\n", name)
 		if err := config.ValidateName(name); err != nil {
 			printFail(cfg, "%s: %v", arg, err)
@@ -52,7 +53,8 @@ func runInfo(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		fmt.Printf("\n%s (%s)\n", arg, source)
+		sep()
+		fmt.Printf("%s (%s)\n", arg, source)
 		fmt.Println(repeatStr("─", 60))
 
 		if ver != "" {
@@ -78,7 +80,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 			if len(releases) > 0 {
 				rel, err := gh.GetLatestRelease(ctx, owner, repo)
 				if err == nil {
-					fmt.Println()
+					sep()
 					printReleaseInfo(rel)
 				}
 			}

@@ -60,7 +60,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	for i, term := range args {
 		if i > 0 {
-			fmt.Println()
+			sep()
 		}
 		if len(args) > 1 {
 			fmt.Printf("find: %s\n", term)

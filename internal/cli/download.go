@@ -125,6 +125,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	sep()
 	if !promptConfirm(fmt.Sprintf("download %d asset(s)", len(ready))) {
 		return nil
 	}
