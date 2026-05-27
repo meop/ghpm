@@ -41,6 +41,8 @@ ghpm outdated             # check for updates
 
 ghpm sync                 # update all floating and major/minor-pinned packages
 ghpm sync fzf             # update specific package
+ghpm sync --force         # reinstall all packages even if already at latest version
+ghpm sync --force fzf     # reinstall specific package even if already at latest version
 
 ghpm download fzf         # download release asset to cache without installing
 ghpm download --path /tmp fzf # download release asset to a specific directory
