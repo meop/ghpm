@@ -163,10 +163,6 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	}
 
 	workingSet := compatible
-	if len(workingSet) == 0 {
-		workingSet = all
-		hidden = nil
-	}
 
 	maxScore := 0
 	for _, c := range workingSet {

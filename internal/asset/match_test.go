@@ -326,13 +326,13 @@ func TestSelectAssetAuto_NoCompatible(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ac.Chosen.Name != "" {
-		t.Errorf("expected no auto-select in fallback, got %q", ac.Chosen.Name)
+		t.Errorf("expected no auto-select, got %q", ac.Chosen.Name)
 	}
-	if len(ac.Hidden) != 0 {
-		t.Errorf("expected no hidden in fallback, got %d", len(ac.Hidden))
+	if len(ac.Compatible) != 0 {
+		t.Errorf("expected 0 compatible, got %d", len(ac.Compatible))
 	}
-	if len(ac.Compatible) != 2 {
-		t.Errorf("expected 2 in fallback compatible, got %d", len(ac.Compatible))
+	if len(ac.Hidden) != 2 {
+		t.Errorf("expected 2 hidden, got %d", len(ac.Hidden))
 	}
 }
 
