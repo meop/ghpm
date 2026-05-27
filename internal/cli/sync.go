@@ -17,6 +17,8 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
+var forceSync bool
+
 func newSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "sync [name...]",
@@ -25,6 +27,7 @@ func newSyncCmd() *cobra.Command {
 		RunE:    runSync,
 	}
 	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	cmd.Flags().BoolVarP(&forceSync, "force", "f", false, "Reinstall even if already at latest version")
 	return cmd
 }
 
@@ -109,7 +112,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		checked++
 		pkg := targets[res.Key]
 		latest := config.NormalizeVersion(res.LatestTag)
-		if config.CompareVersions(latest, pkg.Version) <= 0 {
+		if config.CompareVersions(latest, pkg.Version) <= 0 && !forceSync {
 			continue
 		}
 		source := keyToSource[res.Key]

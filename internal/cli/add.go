@@ -366,6 +366,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		for _, p := range shimPlans {
+			if forceInstall {
+				if existing, ok := manifest.Extracts[p.key]; ok {
+					for shimName := range existing.Bins {
+						_ = shim.Remove(shimName)
+					}
+				}
+			}
 			manifest.Repos[p.jobName] = p.source
 			manifest.Extracts[p.key] = config.PackageEntry{
 				Pin:     p.pin,
