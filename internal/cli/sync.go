@@ -252,8 +252,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		if oldBase, err := store.ExtractBaseDir(r.key); err == nil {
 			oldPkgDir := filepath.Join(oldBase, r.pkg.Version)
-			if err := os.RemoveAll(oldPkgDir); err != nil {
-				printWarn(cfg, "could not remove old extract dir: %v", err)
+			if oldPkgDir != newPkgDir {
+				if err := os.RemoveAll(oldPkgDir); err != nil {
+					printWarn(cfg, "could not remove old extract dir: %v", err)
+				}
 			}
 		}
 		oldBinKeyToShim := make(map[string]string, len(r.pkg.Bins))
