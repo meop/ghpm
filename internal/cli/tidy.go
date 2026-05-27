@@ -45,6 +45,7 @@ func runTidy(cmd *cobra.Command, args []string) error {
 		if dryRun {
 			fmt.Printf("remove all cached assets in %s\n", releaseDir)
 		} else {
+			sep()
 			if !promptConfirm(fmt.Sprintf("remove all cached assets in %s", releaseDir)) {
 				return nil
 			}
@@ -147,6 +148,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		return true
 	}
 
+	sep()
 	if !promptConfirm(fmt.Sprintf("purge %d broken install(s)", len(items))) {
 		return true
 	}
@@ -252,6 +254,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 		return true
 	}
 
+	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned bin(s)", len(paths))) {
 		return true
 	}
@@ -310,6 +313,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 		return true
 	}
 
+	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned extract(s)", len(paths))) {
 		return true
 	}
@@ -378,6 +382,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		return true
 	}
 
+	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d unused download(s)", len(toRemove))) {
 		return true
 	}
