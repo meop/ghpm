@@ -48,12 +48,12 @@ func ExtractBaseDir(key string) (string, error) {
 	return filepath.Join(base, key), nil
 }
 
-func ExtractDir(key, version string) (string, error) {
+func ExtractDir(key, version, assetName string) (string, error) {
 	base, err := ExtractBaseDir(key)
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, version)
+	dir := filepath.Join(base, version, assetName)
 	return dir, os.MkdirAll(dir, 0755)
 }
 

@@ -32,15 +32,15 @@ func runInfo(cmd *cobra.Command, args []string) error {
 
 	var hadErrors bool
 	for _, arg := range args {
-		name, ver, _ := config.ParseVersionSuffix(arg)
+		pkgName, ver, _ := config.ParseVersionSuffix(arg)
 		sep()
-		fmt.Printf("info: %s\n", name)
-		if err := config.ValidateName(name); err != nil {
+		fmt.Printf("info: %s\n", pkgName)
+		if err := config.ValidateName(pkgName); err != nil {
 			printFail(cfg, "%s: %v", arg, err)
 			hadErrors = true
 			continue
 		}
-		source, err := config.ResolveSource(name, ver, manifest, repos)
+		source, err := config.ResolveSource(pkgName, ver, manifest, repos)
 		if err != nil {
 			printFail(cfg, "%s: %v", arg, err)
 			hadErrors = true

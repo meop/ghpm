@@ -101,12 +101,12 @@ func pkgType(p config.PackageEntry) string {
 }
 
 func pkgAsset(p config.PackageEntry) string {
-	if name := p.BinAssetName(); name != "" {
-		return name
+	if assetName := p.BinAssetName(); assetName != "" {
+		return assetName
 	}
 	names := make([]string, 0, len(p.Asset))
-	for name := range p.Asset {
-		names = append(names, name)
+	for assetName := range p.Asset {
+		names = append(names, assetName)
 	}
 	slices.Sort(names)
 	return strings.Join(names, ", ")

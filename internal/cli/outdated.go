@@ -45,8 +45,8 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		if pkg.Pin == "fixed" {
 			continue
 		}
-		name, verStr, isPinned := config.ParseVersionSuffix(key)
-		source := manifest.Repos[name]
+		pkgName, verStr, isPinned := config.ParseVersionSuffix(key)
+		source := manifest.Repos[pkgName]
 		var c config.Constraint
 		if isPinned {
 			parsed, cerr := config.ParseConstraint(verStr)
@@ -91,13 +91,13 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		pkg := manifest.Extracts[res.Key]
 		latest := config.NormalizeVersion(res.LatestTag)
 		if config.CompareVersions(latest, pkg.Version) > 0 {
-			name, _, _ := config.ParseVersionSuffix(res.Key)
+			pkgName, _, _ := config.ParseVersionSuffix(res.Key)
 			outdated = append(outdated, outdatedPkg{
 				key:       res.Key,
 				installed: pkg.Version,
 				latest:    latest,
 				pkg:       pkg,
-				source:    manifest.Repos[name],
+				source:    manifest.Repos[pkgName],
 			})
 		}
 	}
