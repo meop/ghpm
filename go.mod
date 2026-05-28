@@ -8,6 +8,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/ulikunitz/xz v0.5.15
 	go.yaml.in/yaml/v4 v4.0.0-rc.4
+	golang.org/x/sys v0.45.0
 )
 
 require (
@@ -15,5 +16,4 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	golang.org/x/sys v0.45.0 // indirect
 )

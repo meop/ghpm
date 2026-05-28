@@ -41,8 +41,10 @@ func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
 	downloadDir := filepath.Join(home, ".ghpm", "download")
 
 	manifest := &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Bins: map[string]string{"fzf": "fzf"}}},
+		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
+			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
+		}}},
 	}
 
 	cleanBrokenInstalls(nil, manifest, downloadDir)
@@ -64,8 +66,10 @@ func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
 	downloadDir := filepath.Join(home, ".ghpm", "download")
 
 	manifest := &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Bins: map[string]string{"fzf": "fzf"}}},
+		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
+			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
+		}}},
 	}
 
 	cleanBrokenInstalls(nil, manifest, downloadDir)
@@ -92,8 +96,10 @@ func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 	downloadDir := filepath.Join(home, ".ghpm", "download")
 
 	manifest := &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Bins: map[string]string{"fzf": "fzf"}}},
+		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
+			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
+		}}},
 	}
 
 	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); cleaned {
@@ -117,8 +123,10 @@ func TestCleanBrokenInstalls_PartialShim(t *testing.T) {
 	downloadDir := filepath.Join(home, ".ghpm", "download")
 
 	manifest := &config.Manifest{
-		Repos:    map[string]string{"uv": "github.com/astral-sh/uv"},
-		Extracts: map[string]config.PackageEntry{"uv": {Version: "0.7.0", Bins: map[string]string{"uv": "uv", "uvx": "uvx"}}},
+		Repos: map[string]string{"uv": "github.com/astral-sh/uv"},
+		Extracts: map[string]config.PackageEntry{"uv": {Version: "0.7.0", Asset: map[string]config.AssetEntry{
+			"uv.tar.gz": {Bin: map[string]string{"uv": "uv", "uvx": "uvx"}},
+		}}},
 	}
 
 	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); !cleaned {
@@ -128,11 +136,11 @@ func TestCleanBrokenInstalls_PartialShim(t *testing.T) {
 	if !ok {
 		t.Error("manifest entry was removed but should be kept")
 	}
-	if len(entry.Bins) != 1 {
-		t.Errorf("expected 1 bin remaining, got %d: %v", len(entry.Bins), entry.Bins)
+	if len(entry.AllBins()) != 1 {
+		t.Errorf("expected 1 bin remaining, got %d: %v", len(entry.AllBins()), entry.AllBins())
 	}
-	if _, ok := entry.Bins["uv"]; !ok {
-		t.Errorf("expected uv to remain in Bins, got %v", entry.Bins)
+	if _, ok := entry.AllBins()["uv"]; !ok {
+		t.Errorf("expected uv to remain in bins, got %v", entry.AllBins())
 	}
 	binDir := filepath.Join(home, ".ghpm", "bin")
 	if _, err := os.Lstat(filepath.Join(binDir, "uv")); err != nil {
@@ -155,8 +163,10 @@ func TestCleanOrphanedBinShims_OrphanedShim(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Bins: map[string]string{"fzf": "fzf"}}},
+		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
+			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
+		}}},
 	}
 
 	cleanOrphanedBinShims(nil, manifest)
@@ -228,8 +238,10 @@ func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Bins: map[string]string{"fzf": "fzf"}}},
+		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
+			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
+		}}},
 	}
 
 	cleanOrphanedExtracts(nil, manifest)

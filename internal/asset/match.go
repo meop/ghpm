@@ -253,6 +253,75 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	return assets[idx-1], nil
 }
 
+// PromptAssetsMulti returns the auto-chosen asset (if unambiguous) or lets the
+// user pick one or more from the candidate list.
+func PromptAssetsMulti(ac AssetCandidates) ([]gh.Asset, error) {
+	if ac.Chosen.Name != "" {
+		return []gh.Asset{ac.Chosen}, nil
+	}
+	return promptMultiWithShowMore(ac.Compatible, ac.Hidden)
+}
+
+func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) {
+	fmt.Println("choose asset(s):")
+	for i, a := range compatible {
+		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
+	}
+	showMoreIdx := -1
+	if len(hidden) > 0 {
+		showMoreIdx = len(compatible) + 1
+		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
+	}
+	maxIdx := len(compatible)
+	if showMoreIdx > 0 {
+		maxIdx = showMoreIdx
+	}
+	fmt.Printf("enter number(s) (0=skip | 1[,]2-%d): ", len(compatible))
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(line)
+	indices, err := parseMultiSelect(line, maxIdx)
+	if err != nil || indices == nil {
+		return nil, ErrSkip
+	}
+	// If show-more was selected, re-prompt with the full list.
+	for _, idx := range indices {
+		if showMoreIdx > 0 && idx == showMoreIdx {
+			return promptMultiAll(append(compatible, hidden...))
+		}
+	}
+	var selected []gh.Asset
+	for _, idx := range indices {
+		if idx >= 1 && idx <= len(compatible) {
+			selected = append(selected, compatible[idx-1])
+		}
+	}
+	if len(selected) == 0 {
+		return nil, ErrSkip
+	}
+	return selected, nil
+}
+
+func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
+	fmt.Println("choose asset(s):")
+	for i, a := range all {
+		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
+	}
+	fmt.Printf("enter number(s) (0=skip | 1[,]2-%d): ", len(all))
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(line)
+	indices, err := parseMultiSelect(line, len(all))
+	if err != nil || indices == nil {
+		return nil, ErrSkip
+	}
+	var selected []gh.Asset
+	for _, idx := range indices {
+		selected = append(selected, all[idx-1])
+	}
+	return selected, nil
+}
+
 func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
 	hintTokens := stripVersionTokens(Tokenize(hint))
 	if len(hintTokens) == 0 {

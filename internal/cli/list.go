@@ -45,13 +45,55 @@ func runList(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	}
-	rows := make([][]string, len(keys))
-	for i, k := range keys {
+
+	type row struct {
+		name, version, pin, repo, asset, typ, artifact, path string
+	}
+	var rows []row
+	for _, k := range keys {
 		p := manifest.Extracts[k]
 		baseName, _, _ := config.ParseVersionSuffix(k)
-		rows[i] = []string{k, p.Version, p.Pin, manifest.Repos[baseName], p.Asset}
+		repo := manifest.Repos[baseName]
+		assetNames := make([]string, 0, len(p.Asset))
+		for a := range p.Asset {
+			assetNames = append(assetNames, a)
+		}
+		slices.Sort(assetNames)
+		for _, assetName := range assetNames {
+			ae := p.Asset[assetName]
+			if len(ae.Bin) > 0 {
+				shimNames := make([]string, 0, len(ae.Bin))
+				for s := range ae.Bin {
+					shimNames = append(shimNames, s)
+				}
+				slices.Sort(shimNames)
+				for _, shimName := range shimNames {
+					rows = append(rows, row{k, p.Version, p.Pin, repo, assetName, "bin", shimName, ae.Bin[shimName]})
+				}
+			}
+			if len(ae.Font) > 0 {
+				fontNames := make([]string, 0, len(ae.Font))
+				for f := range ae.Font {
+					fontNames = append(fontNames, f)
+				}
+				slices.Sort(fontNames)
+				for _, fontName := range fontNames {
+					rows = append(rows, row{k, p.Version, p.Pin, repo, assetName, "font", fontName, ae.Font[fontName]})
+				}
+			}
+		}
 	}
-	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
-	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)
+
+	if len(rows) == 0 {
+		print("no packages installed")
+		return nil
+	}
+
+	tableRows := make([][]string, len(rows))
+	for i, r := range rows {
+		tableRows[i] = []string{r.name, r.version, r.pin, r.repo, r.asset, r.typ, r.artifact, r.path}
+	}
+	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil, nil, nil, nil}
+	printTable([]string{"name", "version", "pin", "repo", "asset", "type", "artifact", "path"}, tableRows, colors)
 	return nil
 }
