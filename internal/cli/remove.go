@@ -64,7 +64,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	rows := make([][]string, len(targets))
 	for i, t := range targets {
 		baseName, _, _ := config.ParseVersionSuffix(t.key)
-		rows[i] = []string{t.key, t.pkg.Pin, t.pkg.Version, t.pkg.Asset, manifest.Repos[baseName]}
+		rows[i] = []string{t.key, t.pkg.Pin, t.pkg.Version, pkgAsset(t.pkg), manifest.Repos[baseName]}
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
 	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
@@ -97,9 +97,14 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		if !hasOther {
 			delete(manifest.Repos, baseName)
 		}
-		for shimName := range t.pkg.Bins {
+		for shimName := range t.pkg.AllBins() {
 			if err := shim.Remove(shimName); err != nil {
 				printWarn(cfg, "%s: could not remove shim: %v", shimName, err)
+			}
+		}
+		if fontsDir, err := userFontDir(); err == nil {
+			for _, fontPath := range t.pkg.AllFonts() {
+				uninstallFont(fontPath, fontsDir)
 			}
 		}
 		printPass(cfg, "%s: uninstalled", t.key)

@@ -32,11 +32,11 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 	manifest := ci.manifest
 	ctx := cmd.Context()
 
-	type outdatedResult struct {
-		name      string
+	type outdatedPkg struct {
+		key       string
 		installed string
 		latest    string
-		pin       string
+		pkg       config.PackageEntry
 		source    string
 	}
 
@@ -69,7 +69,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 
 	results := gh.BatchLatestVersions(ctx, items, cfg.CacheTTL)
 
-	var outdated []outdatedResult
+	var outdated []outdatedPkg
 	checked := 0
 	skipped := 0
 	rateLimited := false
@@ -92,11 +92,11 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		latest := config.NormalizeVersion(res.LatestTag)
 		if config.CompareVersions(latest, pkg.Version) > 0 {
 			name, _, _ := config.ParseVersionSuffix(res.Key)
-			outdated = append(outdated, outdatedResult{
-				name:      res.Key,
+			outdated = append(outdated, outdatedPkg{
+				key:       res.Key,
 				installed: pkg.Version,
 				latest:    latest,
-				pin:       pkg.Pin,
+				pkg:       pkg,
 				source:    manifest.Repos[name],
 			})
 		}
@@ -116,25 +116,62 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	slices.SortFunc(outdated, func(a, b outdatedResult) int {
-		return cmp.Compare(a.name, b.name)
+	slices.SortFunc(outdated, func(a, b outdatedPkg) int {
+		return cmp.Compare(a.key, b.key)
 	})
 
 	if onlyNames {
 		for _, o := range outdated {
-			fmt.Println(o.name)
+			fmt.Println(o.key)
 		}
 		if hadErrors {
 			return errSilent
 		}
 		return nil
 	}
-	rows := make([][]string, len(outdated))
-	for i, o := range outdated {
-		rows[i] = []string{o.name, o.installed, o.latest, o.pin, o.source, ""}
+
+	type row struct {
+		name, installed, latest, pin, repo, asset, typ, artifact, path string
 	}
-	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil}
-	printTable([]string{"name", "version", "update", "pin", "repo", "asset"}, rows, colors)
+	var rows []row
+	for _, o := range outdated {
+		assetNames := make([]string, 0, len(o.pkg.Asset))
+		for a := range o.pkg.Asset {
+			assetNames = append(assetNames, a)
+		}
+		slices.Sort(assetNames)
+		for _, assetName := range assetNames {
+			ae := o.pkg.Asset[assetName]
+			if len(ae.Bin) > 0 {
+				shimNames := make([]string, 0, len(ae.Bin))
+				for s := range ae.Bin {
+					shimNames = append(shimNames, s)
+				}
+				slices.Sort(shimNames)
+				for _, shimName := range shimNames {
+					rows = append(rows, row{o.key, o.installed, o.latest, o.pkg.Pin, o.source, assetName, "bin", shimName, ae.Bin[shimName]})
+				}
+			}
+			if len(ae.Font) > 0 {
+				fontNames := make([]string, 0, len(ae.Font))
+				for f := range ae.Font {
+					fontNames = append(fontNames, f)
+				}
+				slices.Sort(fontNames)
+				for _, fontName := range fontNames {
+					rows = append(rows, row{o.key, o.installed, o.latest, o.pkg.Pin, o.source, assetName, "font", fontName, ae.Font[fontName]})
+				}
+			}
+		}
+	}
+
+	tableRows := make([][]string, len(rows))
+	for i, r := range rows {
+		tableRows[i] = []string{r.name, r.installed, r.latest, r.pin, r.repo, r.asset, r.typ, r.artifact, r.path}
+	}
+	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil, nil, nil}
+	printTable([]string{"name", "version", "update", "pin", "repo", "asset", "type", "artifact", "path"}, tableRows, colors)
+
 	if hadErrors {
 		return errSilent
 	}

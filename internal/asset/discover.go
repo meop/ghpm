@@ -351,6 +351,163 @@ func hasMachOMagic(path string) bool {
 		(b[0] == 0xfe && b[1] == 0xed && b[2] == 0xfa && (b[3] == 0xce || b[3] == 0xcf))
 }
 
+// FontCandidate is a discovered font file inside an extracted package dir.
+type FontCandidate struct {
+	FontDir  string
+	FontName string
+}
+
+func (c FontCandidate) Key() string {
+	if c.FontDir == "" {
+		return c.FontName
+	}
+	return c.FontDir + "/" + c.FontName
+}
+
+var fontSuffixes = []string{".ttf", ".otf", ".woff", ".woff2"}
+
+// FindFonts walks pkgDir and returns all font files found.
+func FindFonts(pkgDir string) []FontCandidate {
+	var matches []FontCandidate
+	_ = filepath.WalkDir(pkgDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		baseLower := strings.ToLower(d.Name())
+		hasFontExt := false
+		for _, suf := range fontSuffixes {
+			if strings.HasSuffix(baseLower, suf) {
+				hasFontExt = true
+				break
+			}
+		}
+		if !hasFontExt {
+			return nil
+		}
+		rel, err := filepath.Rel(pkgDir, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		if dir == "." {
+			dir = ""
+		}
+		matches = append(matches, FontCandidate{FontDir: dir, FontName: d.Name()})
+		return nil
+	})
+	return matches
+}
+
+// DeriveFontName returns a default install name for a font file.
+func DeriveFontName(filename string) string {
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+}
+
+// PromptFontNames shows selected font files with default names and lets the user rename them.
+// Returns {fontName → fontFilePath}.
+func PromptFontNames(selected []FontCandidate) map[string]string {
+	if len(selected) == 0 {
+		return nil
+	}
+	names := make([]string, len(selected))
+	seen := map[string]int{}
+	for i, c := range selected {
+		base := DeriveFontName(c.FontName)
+		if n, ok := seen[base]; ok {
+			seen[base] = n + 1
+			names[i] = fmt.Sprintf("%s-%d", base, n+1)
+		} else {
+			seen[base] = 1
+			names[i] = base
+		}
+	}
+
+	fmt.Println("font name(s)")
+	for i, c := range selected {
+		entry := fmt.Sprintf("  %d) %s", i+1, names[i])
+		if c.Key() != c.FontName {
+			entry += fmt.Sprintf("  [%s]", c.Key())
+		} else {
+			entry += fmt.Sprintf("  [%s]", c.FontName)
+		}
+		fmt.Println(entry)
+	}
+	fmt.Print("enter number(s) to rename (empty=none): ")
+
+	input, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	input = strings.TrimSpace(input)
+	if input != "" {
+		indices, err := parseMultiSelect(input, len(selected))
+		if err == nil && indices != nil {
+			toRename := make(map[int]bool, len(indices))
+			for _, idx := range indices {
+				toRename[idx-1] = true
+			}
+			taken := make(map[string]bool, len(names))
+			for i, name := range names {
+				if !toRename[i] {
+					taken[name] = true
+				}
+			}
+			reader := bufio.NewReader(os.Stdin)
+			for _, idx := range indices {
+				name := collectNewName(reader, idx, taken)
+				if name == "" {
+					taken[names[idx-1]] = true
+					continue
+				}
+				names[idx-1] = name
+				taken[name] = true
+			}
+		}
+	}
+
+	result := make(map[string]string, len(selected))
+	for i, c := range selected {
+		result[names[i]] = c.Key()
+	}
+	return result
+}
+
+// SelectFonts prompts the user to choose from discovered font candidates.
+func SelectFonts(candidates []FontCandidate, prevKeys []string) ([]FontCandidate, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	if len(candidates) == 1 {
+		return candidates, nil
+	}
+	candidateKeys := make([]string, len(candidates))
+	for i, c := range candidates {
+		candidateKeys[i] = c.Key()
+	}
+	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
+		return candidates, nil
+	}
+	fmt.Println("choose font(s)")
+	for i, c := range candidates {
+		entry := fmt.Sprintf("  %d) %s", i+1, c.FontName)
+		if c.Key() != c.FontName {
+			entry += fmt.Sprintf("  [%s]", c.Key())
+		}
+		fmt.Println(entry)
+	}
+	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,]2-%d): ", len(candidates))
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	line = strings.TrimSpace(line)
+	indices, err := parseMultiSelect(line, len(candidates))
+	if err != nil || indices == nil {
+		return nil, ErrSkip
+	}
+	var selected []FontCandidate
+	for _, idx := range indices {
+		selected = append(selected, candidates[idx-1])
+	}
+	return selected, nil
+}
+
 func ensureExecutable(path string) {
 	info, err := os.Stat(path)
 	if err != nil {

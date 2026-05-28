@@ -92,12 +92,37 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	var items []item
 
 	for key, pkg := range manifest.Extracts {
-		if len(pkg.Bins) == 0 {
+		allBins := pkg.AllBins()
+		allFonts := pkg.AllFonts()
+
+		if len(allBins) == 0 && len(allFonts) > 0 {
+			fontsDir, err := userFontDir()
+			if err != nil {
+				continue
+			}
+			var missing []string
+			for fontName, fontPath := range allFonts {
+				if !fontInstalled(fontPath, fontsDir) {
+					missing = append(missing, fontName)
+				}
+			}
+			if len(missing) > 0 {
+				slices.Sort(missing)
+				items = append(items, item{
+					display:     fmt.Sprintf("%s: missing font(s) (%s)", key, strings.Join(missing, ", ")),
+					extractPath: filepath.Join(pkgsDir, key, pkg.Version),
+					manifestKey: key,
+				})
+			}
+			continue
+		}
+
+		if len(allBins) == 0 {
 			continue
 		}
 		var shimPaths []string
 		var missingShimNames []string
-		for shimName := range pkg.Bins { // key is the shim name directly
+		for shimName := range allBins {
 			sp := filepath.Join(binDir, shimName)
 			shimPaths = append(shimPaths, sp)
 			if _, err := os.Lstat(sp); os.IsNotExist(err) {
@@ -106,7 +131,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		}
 		_, extractErr := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version))
 		extractMissing := os.IsNotExist(extractErr)
-		allShimsMissing := len(missingShimNames) == len(pkg.Bins)
+		allShimsMissing := len(missingShimNames) == len(allBins)
 
 		if len(missingShimNames) == 0 && !extractMissing {
 			continue
@@ -170,8 +195,11 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		if it.manifestKey != "" {
 			if len(it.trimBinNames) > 0 {
 				entry := manifest.Extracts[it.manifestKey]
-				for _, name := range it.trimBinNames {
-					delete(entry.Bins, name)
+				for assetName, ae := range entry.Asset {
+					for _, name := range it.trimBinNames {
+						delete(ae.Bin, name)
+					}
+					entry.Asset[assetName] = ae
 				}
 				manifest.Extracts[it.manifestKey] = entry
 			} else {
@@ -225,7 +253,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 
 	expected := map[string]bool{exeName(binGh): true, exeName(binGhpm): true}
 	for _, pkg := range manifest.Extracts {
-		for shimName := range pkg.Bins {
+		for shimName := range pkg.AllBins() {
 			expected[shimName] = true
 		}
 	}
