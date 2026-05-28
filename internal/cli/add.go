@@ -65,10 +65,10 @@ type jobWithRelease struct {
 }
 
 type installTaskResult struct {
-	r            jobWithRelease
-	pkgDir       string
-	fontsByAsset map[string][]asset.FontCandidate
-	binsByAsset  map[string][]asset.BinaryCandidate
+	r             jobWithRelease
+	pkgDirByAsset map[string]string
+	fontsByAsset  map[string][]asset.FontCandidate
+	binsByAsset   map[string][]asset.BinaryCandidate
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
@@ -86,26 +86,26 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	var hadErrors bool
 
 	for _, arg := range args {
-		name, ver, pinned := config.ParseVersionSuffix(arg)
+		pkgName, ver, pinned := config.ParseVersionSuffix(arg)
 
 		var explicitSource string
-		if src, repoName, err := parseSourceArg(name); err != nil {
+		if src, repoName, err := parseSourceArg(pkgName); err != nil {
 			printFail(cfg, "%v", err)
 			hadErrors = true
 			continue
 		} else if src != "" {
 			explicitSource = src
-			name = repoName
+			pkgName = repoName
 		}
 
-		printTitle(name)
+		printTitle(pkgName)
 
-		if name == binGhpm || name == binGh {
+		if pkgName == binGhpm || pkgName == binGh {
 			printInfo(cfg, "self managed, skipping")
 			continue
 		}
 		if explicitSource == "" {
-			if err := config.ValidateName(name); err != nil {
+			if err := config.ValidateName(pkgName); err != nil {
 				printFail(cfg, "%v", err)
 				hadErrors = true
 				continue
@@ -118,10 +118,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			printInfo(cfg, "repo: %s", source)
 		} else {
 			var found bool
-			source, found = config.LookupSource(name, manifest, repos)
+			source, found = config.LookupSource(pkgName, manifest, repos)
 			if !found {
 				var err error
-				source, err = config.SearchGitHub(name)
+				source, err = config.SearchGitHub(pkgName)
 				if err != nil {
 					printFail(cfg, "%v", err)
 					hadErrors = true
@@ -131,16 +131,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			printInfo(cfg, "repo: %s", source)
 		}
 
-		jobKey := name
+		jobKey := pkgName
 		if pinned {
-			jobKey = name + "@" + strings.TrimPrefix(ver, "v")
+			jobKey = pkgName + "@" + strings.TrimPrefix(ver, "v")
 		}
 		if entry, exists := manifest.Extracts[jobKey]; exists && !forceInstall {
 			printInfo(cfg, "already installed %s", entry.Version)
 			continue
 		}
 		if !pinned {
-			if existing, found := config.FindBySource(source, manifest); found && existing != name && !forceInstall {
+			if existing, found := config.FindBySource(source, manifest); found && existing != pkgName && !forceInstall {
 				printInfo(cfg, "already installed as %s — skipping", existing)
 				continue
 			}
@@ -174,7 +174,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", name)
+		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", pkgName)
 		if err != nil {
 			printFail(cfg, "%v", err)
 			hadErrors = true
@@ -196,7 +196,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			printInfo(cfg, "asset: %s", chosens[0].Name)
 		}
 		ready = append(ready, jobWithRelease{
-			job:     installJob{name: name, source: source, version: ver, pinned: pinned},
+			job:     installJob{name: pkgName, source: source, version: ver, pinned: pinned},
 			release: rel,
 			chosens: chosens,
 		})
@@ -211,11 +211,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, r := range ready {
-			names := make([]string, len(r.chosens))
-			for i, c := range r.chosens {
-				names[i] = c.Name
+			for _, c := range r.chosens {
+				fmt.Printf("%s: install %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), c.Name)
 			}
-			fmt.Printf("%s: install %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), strings.Join(names, ", "))
 		}
 		return nil
 	}
@@ -236,17 +234,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 				version := config.NormalizeVersion(r.release.TagName)
-				pkgDir, err := store.ExtractDir(r.job.key(), version)
-				if err != nil {
-					return nil, err
-				}
-				if err := os.RemoveAll(pkgDir); err != nil {
-					return nil, err
-				}
-				if err := os.MkdirAll(pkgDir, 0755); err != nil {
-					return nil, err
-				}
-
+				pkgDirByAsset := make(map[string]string, len(r.chosens))
 				fontsByAsset := make(map[string][]asset.FontCandidate)
 				binsByAsset := make(map[string][]asset.BinaryCandidate)
 
@@ -263,23 +251,31 @@ func runAdd(cmd *cobra.Command, args []string) error {
 						}
 					}
 
-					prevFonts := fontKeySet(asset.FindFonts(pkgDir))
-					prevBins := binKeySet(asset.FindBinaries(pkgDir, r.job.name))
-
-					if err := asset.ExtractPackage(cacheDir, chosen.Name, pkgDir); err != nil {
-						_ = os.RemoveAll(pkgDir)
+					assetDir, err := store.ExtractDir(r.job.key(), version, chosen.Name)
+					if err != nil {
 						return nil, err
 					}
-
-					if newFonts := filterNewFonts(asset.FindFonts(pkgDir), prevFonts); len(newFonts) > 0 {
-						fontsByAsset[chosen.Name] = newFonts
+					if err := os.RemoveAll(assetDir); err != nil {
+						return nil, err
 					}
-					if newBins := filterNewBins(asset.FindBinaries(pkgDir, r.job.name), prevBins); len(newBins) > 0 {
-						binsByAsset[chosen.Name] = newBins
+					if err := os.MkdirAll(assetDir, 0755); err != nil {
+						return nil, err
+					}
+					if err := asset.ExtractPackage(cacheDir, chosen.Name, assetDir); err != nil {
+						_ = os.RemoveAll(assetDir)
+						return nil, err
+					}
+					pkgDirByAsset[chosen.Name] = assetDir
+
+					if fonts := asset.FindFonts(assetDir); len(fonts) > 0 {
+						fontsByAsset[chosen.Name] = fonts
+					}
+					if bins := asset.FindBinaries(assetDir, r.job.name); len(bins) > 0 {
+						binsByAsset[chosen.Name] = bins
 					}
 				}
 
-				return installTaskResult{r: r, pkgDir: pkgDir, fontsByAsset: fontsByAsset, binsByAsset: binsByAsset}, nil
+				return installTaskResult{r: r, pkgDirByAsset: pkgDirByAsset, fontsByAsset: fontsByAsset, binsByAsset: binsByAsset}, nil
 			},
 		}
 	}
@@ -287,15 +283,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
 
 	type shimPlan struct {
-		key        string
-		jobName    string
-		source     string
-		pkgDir     string
-		bins       map[string]string
-		pin        string
-		version    string
-		binAsset   string
-		fontAssets map[string]map[string]string
+		key           string
+		jobName       string
+		source        string
+		pkgDirByAsset map[string]string
+		bins          map[string]string
+		pin           string
+		version       string
+		binAsset      string
+		fontAssets    map[string]map[string]string
 	}
 	var shimPlans []shimPlan
 
@@ -313,11 +309,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		r := tr.r
 
 		if len(tr.binsByAsset) == 0 && len(tr.fontsByAsset) == 0 {
-			assetNames := make([]string, len(r.chosens))
-			for i, c := range r.chosens {
-				assetNames[i] = c.Name
+			for _, c := range r.chosens {
+				printFail(cfg, "no binaries or fonts found in %s", c.Name)
 			}
-			printFail(cfg, "no binaries or fonts found in %s", strings.Join(assetNames, ", "))
 			hadErrors = true
 			continue
 		}
@@ -345,8 +339,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			rawKeys := make([]string, len(selected))
 			for i, s := range selected {
 				rawKeys[i] = s.Key()
+				printInfo(cfg, "bin %s", s.Key())
 			}
-			printInfo(cfg, "bin %s", strings.Join(rawKeys, ", "))
 			_, _, pinned := config.ParseVersionSuffix(key)
 			proposed := proposedShimNames(key, selected)
 			reserved := make(map[string]string)
@@ -393,7 +387,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				assetNames = append(assetNames, a)
 			}
 			slices.Sort(assetNames)
-			for _, assetName := range assetNames {
+			for i, assetName := range assetNames {
+				if i > 0 {
+					sep()
+				}
 				candidates := tr.fontsByAsset[assetName]
 				selectedFonts, selErr := asset.SelectFonts(candidates, nil)
 				if errors.Is(selErr, asset.ErrSkip) {
@@ -410,7 +407,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 						fontNames = append(fontNames, k)
 					}
 					slices.Sort(fontNames)
-					printInfo(cfg, "fonts: %s", strings.Join(fontNames, ", "))
+					for _, fontName := range fontNames {
+						printInfo(cfg, "font %s", fontName)
+					}
 				}
 			}
 		}
@@ -420,15 +419,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		shimPlans = append(shimPlans, shimPlan{
-			key:        r.job.key(),
-			jobName:    r.job.name,
-			source:     r.job.source,
-			pkgDir:     tr.pkgDir,
-			bins:       bins,
-			pin:        r.job.pin(),
-			version:    config.NormalizeVersion(r.release.TagName),
-			binAsset:   binAsset,
-			fontAssets: fontAssets,
+			key:           r.job.key(),
+			jobName:       r.job.name,
+			source:        r.job.source,
+			pkgDirByAsset: tr.pkgDirByAsset,
+			bins:          bins,
+			pin:           r.job.pin(),
+			version:       config.NormalizeVersion(r.release.TagName),
+			binAsset:      binAsset,
+			fontAssets:    fontAssets,
 		})
 	}
 
@@ -504,7 +503,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		shimFailed := false
 		for shimName, binsKey := range p.bins {
 			binDir, binName := splitBinKey(binsKey)
-			if err := shim.Create(shimName, binName, p.pkgDir, binDir); err != nil {
+			if err := shim.Create(shimName, binName, p.pkgDirByAsset[p.binAsset], binDir); err != nil {
 				printFail(cfg, "%s: could not create shim: %v", shimName, err)
 				shimFailed = true
 				hadErrors = true
@@ -523,15 +522,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				hadErrors = true
 			}
 			if !fontFailed {
-				for _, fonts := range p.fontAssets {
+				for assetName, fonts := range p.fontAssets {
 					fontNames := make([]string, 0, len(fonts))
-					for name := range fonts {
-						fontNames = append(fontNames, name)
+					for fontName := range fonts {
+						fontNames = append(fontNames, fontName)
 					}
 					slices.Sort(fontNames)
 					for _, fontName := range fontNames {
 						fontPath := fonts[fontName]
-						srcPath := filepath.Join(p.pkgDir, filepath.FromSlash(fontPath))
+						srcPath := filepath.Join(p.pkgDirByAsset[assetName], filepath.FromSlash(fontPath))
 						if err := installFont(srcPath, fontsDir); err != nil {
 							printFail(cfg, "font %s: %v", fontName, err)
 							hadErrors = true
@@ -575,52 +574,14 @@ func parseSourceArg(name string) (source, repoName string, err error) {
 }
 
 func promptInstall(cfg *config.Settings, ready []jobWithRelease) bool {
-	rows := make([][]string, len(ready))
-	for i, r := range ready {
-		assetNames := make([]string, len(r.chosens))
-		for j, c := range r.chosens {
-			assetNames[j] = c.Name
+	var rows [][]string
+	for _, r := range ready {
+		for _, c := range r.chosens {
+			rows = append(rows, []string{r.job.key(), r.job.pin(), config.NormalizeVersion(r.release.TagName), c.Name, r.job.source})
 		}
-		rows[i] = []string{r.job.key(), r.job.pin(), config.NormalizeVersion(r.release.TagName), strings.Join(assetNames, ", "), r.job.source}
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "new"), nil, nil}
 	printTable([]string{"name", "pin", "update", "asset", "repo"}, rows, colors)
 	sep()
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
-}
-
-func fontKeySet(candidates []asset.FontCandidate) map[string]bool {
-	s := make(map[string]bool, len(candidates))
-	for _, c := range candidates {
-		s[c.Key()] = true
-	}
-	return s
-}
-
-func binKeySet(candidates []asset.BinaryCandidate) map[string]bool {
-	s := make(map[string]bool, len(candidates))
-	for _, c := range candidates {
-		s[c.Key()] = true
-	}
-	return s
-}
-
-func filterNewFonts(all []asset.FontCandidate, prev map[string]bool) []asset.FontCandidate {
-	var result []asset.FontCandidate
-	for _, c := range all {
-		if !prev[c.Key()] {
-			result = append(result, c)
-		}
-	}
-	return result
-}
-
-func filterNewBins(all []asset.BinaryCandidate, prev map[string]bool) []asset.BinaryCandidate {
-	var result []asset.BinaryCandidate
-	for _, c := range all {
-		if !prev[c.Key()] {
-			result = append(result, c)
-		}
-	}
-	return result
 }

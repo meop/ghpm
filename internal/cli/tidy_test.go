@@ -90,7 +90,7 @@ func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 
 	makeBinDir(t, home, "fzf")
 	pkgsDir := filepath.Join(home, ".ghpm", "extract")
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0", "fzf.tar.gz"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	downloadDir := filepath.Join(home, ".ghpm", "download")
@@ -117,7 +117,7 @@ func TestCleanBrokenInstalls_PartialShim(t *testing.T) {
 
 	makeBinDir(t, home, "uv")
 	pkgsDir := filepath.Join(home, ".ghpm", "extract")
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "uv", "0.7.0"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "uv", "0.7.0", "uv.tar.gz"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	downloadDir := filepath.Join(home, ".ghpm", "download")

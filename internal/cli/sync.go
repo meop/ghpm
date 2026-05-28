@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -70,8 +69,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	keyToSource := make(map[string]string, len(targets))
 	items := make([]gh.BatchItem, 0, len(targets))
 	for key := range targets {
-		name, verStr, isPinned := config.ParseVersionSuffix(key)
-		source := manifest.Repos[name]
+		pkgName, verStr, isPinned := config.ParseVersionSuffix(key)
+		source := manifest.Repos[pkgName]
 		keyToSource[key] = source
 		var c config.Constraint
 		if isPinned {
@@ -95,10 +94,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	type syncTaskResult struct {
-		r            syncJob
-		pkgDir       string
-		fontsByAsset map[string][]asset.FontCandidate
-		binsByAsset  map[string][]asset.BinaryCandidate
+		r             syncJob
+		pkgDirByAsset map[string]string
+		fontsByAsset  map[string][]asset.FontCandidate
+		binsByAsset   map[string][]asset.BinaryCandidate
 	}
 
 	var ready []syncJob
@@ -131,7 +130,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		name, _, _ := config.ParseVersionSuffix(res.Key)
+		pkgName, _, _ := config.ParseVersionSuffix(res.Key)
 
 		oldAssetNames := make([]string, 0, len(pkg.Asset))
 		for a := range pkg.Asset {
@@ -142,7 +141,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		var chosens []gh.Asset
 		skippedPkg := false
 		for _, assetName := range oldAssetNames {
-			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, assetName, name)
+			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, assetName, pkgName)
 			if acErr != nil {
 				printFail(cfg, "%s: %v", res.Key, acErr)
 				hadErrors = true
@@ -185,13 +184,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	rows := make([][]string, len(ready))
-	for i, r := range ready {
-		assetNames := make([]string, len(r.chosens))
-		for j, c := range r.chosens {
-			assetNames[j] = c.Name
+	var rows [][]string
+	for _, r := range ready {
+		for _, c := range r.chosens {
+			rows = append(rows, []string{r.key, r.pkg.Pin, r.pkg.Version, config.NormalizeVersion(r.release.TagName), c.Name, r.source})
 		}
-		rows[i] = []string{r.key, r.pkg.Pin, r.pkg.Version, config.NormalizeVersion(r.release.TagName), strings.Join(assetNames, ", "), r.source}
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
 	printTable([]string{"name", "pin", "version", "update", "asset", "repo"}, rows, colors)
@@ -217,18 +214,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 					return nil, err
 				}
 				newVersion := config.NormalizeVersion(r.release.TagName)
-				newPkgDir, err := store.ExtractDir(r.key, newVersion)
-				if err != nil {
-					return nil, err
-				}
-				if err := os.RemoveAll(newPkgDir); err != nil {
-					return nil, err
-				}
-				if err := os.MkdirAll(newPkgDir, 0755); err != nil {
-					return nil, err
-				}
-
 				pkgName, _, _ := config.ParseVersionSuffix(r.key)
+				pkgDirByAsset := make(map[string]string, len(r.chosens))
 				fontsByAsset := make(map[string][]asset.FontCandidate)
 				binsByAsset := make(map[string][]asset.BinaryCandidate)
 
@@ -245,23 +232,31 @@ func runSync(cmd *cobra.Command, args []string) error {
 						}
 					}
 
-					prevFonts := fontKeySet(asset.FindFonts(newPkgDir))
-					prevBins := binKeySet(asset.FindBinaries(newPkgDir, pkgName))
-
-					if err := asset.ExtractPackage(cacheDir, chosen.Name, newPkgDir); err != nil {
-						_ = os.RemoveAll(newPkgDir)
+					assetDir, err := store.ExtractDir(r.key, newVersion, chosen.Name)
+					if err != nil {
 						return nil, err
 					}
-
-					if newFonts := filterNewFonts(asset.FindFonts(newPkgDir), prevFonts); len(newFonts) > 0 {
-						fontsByAsset[chosen.Name] = newFonts
+					if err := os.RemoveAll(assetDir); err != nil {
+						return nil, err
 					}
-					if newBins := filterNewBins(asset.FindBinaries(newPkgDir, pkgName), prevBins); len(newBins) > 0 {
-						binsByAsset[chosen.Name] = newBins
+					if err := os.MkdirAll(assetDir, 0755); err != nil {
+						return nil, err
+					}
+					if err := asset.ExtractPackage(cacheDir, chosen.Name, assetDir); err != nil {
+						_ = os.RemoveAll(assetDir)
+						return nil, err
+					}
+					pkgDirByAsset[chosen.Name] = assetDir
+
+					if fonts := asset.FindFonts(assetDir); len(fonts) > 0 {
+						fontsByAsset[chosen.Name] = fonts
+					}
+					if bins := asset.FindBinaries(assetDir, pkgName); len(bins) > 0 {
+						binsByAsset[chosen.Name] = bins
 					}
 				}
 
-				return syncTaskResult{r: r, pkgDir: newPkgDir, fontsByAsset: fontsByAsset, binsByAsset: binsByAsset}, nil
+				return syncTaskResult{r: r, pkgDirByAsset: pkgDirByAsset, fontsByAsset: fontsByAsset, binsByAsset: binsByAsset}, nil
 			},
 		}
 	}
@@ -306,19 +301,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 				hadErrors = true
 				pkgFailed = true
 			} else {
-				rawKeys := make([]string, len(selected))
-				for i, s := range selected {
-					rawKeys[i] = s.Key()
+				for _, s := range selected {
+					printInfo(cfg, "bin %s", s.Key())
 				}
-				printInfo(cfg, "bin %s", strings.Join(rawKeys, ", "))
 
 				for shimName := range prevBins {
 					_ = shim.Remove(shimName)
 				}
-				if oldBase, err := store.ExtractBaseDir(tr.r.key); err == nil {
-					oldPkgDir := filepath.Join(oldBase, tr.r.pkg.Version)
-					if oldPkgDir != tr.pkgDir {
-						if err := os.RemoveAll(oldPkgDir); err != nil {
+				if tr.r.pkg.Version != newVer {
+					if oldBase, err := store.ExtractBaseDir(tr.r.key); err == nil {
+						if err := os.RemoveAll(filepath.Join(oldBase, tr.r.pkg.Version)); err != nil {
 							printWarn(cfg, "could not remove old extract dir: %v", err)
 						}
 					}
@@ -341,7 +333,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				shimFailed := false
 				for shimName, binsKey := range newBins {
 					binDir, binName := splitBinKey(binsKey)
-					if err := shim.Create(shimName, binName, tr.pkgDir, binDir); err != nil {
+					if err := shim.Create(shimName, binName, tr.pkgDirByAsset[binAssetName], binDir); err != nil {
 						printFail(cfg, "%s: could not update shim: %v", shimName, err)
 						shimFailed = true
 						hadErrors = true
@@ -400,7 +392,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					fontMap := make(map[string]string)
 					for _, sel := range selectedFonts {
 						fontPath := sel.Key()
-						srcPath := filepath.Join(tr.pkgDir, filepath.FromSlash(fontPath))
+						srcPath := filepath.Join(tr.pkgDirByAsset[assetName], filepath.FromSlash(fontPath))
 						if err := installFont(srcPath, fontsDir); err != nil {
 							printFail(cfg, "font %s: %v", fontPath, err)
 							hadErrors = true
@@ -421,10 +413,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 				for _, fontPath := range tr.r.pkg.AllFonts() {
 					uninstallFont(fontPath, fontsDir)
 				}
-				if oldBase, err := store.ExtractBaseDir(tr.r.key); err == nil {
-					oldPkgDir := filepath.Join(oldBase, tr.r.pkg.Version)
-					if oldPkgDir != tr.pkgDir {
-						_ = os.RemoveAll(oldPkgDir)
+				if tr.r.pkg.Version != newVer {
+					if oldBase, err := store.ExtractBaseDir(tr.r.key); err == nil {
+						_ = os.RemoveAll(filepath.Join(oldBase, tr.r.pkg.Version))
 					}
 				}
 				if !pkgFailed {

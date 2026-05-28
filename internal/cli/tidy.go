@@ -129,8 +129,13 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 				missingShimNames = append(missingShimNames, shimName)
 			}
 		}
-		_, extractErr := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version))
-		extractMissing := os.IsNotExist(extractErr)
+		extractMissing := false
+		for assetName := range pkg.Asset {
+			if _, err := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version, assetName)); os.IsNotExist(err) {
+				extractMissing = true
+				break
+			}
+		}
 		allShimsMissing := len(missingShimNames) == len(allBins)
 
 		if len(missingShimNames) == 0 && !extractMissing {
@@ -196,8 +201,8 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 			if len(it.trimBinNames) > 0 {
 				entry := manifest.Extracts[it.manifestKey]
 				for assetName, ae := range entry.Asset {
-					for _, name := range it.trimBinNames {
-						delete(ae.Bin, name)
+					for _, shimName := range it.trimBinNames {
+						delete(ae.Bin, shimName)
 					}
 					entry.Asset[assetName] = ae
 				}
@@ -361,8 +366,8 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *config.Manifest) bool {
 	installed := map[string]bool{}
 	for key, pkg := range manifest.Extracts {
-		name, _, _ := config.ParseVersionSuffix(key)
-		if src, ok := manifest.Repos[name]; ok {
+		pkgName, _, _ := config.ParseVersionSuffix(key)
+		if src, ok := manifest.Repos[pkgName]; ok {
 			installed[src+"/"+pkg.Version] = true
 		}
 	}
