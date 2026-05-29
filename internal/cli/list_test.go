@@ -28,15 +28,15 @@ func TestRunList_WithPackages(t *testing.T) {
 			}},
 		},
 	})
-	onlyNames = true
-	defer func() { onlyNames = false }()
+	longNames = true
+	defer func() { longNames = false }()
 
 	if err := runList(nil, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestRunList_OnlyNames(t *testing.T) {
+func TestRunList_LongNames(t *testing.T) {
 	home := withHome(t)
 	writeSettings(t, home, &config.Settings{})
 	writeManifest(t, home, &config.Manifest{
@@ -49,8 +49,29 @@ func TestRunList_OnlyNames(t *testing.T) {
 			"rg":  {Version: "14.1.0"},
 		},
 	})
-	onlyNames = true
-	defer func() { onlyNames = false }()
+	longNames = true
+	defer func() { longNames = false }()
+
+	if err := runList(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunList_ShortNames(t *testing.T) {
+	home := withHome(t)
+	writeSettings(t, home, &config.Settings{})
+	writeManifest(t, home, &config.Manifest{
+		Repos: map[string]string{
+			"fzf": "github.com/junegunn/fzf",
+			"rg":  "github.com/BurntSushi/ripgrep",
+		},
+		Extracts: map[string]config.PackageEntry{
+			"fzf": {Version: "0.58.0"},
+			"rg":  {Version: "14.1.0"},
+		},
+	})
+	shortNames = true
+	defer func() { shortNames = false }()
 
 	if err := runList(nil, nil); err != nil {
 		t.Fatal(err)

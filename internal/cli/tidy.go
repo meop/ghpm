@@ -83,11 +83,11 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	}
 
 	type item struct {
-		display      string
-		shimPaths    []string
-		extractPath  string
-		manifestKey  string
-		trimBinNames []string
+		display       string
+		shimPaths     []string
+		extractPath   string
+		manifestKey   string
+		trimShimNames []string
 	}
 	var items []item
 
@@ -157,9 +157,9 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 			})
 		} else {
 			items = append(items, item{
-				display:      fmt.Sprintf("%s: missing bin (%s)", key, strings.Join(missingShimNames, ", ")),
-				manifestKey:  key,
-				trimBinNames: missingShimNames, // these are shim names (map keys)
+				display:       fmt.Sprintf("%s: missing bin (%s)", key, strings.Join(missingShimNames, ", ")),
+				manifestKey:   key,
+				trimShimNames: missingShimNames,
 			})
 		}
 	}
@@ -198,10 +198,10 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 			}
 		}
 		if it.manifestKey != "" {
-			if len(it.trimBinNames) > 0 {
+			if len(it.trimShimNames) > 0 {
 				entry := manifest.Extracts[it.manifestKey]
 				for assetName, ae := range entry.Asset {
-					for _, shimName := range it.trimBinNames {
+					for _, shimName := range it.trimShimNames {
 						delete(ae.Bin, shimName)
 					}
 					entry.Asset[assetName] = ae

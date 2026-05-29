@@ -17,12 +17,10 @@ const (
 )
 
 var (
-	version   = "dev"
-	dryRun    bool
-	noVerify  bool
-	onlyNames bool
-	quiet     bool
-	yes       bool
+	version = "dev"
+	dryRun  bool
+	quiet   bool
+	yes     bool
 )
 
 func SetVersion(v string) { version = v }
@@ -34,7 +32,7 @@ func exeName(name string) string {
 	return name
 }
 
-func binShimName(key, binName string) string {
+func deriveShimName(key, binName string) string {
 	_, ver, pinned := config.ParseVersionSuffix(key)
 	if !pinned {
 		return binName
@@ -56,8 +54,7 @@ func hasReservedConflict(proposed []string, reserved map[string]string) bool {
 	return false
 }
 
-// splitBinKey recovers BinDir and BinName from a Bins map value (relative binary path).
-func splitBinKey(key string) (binDir, binName string) {
+func parseBinPath(key string) (binDir, binName string) {
 	i := strings.LastIndex(key, "/")
 	if i < 0 {
 		return "", key
@@ -75,13 +72,13 @@ func proposedShimNames(manifestKey string, selected []asset.BinaryCandidate) []s
 	}
 	result := make([]string, len(selected))
 	for i, s := range selected {
-		base := binShimName(manifestKey, s.BinName)
+		base := deriveShimName(manifestKey, s.BinName)
 		if counts[s.BinName] > 1 {
 			suffix := lastPathSegment(s.BinDir)
 			if suffix == "" {
 				suffix = fmt.Sprintf("%d", i+1)
 			}
-			base = shimWithSuffix(base, suffix)
+			base = shimNameWithSuffix(base, suffix)
 		}
 		result[i] = base
 	}
@@ -96,7 +93,7 @@ func lastPathSegment(p string) string {
 	return p[i+1:]
 }
 
-func shimWithSuffix(name, suffix string) string {
+func shimNameWithSuffix(name, suffix string) string {
 	if strings.HasSuffix(name, ".exe") {
 		return name[:len(name)-4] + "-" + suffix + ".exe"
 	}

@@ -3,11 +3,14 @@ package cli
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
 )
+
+var longNames, shortNames bool
 
 func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -17,7 +20,8 @@ func newListCmd() *cobra.Command {
 		Args:    cobra.NoArgs,
 		RunE:    runList,
 	}
-	cmd.Flags().BoolVarP(&onlyNames, "only-names", "o", false, "Print names only, one per line")
+	cmd.Flags().BoolVarP(&longNames, "long-names", "l", false, "Print names only, one per line")
+	cmd.Flags().BoolVarP(&shortNames, "short-names", "s", false, "Print names only, space-separated on one line")
 	return cmd
 }
 
@@ -39,10 +43,14 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 	slices.Sort(keys)
 
-	if onlyNames {
+	if longNames {
 		for _, k := range keys {
 			fmt.Println(k)
 		}
+		return nil
+	}
+	if shortNames {
+		fmt.Println(strings.Join(keys, " "))
 		return nil
 	}
 

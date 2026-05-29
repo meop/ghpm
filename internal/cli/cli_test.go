@@ -81,9 +81,9 @@ func TestBinShimName(t *testing.T) {
 		{"codex@0.133.0", "codex-x86_64-unknown-linux-musl", "codex-x86_64-unknown-linux-musl@0.133.0"},
 	}
 	for _, c := range cases {
-		got := binShimName(c.key, c.binName)
+		got := deriveShimName(c.key, c.binName)
 		if got != c.want {
-			t.Errorf("binShimName(%q, %q) = %q, want %q", c.key, c.binName, got, c.want)
+			t.Errorf("deriveShimName(%q, %q) = %q, want %q", c.key, c.binName, got, c.want)
 		}
 	}
 }
@@ -167,9 +167,9 @@ func TestSplitBinKey(t *testing.T) {
 		{"tools/v1/codex.exe", "tools/v1", "codex.exe"},
 	}
 	for _, c := range cases {
-		gotDir, gotName := splitBinKey(c.key)
+		gotDir, gotName := parseBinPath(c.key)
 		if gotDir != c.wantDir || gotName != c.wantName {
-			t.Errorf("splitBinKey(%q) = (%q, %q), want (%q, %q)", c.key, gotDir, gotName, c.wantDir, c.wantName)
+			t.Errorf("parseBinPath(%q) = (%q, %q), want (%q, %q)", c.key, gotDir, gotName, c.wantDir, c.wantName)
 		}
 	}
 }

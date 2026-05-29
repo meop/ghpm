@@ -325,14 +325,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 					if oldShim, ok := oldBinKeyToShim[s.Key()]; ok {
 						newBins[oldShim] = s.Key()
 					} else {
-						newBins[binShimName(tr.r.key, s.BinName)] = s.Key()
+						newBins[deriveShimName(tr.r.key, s.BinName)] = s.Key()
 					}
 				}
 				newAssets[binAssetName] = config.AssetEntry{Bin: newBins}
 
 				shimFailed := false
 				for shimName, binsKey := range newBins {
-					binDir, binName := splitBinKey(binsKey)
+					binDir, binName := parseBinPath(binsKey)
 					if err := shim.Create(shimName, binName, tr.pkgDirByAsset[binAssetName], binDir); err != nil {
 						printFail(cfg, "%s: could not update shim: %v", shimName, err)
 						shimFailed = true

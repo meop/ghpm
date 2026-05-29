@@ -73,7 +73,7 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 
 	currentVer := ""
 	if out, err := exec.Command(ghPath, "--version").Output(); err == nil {
-		for _, tok := range asset.Tokenize(strings.TrimSpace(string(out))) {
+		for _, tok := range strings.Fields(string(out)) {
 			if asset.IsVersionToken(tok) {
 				currentVer = strings.TrimPrefix(tok, "v")
 				break

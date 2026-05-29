@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/meop/ghpm/internal/config"
@@ -14,19 +15,31 @@ import (
 
 var ErrSkip = errors.New("skipped")
 
-var osPrefixes = map[string][]string{
+var osNames = map[string][]string{
 	"darwin":  {"darwin", "macos", "osx"},
 	"linux":   {"linux"},
 	"windows": {"windows"},
 }
 
-var archPrefixes = map[string][]string{
+var archNames = map[string][]string{
 	"arm64": {"arm64", "aarch64"},
 	"amd64": {"amd64", "x86_64", "x64"},
 }
 
-var allowedSuffixes = []string{
+var toolPrefs = map[string][]string{
+	"darwin":  {""},
+	"linux":   {"gnu", "musl"},
+	"windows": {"msvc", "gnu"},
+}
+
+var extValues = []string{
 	".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip",
+}
+
+var extPrefs = map[string][]string{
+	"darwin":  extValues,
+	"linux":   extValues,
+	"windows": append(extValues[len(extValues)-1:], extValues[:len(extValues)-1]...),
 }
 
 func isSkipped(name string) bool {
@@ -34,7 +47,7 @@ func isSkipped(name string) bool {
 	if strings.Contains(lower, "src") || strings.Contains(lower, "source") {
 		return true
 	}
-	for _, suf := range allowedSuffixes {
+	for _, suf := range extValues {
 		if strings.HasSuffix(lower, suf) {
 			return false
 		}
@@ -48,22 +61,33 @@ func Tokenize(name string) []string {
 	})
 }
 
-func hasTokenPrefix(name string, prefixes []string) bool {
-	for _, token := range Tokenize(name) {
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(token, prefix) {
-				return true
+func secondaryScore(name string) int {
+	lower := strings.ToLower(name)
+	goos := runtime.GOOS
+	total := 0
+	if prefs, ok := toolPrefs[goos]; ok {
+		n := len(prefs)
+		for i := n - 1; i >= 0; i-- {
+			if p := prefs[i]; p != "" && strings.Contains(lower, p) {
+				total += 1 + (n - 1 - i)
 			}
 		}
-		// also check underscore sub-segments (e.g. linux_amd64 → amd64)
-		if strings.Contains(token, "_") {
-			for _, sub := range strings.Split(token, "_") {
-				for _, prefix := range prefixes {
-					if strings.HasPrefix(sub, prefix) {
-						return true
-					}
-				}
+	}
+	if prefs, ok := extPrefs[goos]; ok {
+		n := len(prefs)
+		for i := n - 1; i >= 0; i-- {
+			if strings.HasSuffix(lower, prefs[i]) {
+				total += 1 + (n - 1 - i)
 			}
+		}
+	}
+	return total
+}
+
+func containsAny(lower string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.Contains(lower, p) {
+			return true
 		}
 	}
 	return false
@@ -77,39 +101,40 @@ type scoreResult struct {
 }
 
 func scoreAsset(name, pkgName string) scoreResult {
+	lower := strings.ToLower(name)
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 	var r scoreResult
 
-	if pkgName != "" && hasTokenPrefix(name, []string{pkgName}) {
+	if pkgName != "" && strings.Contains(lower, strings.ToLower(pkgName)) {
 		r.score++
 	}
 
-	if prefixes, ok := osPrefixes[goos]; ok && hasTokenPrefix(name, prefixes) {
+	if prefixes, ok := osNames[goos]; ok && containsAny(lower, prefixes) {
 		r.score++
 		r.osMatch = true
 	} else {
-		for os, prefixes := range osPrefixes {
-			if os != goos && hasTokenPrefix(name, prefixes) {
+		for os, prefixes := range osNames {
+			if os != goos && containsAny(lower, prefixes) {
 				r.hasNeg = true
 				break
 			}
 		}
 	}
 
-	if prefixes, ok := archPrefixes[goarch]; ok && hasTokenPrefix(name, prefixes) {
+	if prefixes, ok := archNames[goarch]; ok && containsAny(lower, prefixes) {
 		r.score++
 		r.archMatch = true
 	} else {
-		for arch, prefixes := range archPrefixes {
-			if arch != goarch && hasTokenPrefix(name, prefixes) {
+		for arch, prefixes := range archNames {
+			if arch != goarch && containsAny(lower, prefixes) {
 				r.hasNeg = true
 				break
 			}
 		}
 	}
 
-	if goos == "windows" && strings.HasSuffix(strings.ToLower(name), ".exe") {
+	if goos == "windows" && strings.HasSuffix(lower, ".exe") {
 		r.score++
 	}
 
@@ -177,6 +202,10 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 			best = append(best, c)
 		}
 	}
+
+	slices.SortStableFunc(best, func(a, b candidateScore) int {
+		return secondaryScore(b.asset.Name) - secondaryScore(a.asset.Name)
+	})
 
 	if len(best) == 1 && best[0].osMatch && best[0].archMatch {
 		return AssetCandidates{Chosen: best[0].asset, All: candidates}, nil

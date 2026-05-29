@@ -16,7 +16,8 @@ func newFindCmd() *cobra.Command {
 		Short:   "List or search cached repos by name or source",
 		RunE:    runFind,
 	}
-	cmd.Flags().BoolVarP(&onlyNames, "only-names", "o", false, "Print names only, one per line")
+	cmd.Flags().BoolVarP(&longNames, "long-names", "l", false, "Print names only, one per line")
+	cmd.Flags().BoolVarP(&shortNames, "short-names", "s", false, "Print names only, space-separated on one line")
 	return cmd
 }
 
@@ -44,10 +45,18 @@ func runFind(cmd *cobra.Command, args []string) error {
 		slices.SortFunc(all, func(a, b repoMatch) int {
 			return cmp.Compare(a.name, b.name)
 		})
-		if onlyNames {
+		if longNames {
 			for _, m := range all {
 				fmt.Println(m.name)
 			}
+			return nil
+		}
+		if shortNames {
+			names := make([]string, len(all))
+			for i, m := range all {
+				names[i] = m.name
+			}
+			fmt.Println(strings.Join(names, " "))
 			return nil
 		}
 		rows := make([][]string, len(all))
@@ -84,10 +93,18 @@ func runFind(cmd *cobra.Command, args []string) error {
 			return cmp.Compare(a.name, b.name)
 		})
 
-		if onlyNames {
+		if longNames {
 			for _, m := range matches {
 				fmt.Println(m.name)
 			}
+			continue
+		}
+		if shortNames {
+			names := make([]string, len(matches))
+			for i, m := range matches {
+				names[i] = m.name
+			}
+			fmt.Println(strings.Join(names, " "))
 			continue
 		}
 		rows := make([][]string, len(matches))

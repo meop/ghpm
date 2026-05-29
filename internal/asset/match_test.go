@@ -4,6 +4,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
@@ -98,37 +99,29 @@ func TestTokenize(t *testing.T) {
 	}
 }
 
-func TestHasTokenPrefix(t *testing.T) {
+func TestContainsAny(t *testing.T) {
 	cases := []struct {
 		name     string
 		prefixes []string
 		want     bool
 	}{
-		// darwin must NOT match "windows" prefix
 		{"tool-darwin-amd64.tar.gz", []string{"windows"}, false},
-		// darwin matches "darwin"
 		{"tool-darwin-amd64.tar.gz", []string{"darwin", "macos"}, true},
-		// windows matches "windows"
 		{"tool-windows-x64.zip", []string{"windows"}, true},
-		// linux matches "linux"
 		{"tool-linux-amd64.tar.gz", []string{"linux"}, true},
-		// lint must NOT match linux prefix (golangci-lint false-positive)
 		{"golangci-lint-1.0-darwin-amd64.tar.gz", []string{"linux"}, false},
-		// macos matches "macos"
 		{"tool-macos-arm64.tar.gz", []string{"darwin", "macos"}, true},
-		// osx matches "osx"
 		{"tool-osx-arm64.tar.gz", []string{"darwin", "macos", "osx"}, true},
-		// win32_x64 does NOT match "windows" (ambiguous short prefix excluded)
 		{"claude-win32_x64.zip", []string{"windows"}, false},
-		// x86_64 stays whole (dash-only tokenize), matches x86_64 prefix
 		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"x86_64", "x64", "amd64"}, true},
-		// aarch64 matches "aarch64"
 		{"tool-linux-aarch64.tar.gz", []string{"arm64", "aarch64"}, true},
+		{"bottom_x86_64-pc-windows-msvc.zip", []string{"x86_64", "x64", "amd64"}, true},
+		{"bottom_i686-pc-windows-msvc.zip", []string{"x86_64", "x64", "amd64"}, false},
 	}
 	for _, c := range cases {
-		got := hasTokenPrefix(c.name, c.prefixes)
+		got := containsAny(strings.ToLower(c.name), c.prefixes)
 		if got != c.want {
-			t.Errorf("hasTokenPrefix(%q, %v) = %v, want %v", c.name, c.prefixes, got, c.want)
+			t.Errorf("containsAny(%q, %v) = %v, want %v", c.name, c.prefixes, got, c.want)
 		}
 	}
 }
@@ -393,6 +386,53 @@ func TestTokensMatch(t *testing.T) {
 		got := tokensMatch(c.a, c.b)
 		if got != c.want {
 			t.Errorf("tokensMatch(%v, %v) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
+
+func TestSecondaryScore_Linux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-specific test")
+	}
+	cases := []struct {
+		name string
+		want int
+	}{
+		{"tool-linux-gnu-amd64.tar.gz", 7},  // gnu(+2) + .tar.gz(+5)
+		{"tool-linux-musl-amd64.tar.gz", 6}, // musl(+1) + .tar.gz(+5)
+		{"tool-linux-amd64.tar.gz", 5},      // .tar.gz(+5)
+		{"tool-linux-amd64.tgz", 4},         // .tgz(+4)
+		{"tool-linux-amd64.tar.bz2", 3},     // .tar.bz2(+3)
+		{"tool-linux-amd64.tar.xz", 2},      // .tar.xz(+2)
+		{"tool-linux-gnu-amd64.zip", 3},     // gnu(+2) + .zip(+1)
+		{"tool-linux-amd64.zip", 1},         // .zip(+1)
+	}
+	for _, c := range cases {
+		if got := secondaryScore(c.name); got != c.want {
+			t.Errorf("secondaryScore(%q) = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+func TestSecondaryScore_Windows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-specific test")
+	}
+	cases := []struct {
+		name string
+		want int
+	}{
+		{"bottom_x86_64-pc-windows-msvc.zip", 7}, // msvc(+2) + .zip(+5)
+		{"bottom_x86_64-pc-windows-gnu.zip", 6},  // gnu(+1) + .zip(+5)
+		{"bottom_i686-pc-windows-msvc.zip", 7},   // msvc(+2) + .zip(+5)
+		{"tool-windows-msvc.tar.gz", 6},          // msvc(+2) + .tar.gz(+4)
+		{"tool-windows-gnu.tar.gz", 5},           // gnu(+1) + .tar.gz(+4)
+		{"tool-windows-msvc.tar.xz", 3},          // msvc(+2) + .tar.xz(+1)
+		{"tool-windows-amd64.zip", 5},            // .zip(+5)
+	}
+	for _, c := range cases {
+		if got := secondaryScore(c.name); got != c.want {
+			t.Errorf("secondaryScore(%q) = %d, want %d", c.name, got, c.want)
 		}
 	}
 }
