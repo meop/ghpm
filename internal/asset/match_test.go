@@ -390,6 +390,44 @@ func TestTokensMatch(t *testing.T) {
 	}
 }
 
+func TestStripAssetExt(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"tool-linux-amd64.tar.gz", "tool-linux-amd64"},
+		{"tool-linux-amd64.tgz", "tool-linux-amd64"},
+		{"tool-linux-amd64.tar.bz2", "tool-linux-amd64"},
+		{"tool-linux-amd64.tar.xz", "tool-linux-amd64"},
+		{"tool-linux-amd64.zip", "tool-linux-amd64"},
+		{"tool-linux-amd64", "tool-linux-amd64"},
+		{"Tool-Linux-AMD64.TAR.GZ", "tool-linux-amd64"},
+	}
+	for _, c := range cases {
+		if got := stripAssetExt(c.name); got != c.want {
+			t.Errorf("stripAssetExt(%q) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestSelectAssetAuto_Dedup(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "tool-linux-amd64.tar.gz", Size: 100},
+		{Name: "tool-linux-amd64.zip", Size: 100},
+		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "tool-linux-amd64.tar.gz" {
+		t.Errorf("expected auto-select of tar.gz, got Chosen=%q Compatible=%v", ac.Chosen.Name, ac.Compatible)
+	}
+}
+
 func TestSecondaryScore_Linux(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("linux-specific test")
@@ -398,14 +436,14 @@ func TestSecondaryScore_Linux(t *testing.T) {
 		name string
 		want int
 	}{
-		{"tool-linux-gnu-amd64.tar.gz", 7},  // gnu(+2) + .tar.gz(+5)
-		{"tool-linux-musl-amd64.tar.gz", 6}, // musl(+1) + .tar.gz(+5)
-		{"tool-linux-amd64.tar.gz", 5},      // .tar.gz(+5)
-		{"tool-linux-amd64.tgz", 4},         // .tgz(+4)
-		{"tool-linux-amd64.tar.bz2", 3},     // .tar.bz2(+3)
-		{"tool-linux-amd64.tar.xz", 2},      // .tar.xz(+2)
-		{"tool-linux-gnu-amd64.zip", 3},     // gnu(+2) + .zip(+1)
-		{"tool-linux-amd64.zip", 1},         // .zip(+1)
+		{"tool-linux-gnu-amd64.tar.gz", 7},  // gnu(+2) + tar.gz(+5)
+		{"tool-linux-musl-amd64.tar.gz", 6}, // musl(+1) + tar.gz(+5)
+		{"tool-linux-amd64.tar.gz", 5},      // tar.gz(+5)
+		{"tool-linux-amd64.tgz", 4},         // tgz(+4)
+		{"tool-linux-amd64.tar.bz2", 3},     // tar.bz2(+3)
+		{"tool-linux-amd64.tar.xz", 2},      // tar.xz(+2)
+		{"tool-linux-gnu-amd64.zip", 3},     // gnu(+2) + zip(+1)
+		{"tool-linux-amd64.zip", 1},         // zip(+1)
 	}
 	for _, c := range cases {
 		if got := secondaryScore(c.name); got != c.want {
@@ -422,13 +460,13 @@ func TestSecondaryScore_Windows(t *testing.T) {
 		name string
 		want int
 	}{
-		{"bottom_x86_64-pc-windows-msvc.zip", 7}, // msvc(+2) + .zip(+5)
-		{"bottom_x86_64-pc-windows-gnu.zip", 6},  // gnu(+1) + .zip(+5)
-		{"bottom_i686-pc-windows-msvc.zip", 7},   // msvc(+2) + .zip(+5)
-		{"tool-windows-msvc.tar.gz", 6},          // msvc(+2) + .tar.gz(+4)
-		{"tool-windows-gnu.tar.gz", 5},           // gnu(+1) + .tar.gz(+4)
-		{"tool-windows-msvc.tar.xz", 3},          // msvc(+2) + .tar.xz(+1)
-		{"tool-windows-amd64.zip", 5},            // .zip(+5)
+		{"bottom_x86_64-pc-windows-msvc.zip", 7}, // msvc(+2) + zip(+5)
+		{"bottom_x86_64-pc-windows-gnu.zip", 6},  // gnu(+1) + zip(+5)
+		{"bottom_i686-pc-windows-msvc.zip", 7},   // msvc(+2) + zip(+5)
+		{"tool-windows-msvc.tar.gz", 6},          // msvc(+2) + tar.gz(+4)
+		{"tool-windows-gnu.tar.gz", 5},           // gnu(+1) + tar.gz(+4)
+		{"tool-windows-msvc.tar.xz", 3},          // msvc(+2) + tar.xz(+1)
+		{"tool-windows-amd64.zip", 5},            // zip(+5)
 	}
 	for _, c := range cases {
 		if got := secondaryScore(c.name); got != c.want {
