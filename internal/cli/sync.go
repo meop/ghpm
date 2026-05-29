@@ -366,10 +366,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 				for fontName, fontPath := range tr.r.pkg.AllFonts() {
 					oldPathToName[fontPath] = fontName
 				}
-				prevFontPaths := make([]string, 0, len(tr.r.pkg.AllFonts()))
-				for _, fontPath := range tr.r.pkg.AllFonts() {
-					prevFontPaths = append(prevFontPaths, fontPath)
-				}
 
 				fontAssetNames := make([]string, 0, len(tr.fontsByAsset))
 				for a := range tr.fontsByAsset {
@@ -379,7 +375,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 				for _, assetName := range fontAssetNames {
 					candidates := tr.fontsByAsset[assetName]
-					selectedFonts, selErr := asset.SelectFonts(candidates, prevFontPaths)
+					prevAssetPaths := make([]string, 0, len(tr.r.pkg.Asset[assetName].Font))
+					for _, fontPath := range tr.r.pkg.Asset[assetName].Font {
+						prevAssetPaths = append(prevAssetPaths, fontPath)
+					}
+					selectedFonts, selErr := asset.SelectFonts(candidates, prevAssetPaths)
 					if errors.Is(selErr, asset.ErrSkip) {
 						continue
 					}
