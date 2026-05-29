@@ -1,19 +1,20 @@
 package asset
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
 	"slices"
 	"strings"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
+	"github.com/meop/ghpm/internal/ioutils"
 )
 
 var ErrSkip = errors.New("skipped")
+
+var ErrNoCompatibleAsset = errors.New("no compatible assets found")
 
 var osNames = map[string][]string{
 	"darwin":  {"darwin", "macos", "osx"},
@@ -94,7 +95,7 @@ func stripAssetExt(name string) string {
 	return lower
 }
 
-func containsAny(lower string, prefixes []string) bool {
+func containsAnyOf(lower string, prefixes []string) bool {
 	for _, p := range prefixes {
 		if strings.Contains(lower, p) {
 			return true
@@ -120,24 +121,24 @@ func scoreAsset(name, pkgName string) scoreResult {
 		r.score++
 	}
 
-	if prefixes, ok := osNames[goos]; ok && containsAny(lower, prefixes) {
+	if prefixes, ok := osNames[goos]; ok && containsAnyOf(lower, prefixes) {
 		r.score++
 		r.osMatch = true
 	} else {
 		for os, prefixes := range osNames {
-			if os != goos && containsAny(lower, prefixes) {
+			if os != goos && containsAnyOf(lower, prefixes) {
 				r.hasNeg = true
 				break
 			}
 		}
 	}
 
-	if prefixes, ok := archNames[goarch]; ok && containsAny(lower, prefixes) {
+	if prefixes, ok := archNames[goarch]; ok && containsAnyOf(lower, prefixes) {
 		r.score++
 		r.archMatch = true
 	} else {
 		for arch, prefixes := range archNames {
-			if arch != goarch && containsAny(lower, prefixes) {
+			if arch != goarch && containsAnyOf(lower, prefixes) {
 				r.hasNeg = true
 				break
 			}
@@ -166,7 +167,7 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 		}
 	}
 	if len(candidates) == 0 {
-		return AssetCandidates{}, fmt.Errorf("no compatible assets found")
+		return AssetCandidates{}, ErrNoCompatibleAsset
 	}
 
 	if hint != "" {
@@ -263,10 +264,7 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 		showMoreIdx = len(compatible) + 1
 		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
 	}
-	fmt.Print("enter number (0=skip): ")
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	line = strings.TrimSpace(line)
+	line := ioutils.ReadLine("enter number (0=skip): ")
 	var idx int
 	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
 		return gh.Asset{}, fmt.Errorf("invalid selection")
@@ -288,10 +286,7 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	for i, a := range assets {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	fmt.Print("enter number (0=skip): ")
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	line = strings.TrimSpace(line)
+	line := ioutils.ReadLine("enter number (0=skip): ")
 	var idx int
 	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
 		return gh.Asset{}, fmt.Errorf("invalid selection")
@@ -328,10 +323,7 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 	if showMoreIdx > 0 {
 		maxIdx = showMoreIdx
 	}
-	fmt.Printf("enter number(s) (0=skip | 1[,][-]%d): ", len(compatible))
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	line = strings.TrimSpace(line)
+	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) (0=skip | 1[,][-]%d): ", len(compatible)))
 	indices, err := parseMultiSelect(line, maxIdx)
 	if err != nil || indices == nil {
 		return nil, ErrSkip
@@ -359,10 +351,7 @@ func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
 	for i, a := range all {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	fmt.Printf("enter number(s) (0=skip | 1[,][-]%d): ", len(all))
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	line = strings.TrimSpace(line)
+	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) (0=skip | 1[,][-]%d): ", len(all)))
 	indices, err := parseMultiSelect(line, len(all))
 	if err != nil || indices == nil {
 		return nil, ErrSkip
@@ -421,21 +410,9 @@ func stripVersionTokens(tokens []string) []string {
 func IsVersionToken(t string) bool { return isVersionToken(t) }
 
 func isVersionToken(t string) bool {
-	hasDigit := false
-	for _, r := range t {
-		if r >= '0' && r <= '9' {
-			hasDigit = true
-		}
-	}
-	if !hasDigit {
-		return false
-	}
 	s := t
 	if strings.HasPrefix(s, "v") || strings.HasPrefix(s, "V") {
 		s = s[1:]
 	}
-	if len(s) > 0 && s[0] >= '0' && s[0] <= '9' {
-		return true
-	}
-	return false
+	return len(s) > 0 && s[0] >= '0' && s[0] <= '9'
 }

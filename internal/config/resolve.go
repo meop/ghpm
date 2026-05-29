@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +10,8 @@ import (
 
 	"go.yaml.in/yaml/v4"
 
+	"github.com/meop/ghpm/internal/ghbin"
+	"github.com/meop/ghpm/internal/ioutils"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -21,12 +22,15 @@ type reposFile struct {
 // LoadRepos scans ~/.ghpm/repos recursively for repo.yaml files,
 // loads all of them, and merges into a single map (later entries win on conflict).
 // Returns an empty map (no error) if the repos directory doesn't exist yet.
-func LoadRepos() (map[string]string, error) {
+// Non-fatal issues (unreadable or malformed files) are returned as warnings
+// rather than written to stderr, so the caller controls presentation.
+func LoadRepos() (map[string]string, []string, error) {
 	base, err := store.ReposBaseDir()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	merged := map[string]string{}
+	var warnings []string
 	err = filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -39,12 +43,12 @@ func LoadRepos() (map[string]string, error) {
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", path, err)
+			warnings = append(warnings, fmt.Sprintf("skipping %s: %v", path, err))
 			return nil
 		}
 		var rf reposFile
 		if err := yaml.Unmarshal(data, &rf); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: skipping malformed %s: %v\n", path, err)
+			warnings = append(warnings, fmt.Sprintf("skipping malformed %s: %v", path, err))
 			return nil
 		}
 		for k, v := range rf.Repos {
@@ -56,9 +60,9 @@ func LoadRepos() (map[string]string, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, warnings, err
 	}
-	return merged, nil
+	return merged, warnings, nil
 }
 
 // RefreshRepos fetches repo.yaml from each source configured in settings
@@ -100,7 +104,11 @@ func fetchAndCacheRepos(source string) (int, error) {
 	if !strings.Contains(slug, "/") {
 		return 0, fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
 	}
-	cmd := exec.Command("gh", "api", //nolint:gosec
+	ghPath, err := ghbin.Find()
+	if err != nil {
+		return 0, err
+	}
+	cmd := exec.Command(ghPath, "api", //nolint:gosec
 		fmt.Sprintf("repos/%s/contents/repo.yaml", slug),
 		"--header", "Accept: application/vnd.github.raw+json",
 	)
@@ -124,7 +132,11 @@ func fetchAndCacheRepos(source string) (int, error) {
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return 0, err
 	}
-	return len(rf.Repos), os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return 0, err
+	}
+	return len(rf.Repos), nil
 }
 
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).
@@ -180,8 +192,8 @@ func ResolveSource(name, version string, manifest *Manifest, repos map[string]st
 }
 
 // FindBySource returns the name already registered with source.
-func FindBySource(source string, manifest *Manifest) (string, bool) {
-	for name, src := range manifest.Repos {
+func (m *Manifest) FindBySource(source string) (string, bool) {
+	for name, src := range m.Repos {
 		if src == source {
 			return name, true
 		}
@@ -191,7 +203,11 @@ func FindBySource(source string, manifest *Manifest) (string, bool) {
 
 // SearchGitHub runs `gh search repos` and prompts the user to pick a result.
 func SearchGitHub(name string) (string, error) {
-	out, err := exec.Command("gh", "search", "repos", name, "--limit", "5", "--json", "fullName").Output()
+	ghPath, err := ghbin.Find()
+	if err != nil {
+		return "", err
+	}
+	out, err := exec.Command(ghPath, "search", "repos", name, "--limit", "5", "--json", "fullName").Output() //nolint:gosec
 	if err != nil {
 		return "", fmt.Errorf("gh search failed — is gh authenticated?")
 	}
@@ -207,10 +223,7 @@ func SearchGitHub(name string) (string, error) {
 	for i, r := range repos {
 		fmt.Printf("  %d) %s\n", i+1, r.FullName)
 	}
-	fmt.Print("select a repo (0=skip): ")
-
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	line = strings.TrimSpace(line)
+	line := ioutils.ReadLine("select a repo (0=skip): ")
 	var idx int
 	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx < 1 || idx > len(repos) {
 		return "", fmt.Errorf("skipped")

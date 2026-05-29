@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/meop/ghpm/internal/version"
 )
 
 type PinLevel int
@@ -124,11 +126,4 @@ func versionParts(v string) []int {
 
 // NormalizeVersion strips all leading non-digit characters from a version string.
 // "bun-v1.3.13" → "1.3.13", "v0.71.0" → "0.71.0", "1.2.3" → "1.2.3".
-func NormalizeVersion(v string) string {
-	for i, r := range v {
-		if r >= '0' && r <= '9' {
-			return v[i:]
-		}
-	}
-	return v
-}
+func NormalizeVersion(v string) string { return version.Normalize(v) }

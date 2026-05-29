@@ -9,10 +9,9 @@ import (
 )
 
 func TestRunAllComplete(t *testing.T) {
-	tasks := make([]Task, 10)
+	tasks := make([]Task[any], 10)
 	for i := range tasks {
-		i := i
-		tasks[i] = Task{
+		tasks[i] = Task[any]{
 			Name: fmt.Sprintf("task-%d", i),
 			Run:  func() (any, error) { return i, nil },
 		}
@@ -30,7 +29,7 @@ func TestRunAllComplete(t *testing.T) {
 }
 
 func TestRunErrorPropagation(t *testing.T) {
-	tasks := []Task{
+	tasks := []Task[any]{
 		{Name: "ok", Run: func() (any, error) { return "yes", nil }},
 		{Name: "fail", Run: func() (any, error) { return nil, fmt.Errorf("boom") }},
 	}
@@ -51,9 +50,9 @@ func TestRunBoundedConcurrency(t *testing.T) {
 	var concurrent int64
 	var maxSeen int64
 
-	tasks := make([]Task, 20)
+	tasks := make([]Task[any], 20)
 	for i := range tasks {
-		tasks[i] = Task{
+		tasks[i] = Task[any]{
 			Name: fmt.Sprintf("t%d", i),
 			Run: func() (any, error) {
 				cur := atomic.AddInt64(&concurrent, 1)
@@ -80,10 +79,9 @@ func TestRunCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	tasks := make([]Task, 5)
+	tasks := make([]Task[any], 5)
 	for i := range tasks {
-		i := i
-		tasks[i] = Task{
+		tasks[i] = Task[any]{
 			Name: fmt.Sprintf("t%d", i),
 			Run:  func() (any, error) { return i, nil },
 		}
@@ -97,10 +95,9 @@ func TestRunCancellation(t *testing.T) {
 
 func TestRunResultNames(t *testing.T) {
 	names := []string{"alpha", "beta", "gamma"}
-	tasks := make([]Task, len(names))
+	tasks := make([]Task[any], len(names))
 	for i, n := range names {
-		n := n
-		tasks[i] = Task{Name: n, Run: func() (any, error) { return n, nil }}
+		tasks[i] = Task[any]{Name: n, Run: func() (any, error) { return n, nil }}
 	}
 
 	results := Run(context.Background(), tasks, 3)

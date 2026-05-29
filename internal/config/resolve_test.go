@@ -94,12 +94,12 @@ func TestFindBySource(t *testing.T) {
 		Extracts: map[string]PackageEntry{},
 	}
 
-	key, found := FindBySource("github.com/cli/cli", m)
+	key, found := m.FindBySource("github.com/cli/cli")
 	if !found || key != "gh" {
 		t.Errorf("FindBySource(cli/cli) = (%q, %v), want (\"gh\", true)", key, found)
 	}
 
-	_, found = FindBySource("github.com/nobody/nothere", m)
+	_, found = m.FindBySource("github.com/nobody/nothere")
 	if found {
 		t.Error("FindBySource(nothere) should not be found")
 	}

@@ -34,11 +34,11 @@ func defaultSettings() *Settings {
 }
 
 func LoadSettings() (*Settings, error) {
-	home, err := os.UserHomeDir()
+	dir, err := ghpmDir()
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(home, ".ghpm", "settings.json")
+	path := filepath.Join(dir, "settings.json")
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return defaultSettings(), nil
@@ -54,11 +54,10 @@ func LoadSettings() (*Settings, error) {
 }
 
 func EnsureDirs() error {
-	home, err := os.UserHomeDir()
+	base, err := ghpmDir()
 	if err != nil {
 		return err
 	}
-	base := filepath.Join(home, ".ghpm")
 	for _, dir := range []string{
 		filepath.Join(base, "bin"),
 		filepath.Join(base, "extract"),

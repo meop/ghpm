@@ -59,7 +59,7 @@ func print(format string, args ...any) {
 		return
 	}
 	hasOutput = true
-	fmt.Println(fmt.Sprintf(format, args...))
+	fmt.Printf(format+"\n", args...)
 }
 
 func printInfo(cfg *config.Settings, format string, args ...any) {

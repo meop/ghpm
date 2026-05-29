@@ -6,11 +6,12 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"fmt"
-	"github.com/ulikunitz/xz"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ulikunitz/xz"
 )
 
 func ExtractPackage(srcDir, assetName, destDir string) error {
@@ -42,28 +43,7 @@ func safeJoin(destDir, name string) (string, error) {
 	return target, nil
 }
 
-func extractTarPackage(src, destDir, compression string) error {
-	f, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-
-	var r io.Reader
-	switch compression {
-	case "gz":
-		gr, err := gzip.NewReader(f)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = gr.Close() }()
-		r = gr
-	case "bz2":
-		r = bzip2.NewReader(f)
-	default:
-		r = f
-	}
-
+func extractTarFromReader(r io.Reader, destDir string) error {
 	tr := tar.NewReader(r)
 	for {
 		hdr, err := tr.Next()
@@ -101,6 +81,31 @@ func extractTarPackage(src, destDir, compression string) error {
 	}
 }
 
+func extractTarPackage(src, destDir, compression string) error {
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	var r io.Reader
+	switch compression {
+	case "gz":
+		gr, err := gzip.NewReader(f)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gr.Close() }()
+		r = gr
+	case "bz2":
+		r = bzip2.NewReader(f)
+	default:
+		r = f
+	}
+
+	return extractTarFromReader(r, destDir)
+}
+
 func extractTarXZPackage(src, destDir string) error {
 	f, err := os.Open(src)
 	if err != nil {
@@ -113,41 +118,7 @@ func extractTarXZPackage(src, destDir string) error {
 		return fmt.Errorf("xz decompress: %w", err)
 	}
 
-	tr := tar.NewReader(xr)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		target, err := safeJoin(destDir, hdr.Name)
-		if err != nil {
-			return err
-		}
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return err
-			}
-			if err := streamFile(tr, target, os.FileMode(hdr.Mode)); err != nil {
-				return err
-			}
-		case tar.TypeSymlink:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return err
-			}
-			_ = os.Remove(target)
-			if err := os.Symlink(hdr.Linkname, target); err != nil {
-				return err
-			}
-		}
-	}
+	return extractTarFromReader(xr, destDir)
 }
 
 func extractZipPackage(src, destDir string) error {

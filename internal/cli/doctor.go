@@ -25,6 +25,9 @@ func newDoctorCmd() *cobra.Command {
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
+	// doctor is a diagnostic command: it must inspect configuration even when
+	// things are broken, so it loads settings directly instead of going through
+	// initCommand, which would fail fast and acquire locks.
 	cfg, err := config.LoadSettings()
 	if err != nil {
 		printFail(nil, "could not load settings: %v", err)
@@ -56,7 +59,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	warn := func(label, detail string) { line(warnLabel, label, detail) }
 
 	fmt.Println("ghpm doctor")
-	fmt.Println(repeatStr("─", 50))
+	fmt.Println(strings.Repeat("─", 50))
 
 	ghPath, ghErr := exec.LookPath("gh")
 	if ghErr != nil {
@@ -147,7 +150,10 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 }
 
 func mustGhpmDir() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic("could not determine home directory: " + err.Error())
+	}
 	return filepath.Join(home, ".ghpm")
 }
 

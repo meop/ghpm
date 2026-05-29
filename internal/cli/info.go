@@ -13,7 +13,7 @@ import (
 func newInfoCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "info <name> [name...]",
-		Aliases: []string{"in", "show"},
+		Aliases: []string{"show"},
 		Short:   "Show releases and available assets for packages",
 		Args:    cobra.MinimumNArgs(1),
 		RunE:    runInfo,
@@ -28,6 +28,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	cfg := ci.cfg
 	manifest := ci.manifest
 	repos := ci.repos
+	ghClient := ci.gh
 	ctx := cmd.Context()
 
 	var hadErrors bool
@@ -55,10 +56,10 @@ func runInfo(cmd *cobra.Command, args []string) error {
 
 		sep()
 		fmt.Printf("%s (%s)\n", arg, source)
-		fmt.Println(repeatStr("─", 60))
+		fmt.Println(strings.Repeat("─", 60))
 
 		if ver != "" {
-			rel, err := gh.GetReleaseByTag(ctx, owner, repo, ver)
+			rel, err := ghClient.GetReleaseByTag(ctx, owner, repo, ver)
 			if err != nil {
 				printFail(cfg, "%v", err)
 				hadErrors = true
@@ -66,7 +67,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 			}
 			printReleaseInfo(rel)
 		} else {
-			releases, err := gh.ListReleases(ctx, owner, repo)
+			releases, err := ghClient.ListReleases(ctx, owner, repo)
 			if err != nil {
 				printFail(cfg, "%v", err)
 				hadErrors = true
@@ -78,7 +79,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 				fmt.Printf("    %s\n", config.NormalizeVersion(r.TagName))
 			}
 			if len(releases) > 0 {
-				rel, err := gh.GetLatestRelease(ctx, owner, repo)
+				rel, err := ghClient.GetLatestRelease(ctx, owner, repo)
 				if err == nil {
 					sep()
 					printReleaseInfo(rel)
@@ -97,8 +98,4 @@ func printReleaseInfo(rel gh.Release) {
 	for _, a := range rel.Assets {
 		fmt.Printf("    %-60s %d bytes\n", a.Name, a.Size)
 	}
-}
-
-func repeatStr(s string, n int) string {
-	return strings.Repeat(s, n)
 }

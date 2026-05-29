@@ -26,7 +26,7 @@ func newUpgradeCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  runUpgrade,
 	}
-	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	addSkipVerifyFlag(cmd)
 	return cmd
 }
 
@@ -40,16 +40,17 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	hadErrors := false
 	ctx := cmd.Context()
+	ghClient := ci.gh
 
-	if err := upgradeGh(ctx, cfg); err != nil {
+	if err := upgradeGh(ctx, cfg, ghClient); err != nil {
 		printFail(cfg, "gh: %v", err)
 		hadErrors = true
 	}
-	if err := upgradeSelf(ctx, cfg); err != nil {
+	if err := upgradeSelf(ctx, cfg, ghClient); err != nil {
 		printFail(cfg, "ghpm: %v", err)
 		hadErrors = true
 	}
-	if err := upgradeShim(ctx, cfg); err != nil {
+	if err := upgradeShim(ctx, cfg, ghClient); err != nil {
 		printFail(cfg, "sheesh: %v", err)
 		hadErrors = true
 	}
@@ -60,7 +61,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func upgradeGh(ctx context.Context, cfg *config.Settings) error {
+func upgradeGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
 	binDir, err := store.BinDir()
 	if err != nil {
 		return err
@@ -81,7 +82,7 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 		}
 	}
 
-	rel, err := gh.GetLatestRelease(ctx, config.RepoGh.Owner, config.RepoGh.Repo)
+	rel, err := ghClient.GetLatestRelease(ctx, config.RepoGh.Owner, config.RepoGh.Repo)
 	if err != nil {
 		return err
 	}
@@ -96,51 +97,14 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 		return nil
 	}
 
-	acGh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGh)
+	_, ghBin, cleanup, err := fetchBinary(ctx, cfg, ghClient, config.RepoGh, rel, binGh)
 	if err != nil {
 		return err
 	}
-	chosen, err := asset.PromptFromCandidates(acGh)
-	if errors.Is(err, asset.ErrSkip) {
+	if cleanup == nil {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	if acGh.Chosen.Name != "" {
-		printInfo(cfg, "asset: %s", chosen.Name)
-	}
-
-	if dryRun {
-		fmt.Printf("gh: upgrade %s → %s (asset: %s)\n", currentVer, latestVer, chosen.Name)
-		return nil
-	}
-
-	cacheDir, err := store.ReleaseDir(config.RepoGh.URI, rel.TagName)
-	if err != nil {
-		return err
-	}
-	if err := gh.DownloadAsset(ctx, config.RepoGh.Owner, config.RepoGh.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
-		return err
-	}
-	if !noVerify {
-		_, _ = gh.VerifyAsset(ctx, config.RepoGh.Owner, config.RepoGh.Repo, rel.TagName, cacheDir, chosen.Name)
-	}
-
-	tmpDir, err := os.MkdirTemp("", "ghpm-gh-upgrade-*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
-		return err
-	}
-	ghCandidates := asset.FindBins(tmpDir, binGh)
-	if len(ghCandidates) == 0 {
-		return fmt.Errorf("no binary found in %s", chosen.Name)
-	}
-	ghBin := filepath.Join(tmpDir, filepath.FromSlash(ghCandidates[0].Key()))
+	defer cleanup()
 
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return err
@@ -159,8 +123,8 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 	return nil
 }
 
-func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
-	rel, err := gh.GetLatestRelease(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo)
+func upgradeSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
+	rel, err := ghClient.GetLatestRelease(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo)
 	if err != nil {
 		return err
 	}
@@ -175,51 +139,14 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
 		return nil
 	}
 
-	acGhpm, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binGhpm)
+	_, ghpmBin, cleanup, err := fetchBinary(ctx, cfg, ghClient, config.RepoGhpm, rel, binGhpm)
 	if err != nil {
 		return err
 	}
-	chosen, err := asset.PromptFromCandidates(acGhpm)
-	if errors.Is(err, asset.ErrSkip) {
+	if cleanup == nil {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	if acGhpm.Chosen.Name != "" {
-		printInfo(cfg, "asset: %s", chosen.Name)
-	}
-
-	if dryRun {
-		fmt.Printf("ghpm: upgrade %s → %s (asset: %s)\n", version, latestVer, chosen.Name)
-		return nil
-	}
-
-	cacheDir, err := store.ReleaseDir(config.RepoGhpm.URI, rel.TagName)
-	if err != nil {
-		return err
-	}
-	if err := gh.DownloadAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
-		return err
-	}
-	if !noVerify {
-		_, _ = gh.VerifyAsset(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo, rel.TagName, cacheDir, chosen.Name)
-	}
-
-	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
-		return err
-	}
-	ghpmCandidates := asset.FindBins(tmpDir, binGhpm)
-	if len(ghpmCandidates) == 0 {
-		return fmt.Errorf("no binary found in %s", chosen.Name)
-	}
-	ghpmBin := filepath.Join(tmpDir, filepath.FromSlash(ghpmCandidates[0].Key()))
+	defer cleanup()
 
 	self, err := os.Executable()
 	if err != nil {
@@ -246,7 +173,7 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
 	return nil
 }
 
-func upgradeShim(ctx context.Context, cfg *config.Settings) error {
+func upgradeShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
 	shimDir, err := store.ShimDir()
 	if err != nil {
 		return err
@@ -260,7 +187,7 @@ func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 		}
 	}
 
-	rel, err := gh.GetLatestRelease(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo)
+	rel, err := ghClient.GetLatestRelease(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo)
 	if err != nil {
 		return err
 	}
@@ -282,43 +209,15 @@ func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 		return nil
 	}
 
-	acSheesh, err := asset.SelectAssetAuto(rel.Assets, cfg, "", binSheesh)
+	_, tmpDir, cleanup, err := fetchSelected(ctx, cfg, ghClient, config.RepoSheesh, rel, binSheesh)
 	if err != nil {
 		return err
 	}
-	chosen, err := asset.PromptFromCandidates(acSheesh)
-	if errors.Is(err, asset.ErrSkip) {
+	if cleanup == nil {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
+	defer cleanup()
 
-	if dryRun {
-		fmt.Printf("sheesh: %s (asset: %s)\n", action, chosen.Name)
-		return nil
-	}
-
-	cacheDir, err := store.ReleaseDir(config.RepoSheesh.URI, rel.TagName)
-	if err != nil {
-		return err
-	}
-	if err := gh.DownloadAsset(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
-		return err
-	}
-	if !noVerify {
-		_, _ = gh.VerifyAsset(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo, rel.TagName, cacheDir, chosen.Name)
-	}
-
-	tmpDir, err := os.MkdirTemp("", "ghpm-shim-upgrade-*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
-		return err
-	}
 	if err := copyExecutablesToDir(tmpDir, shimDir); err != nil {
 		return err
 	}
@@ -329,6 +228,69 @@ func upgradeShim(ctx context.Context, cfg *config.Settings) error {
 		printPass(cfg, "sheesh: upgraded %s → %s", currentVer, latestVer)
 	}
 	return nil
+}
+
+// fetchSelected selects an asset for pkgName, downloads, verifies, and extracts
+// it into a fresh temp dir. It returns the chosen asset, the temp dir, and a
+// cleanup func. On ErrSkip it returns an empty asset name and a nil cleanup.
+func fetchSelected(ctx context.Context, cfg *config.Settings, ghClient gh.Client, repo config.RepoRef, rel gh.Release, pkgName string) (gh.Asset, string, func(), error) {
+	ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", pkgName)
+	if err != nil {
+		return gh.Asset{}, "", nil, err
+	}
+	chosen, err := asset.PromptFromCandidates(ac)
+	if errors.Is(err, asset.ErrSkip) {
+		return gh.Asset{}, "", nil, nil
+	}
+	if err != nil {
+		return gh.Asset{}, "", nil, err
+	}
+	if ac.Chosen.Name != "" {
+		printInfo(cfg, "asset: %s", chosen.Name)
+	}
+
+	if dryRun {
+		return chosen, "", nil, nil
+	}
+
+	cacheDir, err := store.ReleaseDir(repo.URI, rel.TagName)
+	if err != nil {
+		return gh.Asset{}, "", nil, err
+	}
+	if err := ghClient.DownloadAsset(ctx, repo.Owner, repo.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
+		return gh.Asset{}, "", nil, err
+	}
+	if !noVerify {
+		_, _ = ghClient.VerifyAsset(ctx, repo.Owner, repo.Repo, rel.TagName, cacheDir, chosen.Name)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
+	if err != nil {
+		return gh.Asset{}, "", nil, err
+	}
+	cleanup := func() { _ = os.RemoveAll(tmpDir) }
+	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
+		cleanup()
+		return gh.Asset{}, "", nil, err
+	}
+	return chosen, tmpDir, cleanup, nil
+}
+
+// fetchBinary runs fetchSelected then locates the named binary in the extract.
+// Returns (tmpDir, binPath, cleanup, error). A skipped or dry-run selection
+// yields an empty binPath with a nil cleanup.
+func fetchBinary(ctx context.Context, cfg *config.Settings, ghClient gh.Client, repo config.RepoRef, rel gh.Release, pkgName string) (string, string, func(), error) {
+	chosen, tmpDir, cleanup, err := fetchSelected(ctx, cfg, ghClient, repo, rel, pkgName)
+	if err != nil || cleanup == nil {
+		return "", "", cleanup, err
+	}
+	candidates := asset.FindBins(tmpDir, pkgName)
+	if len(candidates) == 0 {
+		cleanup()
+		return "", "", nil, fmt.Errorf(msgNoBinaryFound, chosen.Name)
+	}
+	binPath := filepath.Join(tmpDir, filepath.FromSlash(candidates[0].Key()))
+	return tmpDir, binPath, cleanup, nil
 }
 
 // copyExecutablesToDir walks srcDir recursively and copies all executable files

@@ -5,46 +5,42 @@ import (
 	"sync"
 )
 
-type Task struct {
+type Task[T any] struct {
 	Name string
-	Run  func() (any, error)
+	Run  func() (T, error)
 }
 
-type Result struct {
+type Result[T any] struct {
 	Name  string
-	Value any
+	Value T
 	Err   error
 }
 
-// Run executes tasks using a bounded worker pool and returns all results.
-func Run(ctx context.Context, tasks []Task, workers int) []Result {
+func Run[T any](ctx context.Context, tasks []Task[T], workers int) []Result[T] {
 	if workers <= 0 {
 		workers = 5
 	}
 
-	taskCh := make(chan Task, len(tasks))
+	taskCh := make(chan Task[T], len(tasks))
 	for _, t := range tasks {
 		taskCh <- t
 	}
 	close(taskCh)
 
-	resultCh := make(chan Result, len(tasks))
+	resultCh := make(chan Result[T], len(tasks))
 
 	var wg sync.WaitGroup
-	for i := 0; i < workers && i < len(tasks); i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range min(workers, len(tasks)) {
+		wg.Go(func() {
 			for task := range taskCh {
-				select {
-				case <-ctx.Done():
-					resultCh <- Result{Name: task.Name, Err: ctx.Err()}
-				default:
-					val, err := task.Run()
-					resultCh <- Result{Name: task.Name, Value: val, Err: err}
+				if ctx.Err() != nil {
+					resultCh <- Result[T]{Name: task.Name, Err: ctx.Err()}
+					continue
 				}
+				val, err := task.Run()
+				resultCh <- Result[T]{Name: task.Name, Value: val, Err: err}
 			}
-		}()
+		})
 	}
 
 	go func() {
@@ -52,7 +48,7 @@ func Run(ctx context.Context, tasks []Task, workers int) []Result {
 		close(resultCh)
 	}()
 
-	results := make([]Result, 0, len(tasks))
+	results := make([]Result[T], 0, len(tasks))
 	for r := range resultCh {
 		results = append(results, r)
 	}

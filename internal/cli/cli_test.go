@@ -48,25 +48,6 @@ func TestParseSourceArg(t *testing.T) {
 	}
 }
 
-func TestVersionedBinName(t *testing.T) {
-	cases := []struct {
-		name    string
-		version string
-		want    string
-	}{
-		{"fzf", "v0.70.0", "fzf@0.70.0"},
-		{"fzf", "0.70.0", "fzf@0.70.0"}, // already stripped
-		{"ripgrep", "v14.1.1", "ripgrep@14.1.1"},
-		{"gh", "v2.67.0", "gh@2.67.0"},
-	}
-	for _, c := range cases {
-		got := versionedBinName(c.name, c.version)
-		if got != c.want {
-			t.Errorf("versionedBinName(%q, %q) = %q, want %q", c.name, c.version, got, c.want)
-		}
-	}
-}
-
 func TestBinShimName(t *testing.T) {
 	cases := []struct {
 		key     string

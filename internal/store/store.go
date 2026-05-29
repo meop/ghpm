@@ -4,7 +4,45 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/meop/ghpm/internal/version"
 )
+
+// Dirs abstracts the ~/.ghpm directory layout so commands can be tested with a
+// fake filesystem. LocalDirs is the production implementation.
+type Dirs interface {
+	BinDir() (string, error)
+	ShimDir() (string, error)
+	ExtractsDir() (string, error)
+	ExtractBaseDir(key string) (string, error)
+	ExtractDir(key, version, assetName string) (string, error)
+	ReleaseDir(source, version string) (string, error)
+	ReleaseBaseDir() (string, error)
+	RepoDir(source string) (string, error)
+	ReposBaseDir() (string, error)
+}
+
+type LocalDirs struct{}
+
+func NewLocalDirs() *LocalDirs { return &LocalDirs{} }
+
+func (*LocalDirs) BinDir() (string, error)      { return BinDir() }
+func (*LocalDirs) ShimDir() (string, error)     { return ShimDir() }
+func (*LocalDirs) ExtractsDir() (string, error) { return ExtractsDir() }
+func (*LocalDirs) ExtractBaseDir(k string) (string, error) {
+	return ExtractBaseDir(k)
+}
+func (*LocalDirs) ExtractDir(key, version, assetName string) (string, error) {
+	return ExtractDir(key, version, assetName)
+}
+func (*LocalDirs) ReleaseDir(source, version string) (string, error) {
+	return ReleaseDir(source, version)
+}
+func (*LocalDirs) ReleaseBaseDir() (string, error) { return ReleaseBaseDir() }
+func (*LocalDirs) RepoDir(source string) (string, error) {
+	return RepoDir(source)
+}
+func (*LocalDirs) ReposBaseDir() (string, error) { return ReposBaseDir() }
 
 func ghpmDir() (string, error) {
 	home, err := os.UserHomeDir()
@@ -14,30 +52,28 @@ func ghpmDir() (string, error) {
 	return filepath.Join(home, ".ghpm"), nil
 }
 
-func BinDir() (string, error) {
+func ghpmSubDir(mkdir bool, elems ...string) (string, error) {
 	base, err := ghpmDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, "bin")
-	return dir, os.MkdirAll(dir, 0755)
+	dir := filepath.Join(append([]string{base}, elems...)...)
+	if mkdir {
+		return dir, os.MkdirAll(dir, 0755)
+	}
+	return dir, nil
+}
+
+func BinDir() (string, error) {
+	return ghpmSubDir(true, "bin")
 }
 
 func ShimDir() (string, error) {
-	base, err := ghpmDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(base, "shim")
-	return dir, os.MkdirAll(dir, 0755)
+	return ghpmSubDir(true, "shim")
 }
 
 func ExtractsDir() (string, error) {
-	base, err := ghpmDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, "extract"), nil
+	return ghpmSubDir(false, "extract")
 }
 
 func ExtractBaseDir(key string) (string, error) {
@@ -58,19 +94,11 @@ func ExtractDir(key, version, assetName string) (string, error) {
 }
 
 func ReleaseBaseDir() (string, error) {
-	base, err := ghpmDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, "download"), nil
+	return ghpmSubDir(false, "download")
 }
 
 func ReposBaseDir() (string, error) {
-	base, err := ghpmDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, "repo"), nil
+	return ghpmSubDir(false, "repo")
 }
 
 func RepoDir(source string) (string, error) {
@@ -83,23 +111,14 @@ func RepoDir(source string) (string, error) {
 	return dir, os.MkdirAll(dir, 0755)
 }
 
-func ReleaseDir(source, version string) (string, error) {
+func ReleaseDir(source, ver string) (string, error) {
 	base, err := ReleaseBaseDir()
 	if err != nil {
 		return "", err
 	}
 	relPath := strings.ReplaceAll(source, "/", string(filepath.Separator))
-	dir := filepath.Join(base, relPath, normalizeVersion(version))
+	dir := filepath.Join(base, relPath, version.Normalize(ver))
 	return dir, os.MkdirAll(dir, 0755)
-}
-
-func normalizeVersion(v string) string {
-	for i, r := range v {
-		if r >= '0' && r <= '9' {
-			return v[i:]
-		}
-	}
-	return v
 }
 
 func SourceFromPath(rel string) string {

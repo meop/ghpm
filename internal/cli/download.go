@@ -10,7 +10,6 @@ import (
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
-	"github.com/meop/ghpm/internal/store"
 )
 
 func newDownloadCmd() *cobra.Command {
@@ -22,7 +21,7 @@ func newDownloadCmd() *cobra.Command {
 		RunE:    runDownload,
 	}
 	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/download/)")
-	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	addSkipVerifyFlag(cmd)
 	return cmd
 }
 
@@ -35,6 +34,8 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	cfg := ci.cfg
 	manifest := ci.manifest
 	repos := ci.repos
+	ghClient := ci.gh
+	dirs := ci.dirs
 	ctx := cmd.Context()
 
 	type dlJob struct {
@@ -46,7 +47,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		chosen  gh.Asset
 	}
 
-	tasks := make([]parallel.Task, 0, len(args))
+	tasks := make([]parallel.Task[dlJob], 0, len(args))
 	var hadErrors bool
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
@@ -63,29 +64,29 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		tasks = append(tasks, parallel.Task{
+		tasks = append(tasks, parallel.Task[dlJob]{
 			Name: name,
-			Run: func() (any, error) {
+			Run: func() (dlJob, error) {
 				owner, repo, err := gh.SplitSource(source)
 				if err != nil {
-					return nil, err
+					return dlJob{}, err
 				}
 				var rel gh.Release
 				if ver != "" {
-					rel, err = gh.GetReleaseByTag(ctx, owner, repo, ver)
+					rel, err = ghClient.GetReleaseByTag(ctx, owner, repo, ver)
 				} else {
-					rel, err = gh.GetLatestRelease(ctx, owner, repo)
+					rel, err = ghClient.GetLatestRelease(ctx, owner, repo)
 				}
 				if err != nil {
-					return nil, err
+					return dlJob{}, err
 				}
 				ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", name)
 				if err != nil {
-					return nil, err
+					return dlJob{}, err
 				}
 				chosen, err := asset.PromptFromCandidates(ac)
 				if err != nil {
-					return nil, err
+					return dlJob{}, err
 				}
 				return dlJob{name: name, source: source, version: ver, pinned: pinned, release: rel, chosen: chosen}, nil
 			},
@@ -104,12 +105,8 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		r, ok := res.Value.(dlJob)
-		if !ok {
-			continue
-		}
-		printInfo(cfg, "asset: %s", r.chosen.Name)
-		ready = append(ready, r)
+		printInfo(cfg, "asset: %s", res.Value.chosen.Name)
+		ready = append(ready, res.Value)
 	}
 	if len(ready) == 0 {
 		if hadErrors {
@@ -130,21 +127,21 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	dlTasks := make([]parallel.Task, len(ready))
+	dlTasks := make([]parallel.Task[struct{}], len(ready))
 	for i, r := range ready {
-		dlTasks[i] = parallel.Task{
+		dlTasks[i] = parallel.Task[struct{}]{
 			Name: r.name,
-			Run: func() (any, error) {
+			Run: func() (struct{}, error) {
 				owner, repo, _ := gh.SplitSource(r.source)
 				dest := destPath
 				if dest == "" {
 					var err error
-					dest, err = store.ReleaseDir(r.source, r.release.TagName)
+					dest, err = dirs.ReleaseDir(r.source, r.release.TagName)
 					if err != nil {
-						return nil, err
+						return struct{}{}, err
 					}
 				}
-				return nil, gh.DownloadAsset(ctx, owner, repo, r.release.TagName, r.chosen.Name, dest)
+				return struct{}{}, ghClient.DownloadAsset(ctx, owner, repo, r.release.TagName, r.chosen.Name, dest)
 			},
 		}
 	}

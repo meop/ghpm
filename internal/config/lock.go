@@ -12,11 +12,11 @@ import (
 var lockPathFn = defaultLockPath
 
 func defaultLockPath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := ghpmDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ghpm", ".lock"), nil
+	return filepath.Join(dir, ".lock"), nil
 }
 
 func AcquireLock() (func(), error) {
@@ -30,7 +30,7 @@ func AcquireLock() (func(), error) {
 
 	fl := flock.New(path)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		ok, err := fl.TryLock()
 		if err != nil {
 			return nil, fmt.Errorf("acquiring lock: %w", err)

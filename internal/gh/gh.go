@@ -10,10 +10,53 @@ import (
 	"strings"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/ghbin"
 )
 
 func IsRateLimited(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "rate limit")
+}
+
+type Client interface {
+	GetLatestRelease(ctx context.Context, owner, repo string) (Release, error)
+	GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, error)
+	FindLatestMatching(ctx context.Context, owner, repo string, c config.Constraint) (Release, error)
+	ListReleases(ctx context.Context, owner, repo string) ([]Release, error)
+	DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest string) error
+	VerifyAsset(ctx context.Context, owner, repo, tag, cacheDir, assetName string) (bool, error)
+	BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult
+}
+
+type CLI struct{}
+
+func NewCLI() *CLI { return &CLI{} }
+
+func (c *CLI) GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) {
+	return GetLatestRelease(ctx, owner, repo)
+}
+
+func (c *CLI) GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, error) {
+	return GetReleaseByTag(ctx, owner, repo, tag)
+}
+
+func (c *CLI) FindLatestMatching(ctx context.Context, owner, repo string, con config.Constraint) (Release, error) {
+	return FindLatestMatching(ctx, owner, repo, con)
+}
+
+func (c *CLI) ListReleases(ctx context.Context, owner, repo string) ([]Release, error) {
+	return ListReleases(ctx, owner, repo)
+}
+
+func (c *CLI) DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest string) error {
+	return DownloadAsset(ctx, owner, repo, tag, pattern, dest)
+}
+
+func (c *CLI) VerifyAsset(ctx context.Context, owner, repo, tag, cacheDir, assetName string) (bool, error) {
+	return VerifyAsset(ctx, owner, repo, tag, cacheDir, assetName)
+}
+
+func (c *CLI) BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult {
+	return BatchLatestVersions(ctx, items, cacheTTL)
 }
 
 type Asset struct {
@@ -28,23 +71,10 @@ type Release struct {
 	Assets       []Asset `json:"assets"`
 }
 
-func ghBin() (string, error) {
-	if p, err := exec.LookPath("gh"); err == nil {
-		return p, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	managed := home + "/.ghpm/bin/gh"
-	if _, err := os.Stat(managed); err == nil {
-		return managed, nil
-	}
-	return "", fmt.Errorf("gh CLI not found — install it from https://cli.github.com/")
-}
+func BinPath() (string, error) { return ghbin.Find() }
 
 func CheckInstalled() error {
-	_, err := ghBin()
+	_, err := ghbin.Find()
 	return err
 }
 
@@ -91,7 +121,11 @@ func GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, err
 	rel, err := getReleaseView(ctx, owner, repo, tag)
 	if err != nil {
 		alt := alternateVTag(tag)
-		return getReleaseView(ctx, owner, repo, alt)
+		rel2, err2 := getReleaseView(ctx, owner, repo, alt)
+		if err2 != nil {
+			return Release{}, fmt.Errorf("%v; %v", err, err2)
+		}
+		return rel2, nil
 	}
 	return rel, nil
 }
@@ -139,7 +173,7 @@ func VerifyAsset(ctx context.Context, owner, repo, tag, cacheDir, assetName stri
 		return false, fmt.Errorf("asset not found: %s", assetPath)
 	}
 
-	ghPath, err := ghBin()
+	ghPath, err := ghbin.Find()
 	if err != nil {
 		return false, err
 	}
@@ -178,7 +212,7 @@ func alternateVTag(tag string) string {
 
 func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if name == "gh" {
-		if p, err := ghBin(); err == nil {
+		if p, err := ghbin.Find(); err == nil {
 			name = p
 		}
 	}

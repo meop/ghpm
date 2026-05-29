@@ -10,7 +10,6 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/shim"
-	"github.com/meop/ghpm/internal/store"
 )
 
 func newRemoveCmd() *cobra.Command {
@@ -31,7 +30,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	defer ci.close()
 	cfg := ci.cfg
 	manifest := ci.manifest
-	pkgsDir, err := store.ExtractsDir()
+	pkgsDir, err := ci.dirs.ExtractsDir()
 	if err != nil {
 		printFail(cfg, "%v", err)
 		return errSilent
@@ -94,18 +93,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		if entries, err := os.ReadDir(baseDir); err == nil && len(entries) == 0 {
 			_ = os.Remove(baseDir)
 		}
-		delete(manifest.Extracts, t.key)
-		baseName, _, _ := config.ParseVersionSuffix(t.key)
-		hasOther := false
-		for k := range manifest.Extracts {
-			if n, _, _ := config.ParseVersionSuffix(k); n == baseName {
-				hasOther = true
-				break
-			}
-		}
-		if !hasOther {
-			delete(manifest.Repos, baseName)
-		}
+		manifest.RemoveExtract(t.key)
 		for shimName := range t.pkg.AllBins() {
 			if err := shim.Remove(shimName); err != nil {
 				printWarn(cfg, "%s: could not remove shim: %v", shimName, err)
@@ -119,9 +107,8 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		printPass(cfg, "%s: uninstalled", t.key)
 	}
 
-	if err := config.SaveManifest(manifest); err != nil {
-		printFail(cfg, "could not save manifest: %v", err)
-		return errSilent
+	if err := saveManifest(cfg, manifest); err != nil {
+		return err
 	}
 
 	if hadErrors {

@@ -224,25 +224,14 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 						parent = filepath.Dir(parent)
 					}
 				}
-				delete(manifest.Extracts, it.manifestKey)
-				hasOther := false
-				for k := range manifest.Extracts {
-					if n, _, _ := config.ParseVersionSuffix(k); n == baseName {
-						hasOther = true
-						break
-					}
-				}
-				if !hasOther {
-					delete(manifest.Repos, baseName)
-				}
+				manifest.RemoveExtract(it.manifestKey)
 			}
 			manifestTouched = true
 		}
 	}
 
 	if manifestTouched {
-		if err := config.SaveManifest(manifest); err != nil {
-			printFail(cfg, "could not save manifest: %v", err)
+		if err := saveManifest(cfg, manifest); err != nil {
 			return true
 		}
 	}

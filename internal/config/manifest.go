@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 )
@@ -10,6 +11,9 @@ type AssetEntry struct {
 	Bin  map[string]string `json:"bin,omitempty"`
 	Font map[string]string `json:"font,omitempty"`
 }
+
+func (ae AssetEntry) IsBin() bool  { return len(ae.Bin) > 0 }
+func (ae AssetEntry) IsFont() bool { return len(ae.Font) > 0 }
 
 type PackageEntry struct {
 	Pin     string                `json:"pin"`
@@ -20,7 +24,7 @@ type PackageEntry struct {
 // BinAssetName returns the name of the first asset that contains bins, or empty string.
 func (p PackageEntry) BinAssetName() string {
 	for name, ae := range p.Asset {
-		if len(ae.Bin) > 0 {
+		if ae.IsBin() {
 			return name
 		}
 	}
@@ -31,9 +35,7 @@ func (p PackageEntry) BinAssetName() string {
 func (p PackageEntry) AllBins() map[string]string {
 	result := map[string]string{}
 	for _, ae := range p.Asset {
-		for k, v := range ae.Bin {
-			result[k] = v
-		}
+		maps.Copy(result, ae.Bin)
 	}
 	return result
 }
@@ -42,9 +44,7 @@ func (p PackageEntry) AllBins() map[string]string {
 func (p PackageEntry) AllFonts() map[string]string {
 	result := map[string]string{}
 	for _, ae := range p.Asset {
-		for k, v := range ae.Font {
-			result[k] = v
-		}
+		maps.Copy(result, ae.Font)
 	}
 	return result
 }
@@ -54,16 +54,43 @@ type Manifest struct {
 	Extracts map[string]PackageEntry `json:"extract"`
 }
 
-func HomeDir() (string, error) {
-	return os.UserHomeDir()
+func (m *Manifest) AddExtract(key string, entry PackageEntry, source string) {
+	baseName, _, _ := ParseVersionSuffix(key)
+	if m.Repos == nil {
+		m.Repos = map[string]string{}
+	}
+	if m.Extracts == nil {
+		m.Extracts = map[string]PackageEntry{}
+	}
+	m.Repos[baseName] = source
+	m.Extracts[key] = entry
 }
 
-func manifestPath() (string, error) {
+func (m *Manifest) RemoveExtract(key string) {
+	delete(m.Extracts, key)
+	baseName, _, _ := ParseVersionSuffix(key)
+	for k := range m.Extracts {
+		if n, _, _ := ParseVersionSuffix(k); n == baseName {
+			return
+		}
+	}
+	delete(m.Repos, baseName)
+}
+
+func ghpmDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ghpm", "manifest.json"), nil
+	return filepath.Join(home, ".ghpm"), nil
+}
+
+func manifestPath() (string, error) {
+	dir, err := ghpmDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "manifest.json"), nil
 }
 
 func LoadManifest() (*Manifest, error) {
@@ -149,5 +176,9 @@ func saveManifestFile(m *Manifest, path string) error {
 	if err := os.WriteFile(tmp, append(data, '\n'), 0644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }

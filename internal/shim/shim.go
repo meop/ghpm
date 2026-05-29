@@ -52,9 +52,9 @@ func Remove(shimName string) error {
 	if err != nil {
 		return err
 	}
-	err2 := os.Remove(filepath.Join(binDir, shimName))
-	if os.IsNotExist(err2) {
+	err = os.Remove(filepath.Join(binDir, shimName))
+	if os.IsNotExist(err) {
 		return nil
 	}
-	return err2
+	return err
 }

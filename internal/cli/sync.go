@@ -14,10 +14,7 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/shim"
-	"github.com/meop/ghpm/internal/store"
 )
-
-var forceSync bool
 
 func newSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -26,12 +23,13 @@ func newSyncCmd() *cobra.Command {
 		Short:   "Sync packages to their latest releases",
 		RunE:    runSync,
 	}
-	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
-	cmd.Flags().BoolVarP(&forceSync, "force", "f", false, "Reinstall even if already at latest version")
+	addSkipVerifyFlag(cmd)
+	cmd.Flags().BoolP("force", "f", false, "Reinstall even if already at latest version")
 	return cmd
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
+	forceSync, _ := cmd.Flags().GetBool("force")
 	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, NoVerify: true})
 	if err != nil {
 		return err
@@ -39,6 +37,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	defer ci.close()
 	cfg := ci.cfg
 	manifest := ci.manifest
+	ghClient := ci.gh
+	dirs := ci.dirs
 	ctx := cmd.Context()
 
 	targets := map[string]config.PackageEntry{}
@@ -67,23 +67,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	keyToSource := make(map[string]string, len(targets))
-	items := make([]gh.BatchItem, 0, len(targets))
 	for key := range targets {
-		pkgName, verStr, isPinned := config.ParseVersionSuffix(key)
-		source := manifest.Repos[pkgName]
-		keyToSource[key] = source
-		var c config.Constraint
-		if isPinned {
-			c, _ = config.ParseConstraint(verStr)
-		}
-		items = append(items, gh.BatchItem{
-			Key:    key,
-			Source: source,
-			Pin:    c,
-		})
+		pkgName, _, _ := config.ParseVersionSuffix(key)
+		keyToSource[key] = manifest.Repos[pkgName]
 	}
+	items := buildBatchItems(targets, manifest.Repos)
 
-	batchResults := gh.BatchLatestVersions(ctx, items, cfg.CacheTTL)
+	batchResults := ghClient.BatchLatestVersions(ctx, items, cfg.CacheTTL)
 
 	type syncJob struct {
 		key     string
@@ -94,10 +84,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	type syncTaskResult struct {
-		r             syncJob
-		pkgDirByAsset map[string]string
-		fontsByAsset  map[string][]asset.FontCandidate
-		binsByAsset   map[string][]asset.BinCandidate
+		r syncJob
+		extractResult
 	}
 
 	var ready []syncJob
@@ -109,7 +97,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if res.Err != nil {
 			if gh.IsRateLimited(res.Err) {
 				skipped++
-				printWarn(cfg, "%s: rate limited", res.Key)
+				printRateLimited(cfg, res.Key)
 				continue
 			}
 			printFail(cfg, "%s: %v", res.Key, res.Err)
@@ -124,7 +112,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		source := keyToSource[res.Key]
 		owner, repo, _ := gh.SplitSource(source)
-		rel, err := gh.GetReleaseByTag(ctx, owner, repo, res.LatestTag)
+		rel, err := ghClient.GetReleaseByTag(ctx, owner, repo, res.LatestTag)
 		if err != nil {
 			printFail(cfg, "%s: %v", res.Key, err)
 			hadErrors = true
@@ -171,12 +159,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if skipped > 0 {
-		printWarn(cfg, "checked %d/%d packages (%d skipped due to rate limiting)", checked, len(items), skipped)
+		printRateLimitSummary(cfg, checked, len(items), skipped)
 	}
 
 	if len(ready) == 0 {
 		if skipped == 0 {
-			print("all packages are up to date")
+			print(msgAllUpToDate)
 		}
 		if hadErrors {
 			return errSilent
@@ -203,60 +191,23 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 	hasOutput = false
 
-	syncTasks := make([]parallel.Task, len(ready))
+	syncTasks := make([]parallel.Task[syncTaskResult], len(ready))
 	for i, r := range ready {
-		syncTasks[i] = parallel.Task{
+		syncTasks[i] = parallel.Task[syncTaskResult]{
 			Name: r.key,
-			Run: func() (any, error) {
+			Run: func() (syncTaskResult, error) {
 				owner, repo, _ := gh.SplitSource(r.source)
-				cacheDir, err := store.ReleaseDir(r.source, r.release.TagName)
+				cacheDir, err := dirs.ReleaseDir(r.source, r.release.TagName)
 				if err != nil {
-					return nil, err
+					return syncTaskResult{}, err
 				}
 				newVersion := config.NormalizeVersion(r.release.TagName)
 				pkgName, _, _ := config.ParseVersionSuffix(r.key)
-				pkgDirByAsset := make(map[string]string, len(r.chosens))
-				fontsByAsset := make(map[string][]asset.FontCandidate)
-				binsByAsset := make(map[string][]asset.BinCandidate)
-
-				for _, chosen := range r.chosens {
-					if _, err := os.Stat(filepath.Join(cacheDir, chosen.Name)); os.IsNotExist(err) {
-						printInfo(cfg, "%s: downloading %s...", r.key, chosen.Name)
-						if err := gh.DownloadAsset(ctx, owner, repo, r.release.TagName, chosen.Name, cacheDir); err != nil {
-							return nil, err
-						}
-					}
-					if !noVerify {
-						if _, err := gh.VerifyAsset(ctx, owner, repo, r.release.TagName, cacheDir, chosen.Name); err != nil {
-							return nil, err
-						}
-					}
-
-					assetDir, err := store.ExtractDir(r.key, newVersion, chosen.Name)
-					if err != nil {
-						return nil, err
-					}
-					if err := os.RemoveAll(assetDir); err != nil {
-						return nil, err
-					}
-					if err := os.MkdirAll(assetDir, 0755); err != nil {
-						return nil, err
-					}
-					if err := asset.ExtractPackage(cacheDir, chosen.Name, assetDir); err != nil {
-						_ = os.RemoveAll(assetDir)
-						return nil, err
-					}
-					pkgDirByAsset[chosen.Name] = assetDir
-
-					if fonts := asset.FindFonts(assetDir); len(fonts) > 0 {
-						fontsByAsset[chosen.Name] = fonts
-					}
-					if bins := asset.FindBins(assetDir, pkgName); len(bins) > 0 {
-						binsByAsset[chosen.Name] = bins
-					}
+				ex, err := downloadAndExtract(ctx, cfg, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.key, r.key, newVersion, pkgName, r.chosens)
+				if err != nil {
+					return syncTaskResult{}, err
 				}
-
-				return syncTaskResult{r: r, pkgDirByAsset: pkgDirByAsset, fontsByAsset: fontsByAsset, binsByAsset: binsByAsset}, nil
+				return syncTaskResult{r: r, extractResult: ex}, nil
 			},
 		}
 	}
@@ -268,10 +219,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		tr, ok := res.Value.(syncTaskResult)
-		if !ok {
-			continue
-		}
+		tr := res.Value
 		newVer := config.NormalizeVersion(tr.r.release.TagName)
 		newAssets := make(map[string]config.AssetEntry)
 		pkgFailed := false
@@ -302,7 +250,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					break
 				}
 				if len(selected) == 0 {
-					printFail(cfg, "no binary found in %s", assetName)
+					printFail(cfg, msgNoBinaryFound, assetName)
 					hadErrors = true
 					selectionFailed = true
 					break
@@ -327,13 +275,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 				for shimName := range prevBins {
 					_ = shim.Remove(shimName)
 				}
-				if tr.r.pkg.Version != newVer {
-					if oldBase, err := store.ExtractBaseDir(tr.r.key); err == nil {
-						if err := os.RemoveAll(filepath.Join(oldBase, tr.r.pkg.Version)); err != nil {
-							printWarn(cfg, "could not remove old extract dir: %v", err)
-						}
-					}
-				}
 				shimFailed := false
 				for assetName, newBins := range allNewBins {
 					newAssets[assetName] = config.AssetEntry{Bin: newBins}
@@ -355,22 +296,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if len(tr.fontsByAsset) > 0 {
-			fontsDir, err := userFontDir()
+			fontsDir, err := ensureFontDir()
 			fontFailed := err != nil
 			if err != nil {
 				printFail(cfg, "font dir: %v", err)
 				hadErrors = true
 				pkgFailed = true
-			} else if err := os.MkdirAll(fontsDir, 0755); err != nil {
-				printFail(cfg, "font dir: %v", err)
-				fontFailed = true
-				hadErrors = true
-				pkgFailed = true
 			}
 
 			if !fontFailed {
+				allFonts := tr.r.pkg.AllFonts()
 				oldPathToName := make(map[string]string)
-				for fontName, fontPath := range tr.r.pkg.AllFonts() {
+				for fontName, fontPath := range allFonts {
 					oldPathToName[fontPath] = fontName
 				}
 
@@ -417,16 +354,19 @@ func runSync(cmd *cobra.Command, args []string) error {
 					}
 				}
 
-				for _, fontPath := range tr.r.pkg.AllFonts() {
+				for _, fontPath := range allFonts {
 					uninstallFont(fontPath, fontsDir)
-				}
-				if tr.r.pkg.Version != newVer {
-					if oldBase, err := store.ExtractBaseDir(tr.r.key); err == nil {
-						_ = os.RemoveAll(filepath.Join(oldBase, tr.r.pkg.Version))
-					}
 				}
 				if !pkgFailed {
 					printPass(cfg, "updated %s → %s", tr.r.pkg.Version, newVer)
+				}
+			}
+		}
+
+		if !pkgFailed && tr.r.pkg.Version != newVer {
+			if oldBase, err := dirs.ExtractBaseDir(tr.r.key); err == nil {
+				if err := os.RemoveAll(filepath.Join(oldBase, tr.r.pkg.Version)); err != nil {
+					printWarn(cfg, "could not remove old extract dir: %v", err)
 				}
 			}
 		}
@@ -440,9 +380,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := config.SaveManifest(manifest); err != nil {
-		printFail(cfg, "could not save manifest: %v", err)
-		return errSilent
+	if err := saveManifest(cfg, manifest); err != nil {
+		return err
 	}
 
 	if hadErrors {

@@ -36,6 +36,17 @@ func userFontDir() (string, error) {
 	}
 }
 
+func ensureFontDir() (string, error) {
+	fontsDir, err := userFontDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(fontsDir, 0755); err != nil {
+		return "", err
+	}
+	return fontsDir, nil
+}
+
 func installFont(srcPath, fontsDir string) error {
 	dst := filepath.Join(fontsDir, filepath.Base(srcPath))
 	_ = os.Remove(dst) // fontdrvhost opens fonts with FILE_SHARE_DELETE so Remove succeeds even on in-use files, freeing the path for the subsequent write

@@ -2,9 +2,7 @@ package cli
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -20,8 +18,7 @@ func newOutdatedCmd() *cobra.Command {
 		Args:    cobra.NoArgs,
 		RunE:    runOutdated,
 	}
-	cmd.Flags().BoolVarP(&longNames, "long-names", "l", false, "Print names only, one per line")
-	cmd.Flags().BoolVarP(&shortNames, "short-names", "s", false, "Print names only, space-separated on one line")
+	addNameFormatFlags(cmd)
 	return cmd
 }
 
@@ -32,6 +29,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 	}
 	cfg := ci.cfg
 	manifest := ci.manifest
+	ghClient := ci.gh
 	ctx := cmd.Context()
 
 	type outdatedPkg struct {
@@ -42,34 +40,14 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		source    string
 	}
 
-	items := make([]gh.BatchItem, 0)
-	for key, pkg := range manifest.Extracts {
-		if pkg.Pin == "fixed" {
-			continue
-		}
-		pkgName, verStr, isPinned := config.ParseVersionSuffix(key)
-		source := manifest.Repos[pkgName]
-		var c config.Constraint
-		if isPinned {
-			parsed, cerr := config.ParseConstraint(verStr)
-			if cerr != nil {
-				continue
-			}
-			c = parsed
-		}
-		items = append(items, gh.BatchItem{
-			Key:    key,
-			Source: source,
-			Pin:    c,
-		})
-	}
+	items := buildBatchItems(manifest.Extracts, manifest.Repos)
 
 	if len(items) == 0 {
-		print("all packages are up to date")
+		print(msgAllUpToDate)
 		return nil
 	}
 
-	results := gh.BatchLatestVersions(ctx, items, cfg.CacheTTL)
+	results := ghClient.BatchLatestVersions(ctx, items, cfg.CacheTTL)
 
 	var outdated []outdatedPkg
 	checked := 0
@@ -82,7 +60,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 			if gh.IsRateLimited(res.Err) {
 				rateLimited = true
 				skipped++
-				printWarn(cfg, "%s: rate limited", res.Key)
+				printRateLimited(cfg, res.Key)
 				continue
 			}
 			printFail(cfg, "%s: %v", res.Key, res.Err)
@@ -104,13 +82,13 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if rateLimited && skipped > 0 {
-		printWarn(cfg, "checked %d/%d packages (%d skipped due to rate limiting)", checked, len(items), skipped)
+	if rateLimited {
+		printRateLimitSummary(cfg, checked, len(items), skipped)
 	}
 
 	if len(outdated) == 0 {
 		if !rateLimited {
-			print("all packages are up to date")
+			print(msgAllUpToDate)
 		}
 		if hadErrors {
 			return errSilent
@@ -122,31 +100,18 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return cmp.Compare(a.key, b.key)
 	})
 
-	if longNames {
-		for _, o := range outdated {
-			fmt.Println(o.key)
-		}
-		if hadErrors {
-			return errSilent
-		}
-		return nil
+	keys := make([]string, len(outdated))
+	for i, o := range outdated {
+		keys[i] = o.key
 	}
-	if shortNames {
-		keys := make([]string, len(outdated))
-		for i, o := range outdated {
-			keys[i] = o.key
-		}
-		fmt.Println(strings.Join(keys, " "))
+	if printNameList(keys) {
 		if hadErrors {
 			return errSilent
 		}
 		return nil
 	}
 
-	type row struct {
-		name, installed, latest, pin, repo, asset, typ, artifact, path string
-	}
-	var rows []row
+	var tableRows [][]string
 	for _, o := range outdated {
 		assetNames := make([]string, 0, len(o.pkg.Asset))
 		for a := range o.pkg.Asset {
@@ -154,33 +119,9 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		}
 		slices.Sort(assetNames)
 		for _, assetName := range assetNames {
-			ae := o.pkg.Asset[assetName]
-			if len(ae.Bin) > 0 {
-				shimNames := make([]string, 0, len(ae.Bin))
-				for s := range ae.Bin {
-					shimNames = append(shimNames, s)
-				}
-				slices.Sort(shimNames)
-				for _, shimName := range shimNames {
-					rows = append(rows, row{o.key, o.installed, o.latest, o.pkg.Pin, o.source, assetName, "bin", shimName, ae.Bin[shimName]})
-				}
-			}
-			if len(ae.Font) > 0 {
-				fontNames := make([]string, 0, len(ae.Font))
-				for f := range ae.Font {
-					fontNames = append(fontNames, f)
-				}
-				slices.Sort(fontNames)
-				for _, fontName := range fontNames {
-					rows = append(rows, row{o.key, o.installed, o.latest, o.pkg.Pin, o.source, assetName, "font", fontName, ae.Font[fontName]})
-				}
-			}
+			prefix := []string{o.key, o.installed, o.latest, o.pkg.Pin, o.source, assetName}
+			tableRows = appendAssetEntryRows(tableRows, prefix, o.pkg.Asset[assetName])
 		}
-	}
-
-	tableRows := make([][]string, len(rows))
-	for i, r := range rows {
-		tableRows[i] = []string{r.name, r.installed, r.latest, r.pin, r.repo, r.asset, r.typ, r.artifact, r.path}
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil, nil, nil}
 	printTable([]string{"name", "version", "update", "pin", "repo", "asset", "type", "artifact", "path"}, tableRows, colors)

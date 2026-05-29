@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,10 +14,7 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/shim"
-	"github.com/meop/ghpm/internal/store"
 )
-
-var forceInstall bool
 
 func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -28,8 +24,8 @@ func newAddCmd() *cobra.Command {
 		Args:    cobra.MinimumNArgs(1),
 		RunE:    runAdd,
 	}
-	cmd.Flags().BoolVarP(&forceInstall, "force", "f", false, "Reinstall even if already installed")
-	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	cmd.Flags().BoolP("force", "f", false, "Reinstall even if already installed")
+	addSkipVerifyFlag(cmd)
 	return cmd
 }
 
@@ -65,13 +61,12 @@ type jobWithRelease struct {
 }
 
 type installTaskResult struct {
-	r             jobWithRelease
-	pkgDirByAsset map[string]string
-	fontsByAsset  map[string][]asset.FontCandidate
-	binsByAsset   map[string][]asset.BinCandidate
+	r jobWithRelease
+	extractResult
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
+	forceInstall, _ := cmd.Flags().GetBool("force")
 	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, Dirs: true, Repos: true, NoVerify: true})
 	if err != nil {
 		return err
@@ -80,6 +75,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	cfg := ci.cfg
 	manifest := ci.manifest
 	repos := ci.repos
+	ghClient := ci.gh
+	dirs := ci.dirs
 	ctx := cmd.Context()
 
 	var ready []jobWithRelease
@@ -131,16 +128,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			printInfo(cfg, "repo: %s", source)
 		}
 
-		jobKey := pkgName
-		if pinned {
-			jobKey = pkgName + "@" + strings.TrimPrefix(ver, "v")
-		}
-		if entry, exists := manifest.Extracts[jobKey]; exists && !forceInstall {
+		partialJob := installJob{name: pkgName, version: ver, pinned: pinned}
+		if entry, exists := manifest.Extracts[partialJob.key()]; exists && !forceInstall {
 			printInfo(cfg, "already installed %s", entry.Version)
 			continue
 		}
 		if !pinned {
-			if existing, found := config.FindBySource(source, manifest); found && existing != pkgName && !forceInstall {
+			if existing, found := manifest.FindBySource(source); found && existing != pkgName && !forceInstall {
 				printInfo(cfg, "already installed as %s — skipping", existing)
 				continue
 			}
@@ -154,7 +148,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		var rel gh.Release
 		if !pinned {
-			rel, err = gh.GetLatestRelease(ctx, owner, repo)
+			rel, err = ghClient.GetLatestRelease(ctx, owner, repo)
 		} else {
 			c, perr := config.ParseConstraint(ver)
 			if perr != nil {
@@ -163,9 +157,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			if c.Level == config.PinExact {
-				rel, err = gh.GetReleaseByTag(ctx, owner, repo, ver)
+				rel, err = ghClient.GetReleaseByTag(ctx, owner, repo, ver)
 			} else {
-				rel, err = gh.FindLatestMatching(ctx, owner, repo, c)
+				rel, err = ghClient.FindLatestMatching(ctx, owner, repo, c)
 			}
 		}
 		if err != nil {
@@ -223,59 +217,22 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	hasOutput = false
 
-	installTasks := make([]parallel.Task, len(ready))
+	installTasks := make([]parallel.Task[installTaskResult], len(ready))
 	for i, r := range ready {
-		installTasks[i] = parallel.Task{
+		installTasks[i] = parallel.Task[installTaskResult]{
 			Name: r.job.name,
-			Run: func() (any, error) {
+			Run: func() (installTaskResult, error) {
 				owner, repo, _ := gh.SplitSource(r.job.source)
-				cacheDir, err := store.ReleaseDir(r.job.source, r.release.TagName)
+				cacheDir, err := dirs.ReleaseDir(r.job.source, r.release.TagName)
 				if err != nil {
-					return nil, err
+					return installTaskResult{}, err
 				}
-				version := config.NormalizeVersion(r.release.TagName)
-				pkgDirByAsset := make(map[string]string, len(r.chosens))
-				fontsByAsset := make(map[string][]asset.FontCandidate)
-				binsByAsset := make(map[string][]asset.BinCandidate)
-
-				for _, chosen := range r.chosens {
-					if _, err := os.Stat(filepath.Join(cacheDir, chosen.Name)); os.IsNotExist(err) {
-						printInfo(cfg, "%s: downloading %s...", r.job.name, chosen.Name)
-						if err := gh.DownloadAsset(ctx, owner, repo, r.release.TagName, chosen.Name, cacheDir); err != nil {
-							return nil, err
-						}
-					}
-					if !noVerify {
-						if _, err := gh.VerifyAsset(ctx, owner, repo, r.release.TagName, cacheDir, chosen.Name); err != nil {
-							return nil, err
-						}
-					}
-
-					assetDir, err := store.ExtractDir(r.job.key(), version, chosen.Name)
-					if err != nil {
-						return nil, err
-					}
-					if err := os.RemoveAll(assetDir); err != nil {
-						return nil, err
-					}
-					if err := os.MkdirAll(assetDir, 0755); err != nil {
-						return nil, err
-					}
-					if err := asset.ExtractPackage(cacheDir, chosen.Name, assetDir); err != nil {
-						_ = os.RemoveAll(assetDir)
-						return nil, err
-					}
-					pkgDirByAsset[chosen.Name] = assetDir
-
-					if fonts := asset.FindFonts(assetDir); len(fonts) > 0 {
-						fontsByAsset[chosen.Name] = fonts
-					}
-					if bins := asset.FindBins(assetDir, r.job.name); len(bins) > 0 {
-						binsByAsset[chosen.Name] = bins
-					}
+				ver := config.NormalizeVersion(r.release.TagName)
+				ex, err := downloadAndExtract(ctx, cfg, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.job.name, r.job.key(), ver, r.job.name, r.chosens)
+				if err != nil {
+					return installTaskResult{}, err
 				}
-
-				return installTaskResult{r: r, pkgDirByAsset: pkgDirByAsset, fontsByAsset: fontsByAsset, binsByAsset: binsByAsset}, nil
+				return installTaskResult{r: r, extractResult: ex}, nil
 			},
 		}
 	}
@@ -302,10 +259,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		tr, ok := res.Value.(installTaskResult)
-		if !ok {
-			continue
-		}
+		tr := res.Value
 		r := tr.r
 
 		if len(tr.binsByAsset) == 0 && len(tr.fontsByAsset) == 0 {
@@ -331,7 +285,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			if len(selected) == 0 {
-				printFail(cfg, "no binary found in %s", binAsset)
+				printFail(cfg, msgNoBinaryFound, binAsset)
 				hadErrors = true
 				continue
 			}
@@ -511,12 +465,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		fontFailed := false
 		if len(p.fontAssets) > 0 {
-			fontsDir, err := userFontDir()
+			fontsDir, err := ensureFontDir()
 			if err != nil {
-				printFail(cfg, "font dir: %v", err)
-				fontFailed = true
-				hadErrors = true
-			} else if err := os.MkdirAll(fontsDir, 0755); err != nil {
 				printFail(cfg, "font dir: %v", err)
 				fontFailed = true
 				hadErrors = true
@@ -546,9 +496,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := config.SaveManifest(manifest); err != nil {
-		printFail(cfg, "could not save manifest: %v", err)
-		return errSilent
+	if err := saveManifest(cfg, manifest); err != nil {
+		return err
 	}
 
 	if hadErrors {

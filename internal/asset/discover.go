@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/meop/ghpm/internal/ioutils"
 )
 
 // BinCandidate is a discovered executable inside an extracted package dir.
@@ -119,14 +121,13 @@ func PromptShimRenames(binKeys, proposed []string, reserved map[string]string) (
 			}
 			fmt.Println(entry)
 		}
+		var prompt string
 		if anyConflict {
-			fmt.Print("enter number(s) to rename (0=skip): ")
+			prompt = "enter number(s) to rename (0=skip): "
 		} else {
-			fmt.Print("enter number(s) to rename (empty=none): ")
+			prompt = "enter number(s) to rename (empty=none): "
 		}
-
-		input, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		input = strings.TrimSpace(input)
+		input := ioutils.ReadLine(prompt)
 
 		if input == "" && !anyConflict {
 			break
@@ -235,9 +236,7 @@ func selectItems[C selectCandidate](candidates []C, prevKeys []string, noun stri
 		}
 		fmt.Println(entry)
 	}
-	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,][-]%d): ", len(candidates))
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	line = strings.TrimSpace(line)
+	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) (empty=all | 0=skip | 1[,][-]%d): ", len(candidates)))
 	indices, err := parseMultiSelect(line, len(candidates))
 	if err != nil || indices == nil {
 		return nil, ErrSkip
@@ -327,35 +326,28 @@ func isBinaryFile(path string) bool {
 	}
 }
 
-func hasELFMagic(path string) bool {
+func readMagicBytes(path string) ([4]byte, bool) {
 	f, err := os.Open(path)
 	if err != nil {
-		return false
+		return [4]byte{}, false
 	}
 	var b [4]byte
 	_, err = io.ReadFull(f, b[:])
 	_ = f.Close()
-	if err != nil {
-		return false
-	}
-	return b[0] == 0x7f && b[1] == 'E' && b[2] == 'L' && b[3] == 'F'
+	return b, err == nil
+}
+
+func hasELFMagic(path string) bool {
+	b, ok := readMagicBytes(path)
+	return ok && b[0] == 0x7f && b[1] == 'E' && b[2] == 'L' && b[3] == 'F'
 }
 
 func hasMachOMagic(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	var b [4]byte
-	_, err = io.ReadFull(f, b[:])
-	_ = f.Close()
-	if err != nil {
-		return false
-	}
-	return (b[0] == 0xca && b[1] == 0xfe && b[2] == 0xba && b[3] == 0xbe) ||
+	b, ok := readMagicBytes(path)
+	return ok && ((b[0] == 0xca && b[1] == 0xfe && b[2] == 0xba && b[3] == 0xbe) ||
 		(b[0] == 0xce && b[1] == 0xfa && b[2] == 0xed && b[3] == 0xfe) ||
 		(b[0] == 0xcf && b[1] == 0xfa && b[2] == 0xed && b[3] == 0xfe) ||
-		(b[0] == 0xfe && b[1] == 0xed && b[2] == 0xfa && (b[3] == 0xce || b[3] == 0xcf))
+		(b[0] == 0xfe && b[1] == 0xed && b[2] == 0xfa && (b[3] == 0xce || b[3] == 0xcf)))
 }
 
 // FontCandidate is a discovered font file inside an extracted package dir.
@@ -436,17 +428,10 @@ func PromptFontNames(selected []FontCandidate) map[string]string {
 	fmt.Println("font name(s)")
 	for i, c := range selected {
 		entry := fmt.Sprintf("  %d) %s", i+1, names[i])
-		if c.Key() != c.FontName {
-			entry += fmt.Sprintf("  [%s]", c.Key())
-		} else {
-			entry += fmt.Sprintf("  [%s]", c.FontName)
-		}
+		entry += fmt.Sprintf("  [%s]", c.Key())
 		fmt.Println(entry)
 	}
-	fmt.Print("enter number(s) to rename (empty=none): ")
-
-	input, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	input = strings.TrimSpace(input)
+	input := ioutils.ReadLine("enter number(s) to rename (empty=none): ")
 	if input != "" {
 		indices, err := parseMultiSelect(input, len(selected))
 		if err == nil && indices != nil {

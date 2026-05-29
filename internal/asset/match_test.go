@@ -99,7 +99,7 @@ func TestTokenize(t *testing.T) {
 	}
 }
 
-func TestContainsAny(t *testing.T) {
+func TestContainsAnyOf(t *testing.T) {
 	cases := []struct {
 		name     string
 		prefixes []string
@@ -119,9 +119,9 @@ func TestContainsAny(t *testing.T) {
 		{"bottom_i686-pc-windows-msvc.zip", []string{"x86_64", "x64", "amd64"}, false},
 	}
 	for _, c := range cases {
-		got := containsAny(strings.ToLower(c.name), c.prefixes)
+		got := containsAnyOf(strings.ToLower(c.name), c.prefixes)
 		if got != c.want {
-			t.Errorf("containsAny(%q, %v) = %v, want %v", c.name, c.prefixes, got, c.want)
+			t.Errorf("containsAnyOf(%q, %v) = %v, want %v", c.name, c.prefixes, got, c.want)
 		}
 	}
 }

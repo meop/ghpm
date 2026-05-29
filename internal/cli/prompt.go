@@ -21,9 +21,3 @@ func promptConfirm(msg string) bool {
 	fmt.Printf("%s [y,[n]]: ", msg)
 	return readYN()
 }
-
-// versionedBinName returns the binary filename for a pinned install:
-// "fzf" + "v0.70.0" → "fzf@0.70.0"
-func versionedBinName(name, version string) string {
-	return name + "@" + strings.TrimPrefix(version, "v")
-}
