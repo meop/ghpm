@@ -136,7 +136,7 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
 		return err
 	}
-	ghCandidates := asset.FindBinaries(tmpDir, binGh)
+	ghCandidates := asset.FindBins(tmpDir, binGh)
 	if len(ghCandidates) == 0 {
 		return fmt.Errorf("no binary found in %s", chosen.Name)
 	}
@@ -215,7 +215,7 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings) error {
 	if err := asset.ExtractPackage(cacheDir, chosen.Name, tmpDir); err != nil {
 		return err
 	}
-	ghpmCandidates := asset.FindBinaries(tmpDir, binGhpm)
+	ghpmCandidates := asset.FindBins(tmpDir, binGhpm)
 	if len(ghpmCandidates) == 0 {
 		return fmt.Errorf("no binary found in %s", chosen.Name)
 	}

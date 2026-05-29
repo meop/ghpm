@@ -46,105 +46,105 @@ func fakeStdin(t *testing.T, input string) {
 	_ = w.Close()
 }
 
-func TestFindBinaries_Root(t *testing.T) {
+func TestFindBins_Root(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, dir, "mytool")
-	got := FindBinaries(dir, "mytool")
+	got := FindBins(dir, "mytool")
 	if len(got) != 1 || got[0].BinDir != "" || got[0].BinName != "mytool" {
 		t.Errorf("got %v, want [{BinDir:%q BinName:%q}]", got, "", "mytool")
 	}
 }
 
-func TestFindBinaries_BinSubdir(t *testing.T) {
+func TestFindBins_BinSubdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "bin"), "mytool")
-	got := FindBinaries(dir, "mytool")
+	got := FindBins(dir, "mytool")
 	if len(got) != 1 || got[0].BinDir != "bin" || got[0].BinName != "mytool" {
 		t.Errorf("got %v", got)
 	}
 }
 
-func TestFindBinaries_Subdir(t *testing.T) {
+func TestFindBins_Subdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0"), "mytool")
-	got := FindBinaries(dir, "mytool")
+	got := FindBins(dir, "mytool")
 	if len(got) != 1 || got[0].BinDir != "mytool-1.0" || got[0].BinName != "mytool" {
 		t.Errorf("got %v", got)
 	}
 }
 
-func TestFindBinaries_SubdirBin(t *testing.T) {
+func TestFindBins_SubdirBin(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0", "bin"), "mytool")
-	got := FindBinaries(dir, "mytool")
+	got := FindBins(dir, "mytool")
 	if len(got) != 1 || got[0].BinDir != "mytool-1.0/bin" || got[0].BinName != "mytool" {
 		t.Errorf("got %v", got)
 	}
 }
 
-func TestFindBinaries_NotFound(t *testing.T) {
+func TestFindBins_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	got := FindBinaries(dir, "nothere")
+	got := FindBins(dir, "nothere")
 	if len(got) != 0 {
 		t.Errorf("expected no results, got %v", got)
 	}
 }
 
-func TestFindBinaries_Multiple(t *testing.T) {
+func TestFindBins_Multiple(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, dir, "mytool")
 	writeFakeBinary(t, dir, "mytool-extra")
-	got := FindBinaries(dir, "mytool")
+	got := FindBins(dir, "mytool")
 	if len(got) != 2 {
 		t.Errorf("expected 2 results, got %d: %v", len(got), got)
 	}
 }
 
-func TestSelectBinaries_None(t *testing.T) {
-	got, err := SelectBinaries(nil, nil)
+func TestSelectBins_None(t *testing.T) {
+	got, err := SelectBins(nil, nil)
 	if got != nil || err != nil {
 		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
 }
 
-func TestSelectBinaries_One(t *testing.T) {
-	c := []BinaryCandidate{{BinDir: "", BinName: "tool"}}
-	got, err := SelectBinaries(c, nil)
+func TestSelectBins_One(t *testing.T) {
+	c := []BinCandidate{{BinDir: "", BinName: "tool"}}
+	got, err := SelectBins(c, nil)
 	if err != nil || len(got) != 1 || got[0].BinName != "tool" {
 		t.Errorf("got %v,%v", got, err)
 	}
 }
 
-func TestSelectBinaries_SamePrevNames(t *testing.T) {
-	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBinaries(c, []string{"uv", "uvx"})
+func TestSelectBins_SamePrevNames(t *testing.T) {
+	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
+	got, err := SelectBins(c, []string{"uv", "uvx"})
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected auto-select all; got %v,%v", got, err)
 	}
 }
 
-func TestSelectBinaries_PromptAll(t *testing.T) {
+func TestSelectBins_PromptAll(t *testing.T) {
 	fakeStdin(t, "\n")
-	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBinaries(c, nil)
+	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
+	got, err := SelectBins(c, nil)
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected 2; got %v,%v", got, err)
 	}
 }
 
-func TestSelectBinaries_PromptSkip(t *testing.T) {
+func TestSelectBins_PromptSkip(t *testing.T) {
 	fakeStdin(t, "0\n")
-	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	_, err := SelectBinaries(c, nil)
+	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
+	_, err := SelectBins(c, nil)
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
 }
 
-func TestSelectBinaries_PromptSubset(t *testing.T) {
+func TestSelectBins_PromptSubset(t *testing.T) {
 	fakeStdin(t, "1\n")
-	c := []BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBinaries(c, nil)
+	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
+	got, err := SelectBins(c, nil)
 	if err != nil || len(got) != 1 || got[0].BinName != "uv" {
 		t.Errorf("expected [uv]; got %v,%v", got, err)
 	}

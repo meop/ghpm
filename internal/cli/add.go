@@ -68,7 +68,7 @@ type installTaskResult struct {
 	r             jobWithRelease
 	pkgDirByAsset map[string]string
 	fontsByAsset  map[string][]asset.FontCandidate
-	binsByAsset   map[string][]asset.BinaryCandidate
+	binsByAsset   map[string][]asset.BinCandidate
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
@@ -236,7 +236,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				version := config.NormalizeVersion(r.release.TagName)
 				pkgDirByAsset := make(map[string]string, len(r.chosens))
 				fontsByAsset := make(map[string][]asset.FontCandidate)
-				binsByAsset := make(map[string][]asset.BinaryCandidate)
+				binsByAsset := make(map[string][]asset.BinCandidate)
 
 				for _, chosen := range r.chosens {
 					if _, err := os.Stat(filepath.Join(cacheDir, chosen.Name)); os.IsNotExist(err) {
@@ -270,7 +270,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					if fonts := asset.FindFonts(assetDir); len(fonts) > 0 {
 						fontsByAsset[chosen.Name] = fonts
 					}
-					if bins := asset.FindBinaries(assetDir, r.job.name); len(bins) > 0 {
+					if bins := asset.FindBins(assetDir, r.job.name); len(bins) > 0 {
 						binsByAsset[chosen.Name] = bins
 					}
 				}
@@ -319,14 +319,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		var bins map[string]string
 		var binAsset string
 		if len(tr.binsByAsset) > 0 {
-			var allBinCandidates []asset.BinaryCandidate
+			var allBinCandidates []asset.BinCandidate
 			for assetName, candidates := range tr.binsByAsset {
 				if binAsset == "" {
 					binAsset = assetName
 				}
 				allBinCandidates = append(allBinCandidates, candidates...)
 			}
-			selected, discoverErr := asset.SelectBinaries(allBinCandidates, nil)
+			selected, discoverErr := asset.SelectBins(allBinCandidates, nil)
 			if errors.Is(discoverErr, asset.ErrSkip) {
 				continue
 			}

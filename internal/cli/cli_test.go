@@ -104,14 +104,14 @@ func TestHasReservedConflict(t *testing.T) {
 func TestNeedsShimRenamePrompt(t *testing.T) {
 	cases := []struct {
 		pkgName  string
-		selected []asset.BinaryCandidate
+		selected []asset.BinCandidate
 		want     bool
 	}{
-		{"fzf", []asset.BinaryCandidate{{BinName: "fzf"}}, false},
-		{"bat", []asset.BinaryCandidate{{BinName: "bat"}}, false},
-		{"codex", []asset.BinaryCandidate{{BinName: "codex-x86_64-unknown-linux-musl"}}, true},
-		{"ripgrep", []asset.BinaryCandidate{{BinName: "rg"}}, true},
-		{"uv", []asset.BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}}, true},
+		{"fzf", []asset.BinCandidate{{BinName: "fzf"}}, false},
+		{"bat", []asset.BinCandidate{{BinName: "bat"}}, false},
+		{"codex", []asset.BinCandidate{{BinName: "codex-x86_64-unknown-linux-musl"}}, true},
+		{"ripgrep", []asset.BinCandidate{{BinName: "rg"}}, true},
+		{"uv", []asset.BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}, true},
 	}
 	for _, c := range cases {
 		got := needsShimRenamePrompt(c.pkgName, c.selected)
@@ -124,20 +124,20 @@ func TestNeedsShimRenamePrompt(t *testing.T) {
 func TestProposedShimNames(t *testing.T) {
 	cases := []struct {
 		manifestKey string
-		selected    []asset.BinaryCandidate
+		selected    []asset.BinCandidate
 		want        []string
 	}{
-		{"codex", []asset.BinaryCandidate{{BinName: "codex-x86_64-unknown-linux-musl"}},
+		{"codex", []asset.BinCandidate{{BinName: "codex-x86_64-unknown-linux-musl"}},
 			[]string{"codex-x86_64-unknown-linux-musl"}},
-		{"uv", []asset.BinaryCandidate{{BinName: "uv"}, {BinName: "uvx"}},
+		{"uv", []asset.BinCandidate{{BinName: "uv"}, {BinName: "uvx"}},
 			[]string{"uv", "uvx"}},
 		// duplicate filenames get disambiguated by last BinDir segment
-		{"foo", []asset.BinaryCandidate{
+		{"foo", []asset.BinCandidate{
 			{BinDir: "tools/v1", BinName: "foo"},
 			{BinDir: "tools/v2", BinName: "foo"},
 		}, []string{"foo-v1", "foo-v2"}},
 		// duplicate with no BinDir falls back to index
-		{"foo", []asset.BinaryCandidate{
+		{"foo", []asset.BinCandidate{
 			{BinDir: "", BinName: "foo"},
 			{BinDir: "", BinName: "foo"},
 		}, []string{"foo-1", "foo-2"}},

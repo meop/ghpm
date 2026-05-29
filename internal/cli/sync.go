@@ -97,7 +97,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		r             syncJob
 		pkgDirByAsset map[string]string
 		fontsByAsset  map[string][]asset.FontCandidate
-		binsByAsset   map[string][]asset.BinaryCandidate
+		binsByAsset   map[string][]asset.BinCandidate
 	}
 
 	var ready []syncJob
@@ -217,7 +217,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				pkgName, _, _ := config.ParseVersionSuffix(r.key)
 				pkgDirByAsset := make(map[string]string, len(r.chosens))
 				fontsByAsset := make(map[string][]asset.FontCandidate)
-				binsByAsset := make(map[string][]asset.BinaryCandidate)
+				binsByAsset := make(map[string][]asset.BinCandidate)
 
 				for _, chosen := range r.chosens {
 					if _, err := os.Stat(filepath.Join(cacheDir, chosen.Name)); os.IsNotExist(err) {
@@ -251,7 +251,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					if fonts := asset.FindFonts(assetDir); len(fonts) > 0 {
 						fontsByAsset[chosen.Name] = fonts
 					}
-					if bins := asset.FindBinaries(assetDir, pkgName); len(bins) > 0 {
+					if bins := asset.FindBins(assetDir, pkgName); len(bins) > 0 {
 						binsByAsset[chosen.Name] = bins
 					}
 				}
@@ -277,34 +277,53 @@ func runSync(cmd *cobra.Command, args []string) error {
 		pkgFailed := false
 
 		if len(tr.binsByAsset) > 0 {
-			var allBinCandidates []asset.BinaryCandidate
-			var binAssetName string
-			for assetName, candidates := range tr.binsByAsset {
-				if binAssetName == "" {
-					binAssetName = assetName
-				}
-				allBinCandidates = append(allBinCandidates, candidates...)
-			}
-
 			prevBins := tr.r.pkg.AllBins()
-			prevBinKeys := make([]string, 0, len(prevBins))
-			for _, binsKey := range prevBins {
-				prevBinKeys = append(prevBinKeys, binsKey)
+			oldBinKeyToShim := make(map[string]string, len(prevBins))
+			for shimName, binsKey := range prevBins {
+				oldBinKeyToShim[binsKey] = shimName
 			}
 
-			selected, discoverErr := asset.SelectBinaries(allBinCandidates, prevBinKeys)
-			if errors.Is(discoverErr, asset.ErrSkip) {
-				continue
+			binAssetNames := make([]string, 0, len(tr.binsByAsset))
+			for a := range tr.binsByAsset {
+				binAssetNames = append(binAssetNames, a)
 			}
-			if len(selected) == 0 {
-				printFail(cfg, "no binary found in %s", binAssetName)
-				hadErrors = true
-				pkgFailed = true
-			} else {
+			slices.Sort(binAssetNames)
+
+			allNewBins := make(map[string]map[string]string)
+			selectionFailed := false
+			for _, assetName := range binAssetNames {
+				prevAssetBinKeys := make([]string, 0, len(tr.r.pkg.Asset[assetName].Bin))
+				for _, binKey := range tr.r.pkg.Asset[assetName].Bin {
+					prevAssetBinKeys = append(prevAssetBinKeys, binKey)
+				}
+				selected, discoverErr := asset.SelectBins(tr.binsByAsset[assetName], prevAssetBinKeys)
+				if errors.Is(discoverErr, asset.ErrSkip) {
+					selectionFailed = true
+					break
+				}
+				if len(selected) == 0 {
+					printFail(cfg, "no binary found in %s", assetName)
+					hadErrors = true
+					selectionFailed = true
+					break
+				}
 				for _, s := range selected {
 					printInfo(cfg, "bin %s", s.Key())
 				}
+				newBins := make(map[string]string, len(selected))
+				for _, s := range selected {
+					if oldShim, ok := oldBinKeyToShim[s.Key()]; ok {
+						newBins[oldShim] = s.Key()
+					} else {
+						newBins[deriveShimName(tr.r.key, s.BinName)] = s.Key()
+					}
+				}
+				allNewBins[assetName] = newBins
+			}
 
+			if selectionFailed {
+				pkgFailed = true
+			} else {
 				for shimName := range prevBins {
 					_ = shim.Remove(shimName)
 				}
@@ -315,28 +334,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 						}
 					}
 				}
-
-				oldBinKeyToShim := make(map[string]string, len(prevBins))
-				for shimName, binsKey := range prevBins {
-					oldBinKeyToShim[binsKey] = shimName
-				}
-				newBins := make(map[string]string, len(selected))
-				for _, s := range selected {
-					if oldShim, ok := oldBinKeyToShim[s.Key()]; ok {
-						newBins[oldShim] = s.Key()
-					} else {
-						newBins[deriveShimName(tr.r.key, s.BinName)] = s.Key()
-					}
-				}
-				newAssets[binAssetName] = config.AssetEntry{Bin: newBins}
-
 				shimFailed := false
-				for shimName, binsKey := range newBins {
-					binDir, binName := parseBinPath(binsKey)
-					if err := shim.Create(shimName, binName, tr.pkgDirByAsset[binAssetName], binDir); err != nil {
-						printFail(cfg, "%s: could not update shim: %v", shimName, err)
-						shimFailed = true
-						hadErrors = true
+				for assetName, newBins := range allNewBins {
+					newAssets[assetName] = config.AssetEntry{Bin: newBins}
+					for shimName, binsKey := range newBins {
+						binDir, binName := parseBinPath(binsKey)
+						if err := shim.Create(shimName, binName, tr.pkgDirByAsset[assetName], binDir); err != nil {
+							printFail(cfg, "%s: could not update shim: %v", shimName, err)
+							shimFailed = true
+							hadErrors = true
+						}
 					}
 				}
 				if shimFailed {

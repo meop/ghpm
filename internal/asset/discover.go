@@ -12,31 +12,33 @@ import (
 	"strings"
 )
 
-// BinaryCandidate is a discovered executable inside an extracted package dir.
-type BinaryCandidate struct {
+// BinCandidate is a discovered executable inside an extracted package dir.
+type BinCandidate struct {
 	BinDir  string // relative to pkgDir, always slash-separated
 	BinName string
 }
 
 // Key returns the unique relative path for this candidate (BinDir/BinName, or just
 // BinName when root-level). Used as the manifest Bins map key.
-func (c BinaryCandidate) Key() string {
+func (c BinCandidate) Key() string {
 	if c.BinDir == "" {
 		return c.BinName
 	}
 	return c.BinDir + "/" + c.BinName
 }
 
-// FindBinaries searches pkgDir for executables whose name contains name
+func (c BinCandidate) label() string { return c.BinName }
+
+// FindBins searches pkgDir for executables whose name contains name
 // (case-insensitive), checking root, bin/, and one level of subdirs + their bin/.
-func FindBinaries(pkgDir, name string) []BinaryCandidate {
+func FindBins(pkgDir, name string) []BinCandidate {
 	entries, err := os.ReadDir(pkgDir)
 	if err != nil {
 		return nil
 	}
 	lower := strings.ToLower(name)
 	seen := map[string]bool{}
-	var matches []BinaryCandidate
+	var matches []BinCandidate
 
 	collect := func(dir, rel string) {
 		dirEntries, err := os.ReadDir(dir)
@@ -57,7 +59,7 @@ func FindBinaries(pkgDir, name string) []BinaryCandidate {
 			}
 			seen[path] = true
 			ensureExecutable(path)
-			matches = append(matches, BinaryCandidate{BinDir: filepath.ToSlash(rel), BinName: e.Name()})
+			matches = append(matches, BinCandidate{BinDir: filepath.ToSlash(rel), BinName: e.Name()})
 		}
 	}
 
@@ -201,19 +203,23 @@ func collectNewName(reader *bufio.Reader, idx int, taken map[string]bool) string
 	}
 }
 
-// SelectBinaries returns the binaries the user wants to install.
+type selectCandidate interface {
+	Key() string
+	label() string
+}
+
+// selectItems is the shared selection logic for bins and fonts:
 //   - 0 candidates → nil, nil
 //   - 1 candidate → auto-select
 //   - Multiple: auto-select if candidate keys exactly match prevKeys;
 //     otherwise prompt with yay-style multi-select
-func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCandidate, error) {
+func selectItems[C selectCandidate](candidates []C, prevKeys []string, noun string) ([]C, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
 	if len(candidates) == 1 {
 		return candidates, nil
 	}
-
 	candidateKeys := make([]string, len(candidates))
 	for i, c := range candidates {
 		candidateKeys[i] = c.Key()
@@ -221,11 +227,10 @@ func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCa
 	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
 		return candidates, nil
 	}
-
-	fmt.Println("choose bin(s)")
+	fmt.Printf("choose %s\n", noun)
 	for i, c := range candidates {
-		entry := fmt.Sprintf("  %d) %s", i+1, c.BinName)
-		if c.Key() != c.BinName {
+		entry := fmt.Sprintf("  %d) %s", i+1, c.label())
+		if c.Key() != c.label() {
 			entry += fmt.Sprintf("  [%s]", c.Key())
 		}
 		fmt.Println(entry)
@@ -233,17 +238,19 @@ func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCa
 	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,][-]%d): ", len(candidates))
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
-
 	indices, err := parseMultiSelect(line, len(candidates))
 	if err != nil || indices == nil {
 		return nil, ErrSkip
 	}
-
-	var selected []BinaryCandidate
+	var selected []C
 	for _, idx := range indices {
 		selected = append(selected, candidates[idx-1])
 	}
 	return selected, nil
+}
+
+func SelectBins(candidates []BinCandidate, prevKeys []string) ([]BinCandidate, error) {
+	return selectItems(candidates, prevKeys, "bin(s)")
 }
 
 // parseMultiSelect parses yay-style input
@@ -356,6 +363,8 @@ type FontCandidate struct {
 	FontDir  string
 	FontName string
 }
+
+func (c FontCandidate) label() string { return c.FontName }
 
 func (c FontCandidate) Key() string {
 	if c.FontDir == "" {
@@ -471,41 +480,8 @@ func PromptFontNames(selected []FontCandidate) map[string]string {
 	return result
 }
 
-// SelectFonts prompts the user to choose from discovered font candidates.
 func SelectFonts(candidates []FontCandidate, prevKeys []string) ([]FontCandidate, error) {
-	if len(candidates) == 0 {
-		return nil, nil
-	}
-	if len(candidates) == 1 {
-		return candidates, nil
-	}
-	candidateKeys := make([]string, len(candidates))
-	for i, c := range candidates {
-		candidateKeys[i] = c.Key()
-	}
-	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
-		return candidates, nil
-	}
-	fmt.Println("choose font(s)")
-	for i, c := range candidates {
-		entry := fmt.Sprintf("  %d) %s", i+1, c.FontName)
-		if c.Key() != c.FontName {
-			entry += fmt.Sprintf("  [%s]", c.Key())
-		}
-		fmt.Println(entry)
-	}
-	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,][-]%d): ", len(candidates))
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	line = strings.TrimSpace(line)
-	indices, err := parseMultiSelect(line, len(candidates))
-	if err != nil || indices == nil {
-		return nil, ErrSkip
-	}
-	var selected []FontCandidate
-	for _, idx := range indices {
-		selected = append(selected, candidates[idx-1])
-	}
-	return selected, nil
+	return selectItems(candidates, prevKeys, "font(s)")
 }
 
 func ensureExecutable(path string) {

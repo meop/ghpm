@@ -65,7 +65,7 @@ func parseBinPath(key string) (binDir, binName string) {
 // proposedShimNames returns the default shim name for each selected binary.
 // When multiple binaries share the same filename, a disambiguating suffix is
 // appended from the last segment of their BinDir (or a numeric index as fallback).
-func proposedShimNames(manifestKey string, selected []asset.BinaryCandidate) []string {
+func proposedShimNames(manifestKey string, selected []asset.BinCandidate) []string {
 	counts := make(map[string]int)
 	for _, s := range selected {
 		counts[s.BinName]++
@@ -102,7 +102,7 @@ func shimNameWithSuffix(name, suffix string) string {
 
 // needsShimRenamePrompt reports whether any binary's default shim name differs
 // from the package name, indicating the user might want to rename it.
-func needsShimRenamePrompt(pkgName string, selected []asset.BinaryCandidate) bool {
+func needsShimRenamePrompt(pkgName string, selected []asset.BinCandidate) bool {
 	for _, s := range selected {
 		if s.BinName != pkgName {
 			return true
