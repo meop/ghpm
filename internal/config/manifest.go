@@ -109,19 +109,6 @@ func SaveManifest(m *Manifest) error {
 	return saveManifestFile(m, path)
 }
 
-// rawPackageEntry handles both legacy format (asset string + bin map) and new format (asset map).
-type rawPackageEntry struct {
-	Pin     string            `json:"pin"`
-	Version string            `json:"version"`
-	Asset   json.RawMessage   `json:"asset,omitempty"` // string (legacy) or map[string]AssetEntry (new)
-	Bin     map[string]string `json:"bin,omitempty"`   // legacy
-}
-
-type rawManifest struct {
-	Repos    map[string]string          `json:"repo"`
-	Extracts map[string]rawPackageEntry `json:"extract"`
-}
-
 func loadManifestFile(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -133,38 +120,17 @@ func loadManifestFile(path string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	var raw rawManifest
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
-	}
-	m := &Manifest{
-		Repos:    raw.Repos,
-		Extracts: make(map[string]PackageEntry, len(raw.Extracts)),
 	}
 	if m.Repos == nil {
 		m.Repos = map[string]string{}
 	}
-	for k, v := range raw.Extracts {
-		entry := PackageEntry{Pin: v.Pin, Version: v.Version}
-		if len(v.Asset) > 0 {
-			var assetMap map[string]AssetEntry
-			if json.Unmarshal(v.Asset, &assetMap) == nil {
-				entry.Asset = assetMap
-			} else {
-				var assetStr string
-				if json.Unmarshal(v.Asset, &assetStr) == nil && assetStr != "" {
-					entry.Asset = map[string]AssetEntry{
-						assetStr: {Bin: v.Bin},
-					}
-				}
-			}
-		}
-		if entry.Asset == nil {
-			entry.Asset = map[string]AssetEntry{}
-		}
-		m.Extracts[k] = entry
+	if m.Extracts == nil {
+		m.Extracts = map[string]PackageEntry{}
 	}
-	return m, nil
+	return &m, nil
 }
 
 func saveManifestFile(m *Manifest, path string) error {

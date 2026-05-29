@@ -71,30 +71,6 @@ func TestSaveAndLoadManifest(t *testing.T) {
 	}
 }
 
-func TestLoadManifestLegacy(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "manifest.json")
-	legacy := `{
-  "repo": {"fzf": "github.com/junegunn/fzf"},
-  "extract": {
-    "fzf": {"pin": "latest", "version": "0.56.0", "asset": "fzf-0.56.0-linux_amd64.tar.gz", "bin": {"fzf": "fzf"}}
-  }
-}`
-	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
-		t.Fatal(err)
-	}
-	m, err := loadManifestFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry := m.Extracts["fzf"]
-	if entry.BinAssetName() != "fzf-0.56.0-linux_amd64.tar.gz" {
-		t.Errorf("legacy asset not migrated: %s", entry.BinAssetName())
-	}
-	if bins := entry.AllBins(); bins["fzf"] != "fzf" {
-		t.Errorf("legacy bins not migrated: %v", bins)
-	}
-}
-
 func TestAllFonts_MultiAsset(t *testing.T) {
 	p := PackageEntry{
 		Asset: map[string]AssetEntry{

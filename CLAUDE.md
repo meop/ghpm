@@ -98,8 +98,6 @@ Helper methods on `PackageEntry`:
 - `AllFonts()` — merged userGivenName → fontFilePath across all assets
 - `pkgType(p)` (cli helper) — returns `"bin"` or `"font"` based on AllFonts/AllBins
 
-Legacy JSON format (`"asset": "filename"` + top-level `"bin": {}`) is migrated on load via `rawPackageEntry` with `json.RawMessage`.
-
 ## Disk layout
 
 ```
