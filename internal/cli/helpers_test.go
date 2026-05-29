@@ -34,6 +34,60 @@ func fakeGHBin(t *testing.T, script string) {
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 }
 
+func TestReservedShimNames_ExcludesOwner(t *testing.T) {
+	manifest := &config.Manifest{
+		Extracts: map[string]config.PackageEntry{
+			"fzf": {Asset: map[string]config.AssetEntry{
+				"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
+			}},
+			"uv": {Asset: map[string]config.AssetEntry{
+				"uv.tar.gz": {Bin: map[string]string{"uv": "uv", "uvx": "uvx"}},
+			}},
+			"uv@0.7": {Asset: map[string]config.AssetEntry{
+				"uv.tar.gz": {Bin: map[string]string{"uv@0.7": "uv"}},
+			}},
+		},
+	}
+
+	reserved := reservedShimNames(manifest, "uv")
+
+	if owner, ok := reserved["fzf"]; !ok || owner != "fzf" {
+		t.Errorf("expected fzf reserved by fzf, got %q ok=%v", owner, ok)
+	}
+	// Both the unversioned and versioned uv entries share the owner "uv" and must be excluded.
+	if _, ok := reserved["uv"]; ok {
+		t.Error("uv shim should be excluded as it belongs to the owner")
+	}
+	if _, ok := reserved["uvx"]; ok {
+		t.Error("uvx shim should be excluded as it belongs to the owner")
+	}
+	if _, ok := reserved["uv@0.7"]; ok {
+		t.Error("versioned uv shim should be excluded — same owner")
+	}
+}
+
+func TestReservedFontNames_ExcludesOwner(t *testing.T) {
+	manifest := &config.Manifest{
+		Extracts: map[string]config.PackageEntry{
+			"nerd-fonts": {Asset: map[string]config.AssetEntry{
+				"Hack.zip": {Font: map[string]string{"hack": "Hack-Regular.ttf"}},
+			}},
+			"other-fonts": {Asset: map[string]config.AssetEntry{
+				"Mono.zip": {Font: map[string]string{"mono": "Mono.ttf"}},
+			}},
+		},
+	}
+
+	reserved := reservedFontNames(manifest, "nerd-fonts")
+
+	if _, ok := reserved["hack"]; ok {
+		t.Error("hack font should be excluded as it belongs to the owner")
+	}
+	if owner, ok := reserved["mono"]; !ok || owner != "other-fonts" {
+		t.Errorf("expected mono reserved by other-fonts, got %q ok=%v", owner, ok)
+	}
+}
+
 func TestInitCommand_Minimal(t *testing.T) {
 	home := withHome(t)
 	writeSettings(t, home, &config.Settings{})

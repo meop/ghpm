@@ -43,6 +43,38 @@ func deriveShimName(key, binName string) string {
 	return binName + "@" + ver
 }
 
+// reservedShimNames collects the shim names claimed by every installed package
+// except exceptPkg, mapping each name to its owning package.
+func reservedShimNames(manifest *config.Manifest, exceptPkg string) map[string]string {
+	reserved := make(map[string]string)
+	for key, entry := range manifest.Extracts {
+		owner, _, _ := config.ParseVersionSuffix(key)
+		if owner == exceptPkg {
+			continue
+		}
+		for shimName := range entry.AllBins() {
+			reserved[shimName] = owner
+		}
+	}
+	return reserved
+}
+
+// reservedFontNames collects the font names claimed by every installed package
+// except exceptPkg, mapping each name to its owning package.
+func reservedFontNames(manifest *config.Manifest, exceptPkg string) map[string]string {
+	reserved := make(map[string]string)
+	for key, entry := range manifest.Extracts {
+		owner, _, _ := config.ParseVersionSuffix(key)
+		if owner == exceptPkg {
+			continue
+		}
+		for fontName := range entry.AllFonts() {
+			reserved[fontName] = owner
+		}
+	}
+	return reserved
+}
+
 // hasReservedConflict reports whether any of the proposed shim names is already
 // claimed by another package (present in reserved).
 func hasReservedConflict(proposed []string, reserved map[string]string) bool {

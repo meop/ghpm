@@ -58,16 +58,16 @@ func TestSaveAndLoadManifest(t *testing.T) {
 	if entry.Pin != "latest" {
 		t.Errorf("unexpected pin: %s", entry.Pin)
 	}
-	if entry.BinAssetName() != "fzf-0.56.0-linux_amd64.tar.gz" {
-		t.Errorf("unexpected asset: %s", entry.BinAssetName())
+	if _, ok := entry.Asset["fzf-0.56.0-linux_amd64.tar.gz"]; !ok {
+		t.Errorf("unexpected assets: %v", entry.Asset)
 	}
 	if loaded.Repos["fzf"] != "github.com/junegunn/fzf" {
 		t.Errorf("unexpected source: %s", loaded.Repos["fzf"])
 	}
 
 	bunEntry := loaded.Extracts["bun"]
-	if bunEntry.BinAssetName() != "bun-linux-x64.zip" {
-		t.Errorf("unexpected bun asset: %s", bunEntry.BinAssetName())
+	if _, ok := bunEntry.Asset["bun-linux-x64.zip"]; !ok {
+		t.Errorf("unexpected bun assets: %v", bunEntry.Asset)
 	}
 }
 
@@ -88,6 +88,40 @@ func TestAllFonts_MultiAsset(t *testing.T) {
 	}
 	if fonts["firacode"] != "FiraCode/FiraCode-Regular.ttf" {
 		t.Errorf("firacode missing: %v", fonts)
+	}
+}
+
+func TestMixedAsset_BinAndFont(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	// A single asset that ships both an executable and a bundled font.
+	m := &Manifest{
+		Repos: map[string]string{"tool": "github.com/acme/tool"},
+		Extracts: map[string]PackageEntry{
+			"tool": {Pin: "latest", Version: "1.0.0", Asset: map[string]AssetEntry{
+				"tool-linux.tar.gz": {
+					Bin:  map[string]string{"tool": "tool"},
+					Font: map[string]string{"tool-mono": "fonts/ToolMono.ttf"},
+				},
+			}},
+		},
+	}
+	if err := saveManifestFile(m, path); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadManifestFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := loaded.Extracts["tool"]
+	ae := entry.Asset["tool-linux.tar.gz"]
+	if !ae.IsBin() || !ae.IsFont() {
+		t.Errorf("expected asset to be both bin and font, got bin=%v font=%v", ae.IsBin(), ae.IsFont())
+	}
+	if entry.AllBins()["tool"] != "tool" {
+		t.Errorf("bin lost: %v", entry.AllBins())
+	}
+	if entry.AllFonts()["tool-mono"] != "fonts/ToolMono.ttf" {
+		t.Errorf("font lost: %v", entry.AllFonts())
 	}
 }
 

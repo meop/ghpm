@@ -120,7 +120,7 @@ func (ci *cmdInit) close() {
 }
 
 func addSkipVerifyFlag(cmd *cobra.Command) {
-	cmd.Flags().BoolVarP(&noVerify, "skip-verify", "s", false, "Skip SHA256 verification")
+	cmd.Flags().BoolVar(&noVerify, "skip-verify", false, "Skip SHA256 verification")
 }
 
 func addNameFormatFlags(cmd *cobra.Command) {
@@ -195,8 +195,12 @@ func downloadAndExtract(
 			}
 		}
 		if !noVerify {
-			if _, err := ghClient.VerifyAsset(ctx, owner, repo, tagName, cacheDir, chosen.Name); err != nil {
+			verified, err := ghClient.VerifyAsset(ctx, owner, repo, tagName, cacheDir, chosen.Name)
+			if err != nil {
 				return extractResult{}, err
+			}
+			if !verified {
+				printWarn(cfg, "%s: %s unverified (no attestation)", displayName, chosen.Name)
 			}
 		}
 
@@ -229,13 +233,6 @@ func downloadAndExtract(
 		fontsByAsset:  fontsByAsset,
 		binsByAsset:   binsByAsset,
 	}, nil
-}
-
-func pkgType(p config.PackageEntry) string {
-	if len(p.AllFonts()) > 0 {
-		return "font"
-	}
-	return "bin"
 }
 
 // buildBatchItems constructs version-check batch items for non-fixed extracts,

@@ -183,7 +183,12 @@ func upgradeShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) 
 	currentVer := ""
 	if _, err := os.Stat(kebabPath); err == nil {
 		if out, err := exec.Command(kebabPath, "--version").Output(); err == nil {
-			currentVer = strings.TrimSpace(string(out))
+			for _, tok := range strings.Fields(string(out)) {
+				if asset.IsVersionToken(tok) {
+					currentVer = strings.TrimPrefix(tok, "v")
+					break
+				}
+			}
 		}
 	}
 
@@ -261,7 +266,9 @@ func fetchSelected(ctx context.Context, cfg *config.Settings, ghClient gh.Client
 		return gh.Asset{}, "", nil, err
 	}
 	if !noVerify {
-		_, _ = ghClient.VerifyAsset(ctx, repo.Owner, repo.Repo, rel.TagName, cacheDir, chosen.Name)
+		if verified, _ := ghClient.VerifyAsset(ctx, repo.Owner, repo.Repo, rel.TagName, cacheDir, chosen.Name); !verified {
+			printWarn(cfg, "%s: %s unverified (no attestation)", pkgName, chosen.Name)
+		}
 	}
 
 	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")

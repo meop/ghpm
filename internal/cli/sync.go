@@ -271,16 +271,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 			if !selectionFailed {
 				pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
-				reserved := make(map[string]string)
-				for mKey, mEntry := range manifest.Extracts {
-					owner, _, _ := config.ParseVersionSuffix(mKey)
-					if owner == pkgBase {
-						continue
-					}
-					for shimName := range mEntry.AllBins() {
-						reserved[shimName] = owner
-					}
-				}
+				reserved := reservedShimNames(manifest, pkgBase)
 				var rawKeys, proposed []string
 				type binPos struct{ asset, shimName string }
 				var positions []binPos
@@ -325,7 +316,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 				}
 				shimFailed := false
 				for assetName, newBins := range allNewBins {
-					newAssets[assetName] = config.AssetEntry{Bin: newBins}
+					ae := newAssets[assetName]
+					ae.Bin = newBins
+					newAssets[assetName] = ae
 					for shimName, binsKey := range newBins {
 						binDir, binName := parseBinPath(binsKey)
 						if err := shim.Create(shimName, binName, tr.pkgDirByAsset[assetName], binDir); err != nil {
@@ -337,8 +330,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 				}
 				if shimFailed {
 					pkgFailed = true
-				} else {
-					printPass(cfg, "updated %s → %s", tr.r.pkg.Version, newVer)
 				}
 			}
 		}
@@ -393,16 +384,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			// Phase 2: conflict check across all pending font names.
 			if !pkgFailed && len(pendingFonts) > 0 {
 				pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
-				fontReserved := make(map[string]string)
-				for mKey, mEntry := range manifest.Extracts {
-					owner, _, _ := config.ParseVersionSuffix(mKey)
-					if owner == pkgBase {
-						continue
-					}
-					for fontName := range mEntry.AllFonts() {
-						fontReserved[fontName] = owner
-					}
-				}
+				fontReserved := reservedFontNames(manifest, pkgBase)
 				var fontKeys, proposed []string
 				type fontPos struct {
 					assetIdx int
@@ -463,17 +445,26 @@ func runSync(cmd *cobra.Command, args []string) error {
 							fontMap[fontName] = fontPath
 						}
 						if len(fontMap) > 0 {
-							newAssets[pf.assetName] = config.AssetEntry{Font: fontMap}
+							ae := newAssets[pf.assetName]
+							ae.Font = fontMap
+							newAssets[pf.assetName] = ae
 						}
 					}
-					for _, fontPath := range allFonts {
-						uninstallFont(fontPath, fontsDir)
+					var newPaths []string
+					for _, pf := range pendingFonts {
+						for _, fontPath := range pf.fontMap {
+							newPaths = append(newPaths, fontPath)
+						}
 					}
-					if !pkgFailed {
-						printPass(cfg, "updated %s → %s", tr.r.pkg.Version, newVer)
+					for _, fontPath := range staleFontPaths(allFonts, newPaths) {
+						uninstallFont(fontPath, fontsDir)
 					}
 				}
 			}
+		}
+
+		if !pkgFailed && (len(tr.binsByAsset) > 0 || len(tr.fontsByAsset) > 0) {
+			printPass(cfg, "updated %s → %s", tr.r.pkg.Version, newVer)
 		}
 
 		if !pkgFailed && tr.r.pkg.Version != newVer {

@@ -49,27 +49,39 @@ func TestFontInstalled_SubdirKey(t *testing.T) {
 	}
 }
 
-func TestPkgType_Bin(t *testing.T) {
-	p := config.PackageEntry{
-		Asset: map[string]config.AssetEntry{
-			"tool.tar.gz": {Bin: map[string]string{"tool": "tool"}},
-		},
+func TestStaleFontPaths_KeepsReinstalled(t *testing.T) {
+	old := map[string]string{
+		"hack":  "Hack/Hack-Regular.ttf",
+		"hackb": "Hack/Hack-Bold.ttf",
 	}
-	if got := pkgType(p); got != "bin" {
-		t.Errorf("got %q, want %q", got, "bin")
+	// New version ships the same Regular file but drops Bold.
+	newPaths := []string{"Hack/Hack-Regular.ttf"}
+
+	stale := staleFontPaths(old, newPaths)
+
+	if len(stale) != 1 || stale[0] != "Hack/Hack-Bold.ttf" {
+		t.Errorf("expected only Hack-Bold.ttf to be stale, got %v", stale)
 	}
 }
 
-func TestPkgType_Font(t *testing.T) {
-	p := fontPkg("Hack.zip", map[string]string{"hack": "Hack/Hack-Regular.ttf"})
-	if got := pkgType(p); got != "font" {
-		t.Errorf("got %q, want %q", got, "font")
+func TestStaleFontPaths_MatchesByBaseName(t *testing.T) {
+	// Old and new paths differ by directory but share the base name; the file
+	// must be kept because the install step just wrote it.
+	old := map[string]string{"hack": "v2/Hack-Regular.ttf"}
+	newPaths := []string{"v3/Hack-Regular.ttf"}
+
+	if stale := staleFontPaths(old, newPaths); len(stale) != 0 {
+		t.Errorf("expected nothing stale when base names match, got %v", stale)
 	}
 }
 
-func TestPkgType_EmptyIsbin(t *testing.T) {
-	if got := pkgType(config.PackageEntry{}); got != "bin" {
-		t.Errorf("got %q, want %q", got, "bin")
+func TestStaleFontPaths_AllRemovedWhenNoneReinstalled(t *testing.T) {
+	old := map[string]string{"a": "A.ttf", "b": "B.otf"}
+
+	stale := staleFontPaths(old, nil)
+
+	if len(stale) != 2 {
+		t.Errorf("expected both fonts stale, got %v", stale)
 	}
 }
 

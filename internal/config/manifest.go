@@ -21,16 +21,6 @@ type PackageEntry struct {
 	Asset   map[string]AssetEntry `json:"asset,omitempty"`
 }
 
-// BinAssetName returns the name of the first asset that contains bins, or empty string.
-func (p PackageEntry) BinAssetName() string {
-	for name, ae := range p.Asset {
-		if ae.IsBin() {
-			return name
-		}
-	}
-	return ""
-}
-
 // AllBins returns a merged shimName → binKey map across all assets.
 func (p PackageEntry) AllBins() map[string]string {
 	result := map[string]string{}

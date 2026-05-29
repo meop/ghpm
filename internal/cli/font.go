@@ -56,6 +56,24 @@ func installFont(srcPath, fontsDir string) error {
 	return registerFont(filepath.Base(srcPath), dst)
 }
 
+// staleFontPaths returns the old font paths whose file name is not among the
+// newly installed paths. Fonts live on disk keyed by base name, so an old path
+// sharing a base name with a new one must be kept — uninstalling it would
+// delete the file just written for the new version.
+func staleFontPaths(oldFonts map[string]string, newPaths []string) []string {
+	keep := make(map[string]bool, len(newPaths))
+	for _, p := range newPaths {
+		keep[filepath.Base(p)] = true
+	}
+	var stale []string
+	for _, p := range oldFonts {
+		if !keep[filepath.Base(p)] {
+			stale = append(stale, p)
+		}
+	}
+	return stale
+}
+
 func uninstallFont(fontKey, fontsDir string) {
 	fontName := filepath.Base(fontKey)
 	_ = os.Remove(filepath.Join(fontsDir, fontName))

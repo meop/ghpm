@@ -49,7 +49,7 @@ GOOS=windows GOARCH=amd64 go build -o ghpm-windows-amd64.exe ./cmd/ghpm
 
 ## Manifest and disk layout
 
-Manifest lives at `~/.ghpm/manifest.json`. Each installed package entry records its pin, resolved version, which release asset(s) were used, and the bin shim names or user-given font names extracted from them. A package is either all-bin or all-font — never mixed. Versioned installs use an `@` suffix as the key (`fzf@14`).
+Manifest lives at `~/.ghpm/manifest.json`. Each installed package entry records its pin, resolved version, which release asset(s) were used, and the bin shim names and/or user-given font names extracted from them. A package may contain bins, fonts, or both — and a single asset entry can carry both a `bin` and a `font` map (e.g. an archive shipping a CLI plus bundled fonts). Versioned installs use an `@` suffix as the key (`fzf@14`).
 
 Extracted content lives under `~/.ghpm/extract/<key>/<version>/`. Downloaded assets are cached under `~/.ghpm/download/`. Shims land in `~/.ghpm/bin/` (which should be on `PATH`).
 
@@ -57,7 +57,7 @@ Extracted content lives under `~/.ghpm/extract/<key>/<version>/`. Downloaded ass
 
 **Asset selection** (`internal/asset/`) scores release assets by platform/arch/extension and auto-picks when unambiguous; otherwise prompts. After extraction, bins are discovered by ELF/Mach-O/PE magic and presented for selection and optional rename. Proposed shim names and font user-given names are checked against all other installed packages; conflicts are mandatory renames, non-conflicts are optional.
 
-**Add** — per arg: resolve source, fetch release, select asset(s), confirm → parallel download+extract → per result: select and name bins or fonts (with conflict detection) → show summary table, confirm → create shims + install fonts + write manifest.
+**Add** — per arg: resolve source, fetch release, select asset(s), confirm → parallel download+extract → per result: select and name bins and/or fonts per asset (with conflict detection) → show summary table, confirm → create shims + install fonts + write manifest. Bins and fonts are tracked per asset, so one package can carry both.
 
 **Sync** — batch version check, then for outdated packages: fetch release, re-select asset by hint, parallel download+extract → rebuild shims (conflict check) and reinstall fonts (conflict check) → write manifest.
 

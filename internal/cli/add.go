@@ -244,10 +244,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		jobName       string
 		source        string
 		pkgDirByAsset map[string]string
-		bins          map[string]string
+		binsByAsset   map[string]map[string]string
 		pin           string
 		version       string
-		binAsset      string
 		fontAssets    map[string]map[string]string
 	}
 	var shimPlans []shimPlan
@@ -270,66 +269,77 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		var bins map[string]string
-		var binAsset string
+		var binsByAsset map[string]map[string]string
 		if len(tr.binsByAsset) > 0 {
-			var allBinCandidates []asset.BinCandidate
-			for assetName, candidates := range tr.binsByAsset {
-				if binAsset == "" {
-					binAsset = assetName
-				}
-				allBinCandidates = append(allBinCandidates, candidates...)
-			}
-			selected, discoverErr := asset.SelectBins(allBinCandidates, nil)
-			if errors.Is(discoverErr, asset.ErrSkip) {
-				continue
-			}
-			if len(selected) == 0 {
-				printFail(cfg, msgNoBinaryFound, binAsset)
-				hadErrors = true
-				continue
-			}
 			key := r.job.key()
-			rawKeys := make([]string, len(selected))
-			for i, s := range selected {
-				rawKeys[i] = s.Key()
-				printInfo(cfg, "bin %s", s.Key())
-			}
 			_, _, pinned := config.ParseVersionSuffix(key)
-			proposed := proposedShimNames(key, selected)
-			reserved := make(map[string]string)
-			for mKey, entry := range manifest.Extracts {
-				ownerPkg, _, _ := config.ParseVersionSuffix(mKey)
-				if ownerPkg == r.job.name {
-					continue
+
+			binAssetNames := make([]string, 0, len(tr.binsByAsset))
+			for a := range tr.binsByAsset {
+				binAssetNames = append(binAssetNames, a)
+			}
+			slices.Sort(binAssetNames)
+
+			type binPos struct{ asset, binKey string }
+			var positions []binPos
+			var rawKeys, proposed []string
+			needRename := false
+			selectionFailed := false
+			for _, assetName := range binAssetNames {
+				selected, discoverErr := asset.SelectBins(tr.binsByAsset[assetName], nil)
+				if errors.Is(discoverErr, asset.ErrSkip) {
+					selectionFailed = true
+					break
 				}
-				for shimName := range entry.AllBins() {
-					reserved[shimName] = ownerPkg
+				if len(selected) == 0 {
+					printFail(cfg, msgNoBinaryFound, assetName)
+					hadErrors = true
+					selectionFailed = true
+					break
+				}
+				if !pinned && needsShimRenamePrompt(r.job.name, selected) {
+					needRename = true
+				}
+				names := proposedShimNames(key, selected)
+				for i, s := range selected {
+					printInfo(cfg, "bin %s", s.Key())
+					positions = append(positions, binPos{assetName, s.Key()})
+					rawKeys = append(rawKeys, s.Key())
+					proposed = append(proposed, names[i])
 				}
 			}
+			if selectionFailed {
+				continue
+			}
+
+			reserved := reservedShimNames(manifest, r.job.name)
 			for _, prev := range shimPlans {
 				if prev.jobName == r.job.name {
 					continue
 				}
-				for shimName := range prev.bins {
-					reserved[shimName] = prev.jobName
+				for _, prevBins := range prev.binsByAsset {
+					for shimName := range prevBins {
+						reserved[shimName] = prev.jobName
+					}
 				}
 			}
 			shimNames := proposed
-			if hasReservedConflict(proposed, reserved) || (!pinned && needsShimRenamePrompt(r.job.name, selected)) {
+			if hasReservedConflict(proposed, reserved) || (!pinned && needRename) {
 				sep()
-				var promptErr error
-				shimNames, promptErr = asset.PromptBinNames(rawKeys, proposed, reserved)
+				renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved)
 				if errors.Is(promptErr, asset.ErrSkip) {
 					continue
 				}
-				if shimNames == nil {
-					shimNames = proposed
+				if renamed != nil {
+					shimNames = renamed
 				}
 			}
-			bins = make(map[string]string, len(shimNames))
-			for i, s := range selected {
-				bins[shimNames[i]] = s.Key()
+			binsByAsset = make(map[string]map[string]string)
+			for i, pos := range positions {
+				if binsByAsset[pos.asset] == nil {
+					binsByAsset[pos.asset] = make(map[string]string)
+				}
+				binsByAsset[pos.asset][shimNames[i]] = pos.binKey
 			}
 		}
 
@@ -394,7 +404,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if len(bins) == 0 && len(fontAssets) == 0 {
+		if len(binsByAsset) == 0 && len(fontAssets) == 0 {
 			continue
 		}
 
@@ -403,10 +413,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			jobName:       r.job.name,
 			source:        r.job.source,
 			pkgDirByAsset: tr.pkgDirByAsset,
-			bins:          bins,
+			binsByAsset:   binsByAsset,
 			pin:           r.job.pin(),
 			version:       config.NormalizeVersion(r.release.TagName),
-			binAsset:      binAsset,
 			fontAssets:    fontAssets,
 		})
 	}
@@ -421,8 +430,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	type shimRow struct{ shim, binary, pkg string }
 	var shimRows []shimRow
 	for _, p := range shimPlans {
-		for shimName, binKey := range p.bins {
-			shimRows = append(shimRows, shimRow{shimName, binKey, p.key})
+		for _, bins := range p.binsByAsset {
+			for shimName, binKey := range bins {
+				shimRows = append(shimRows, shimRow{shimName, binKey, p.key})
+			}
 		}
 	}
 	if len(shimRows) > 0 {
@@ -465,15 +476,32 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				for shimName := range existing.AllBins() {
 					_ = shim.Remove(shimName)
 				}
+				if oldFonts := existing.AllFonts(); len(oldFonts) > 0 {
+					var newPaths []string
+					for _, fonts := range p.fontAssets {
+						for _, fontPath := range fonts {
+							newPaths = append(newPaths, fontPath)
+						}
+					}
+					if fontsDir, err := userFontDir(); err == nil {
+						for _, fontPath := range staleFontPaths(oldFonts, newPaths) {
+							uninstallFont(fontPath, fontsDir)
+						}
+					}
+				}
 			}
 		}
 		manifest.Repos[p.jobName] = p.source
 		assets := make(map[string]config.AssetEntry)
-		if p.binAsset != "" && len(p.bins) > 0 {
-			assets[p.binAsset] = config.AssetEntry{Bin: p.bins}
+		for assetName, bins := range p.binsByAsset {
+			ae := assets[assetName]
+			ae.Bin = bins
+			assets[assetName] = ae
 		}
-		for assetName, ae := range p.fontAssets {
-			assets[assetName] = config.AssetEntry{Font: ae}
+		for assetName, fonts := range p.fontAssets {
+			ae := assets[assetName]
+			ae.Font = fonts
+			assets[assetName] = ae
 		}
 		manifest.Extracts[p.key] = config.PackageEntry{
 			Pin:     p.pin,
@@ -481,12 +509,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			Asset:   assets,
 		}
 		shimFailed := false
-		for shimName, binsKey := range p.bins {
-			binDir, binName := parseBinPath(binsKey)
-			if err := shim.Create(shimName, binName, p.pkgDirByAsset[p.binAsset], binDir); err != nil {
-				printFail(cfg, "%s: could not create shim: %v", shimName, err)
-				shimFailed = true
-				hadErrors = true
+		for assetName, bins := range p.binsByAsset {
+			for shimName, binsKey := range bins {
+				binDir, binName := parseBinPath(binsKey)
+				if err := shim.Create(shimName, binName, p.pkgDirByAsset[assetName], binDir); err != nil {
+					printFail(cfg, "%s: could not create shim: %v", shimName, err)
+					shimFailed = true
+					hadErrors = true
+				}
 			}
 		}
 		fontFailed := false
@@ -517,7 +547,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}
-		if !shimFailed && len(p.bins) > 0 {
+		if !shimFailed && len(p.binsByAsset) > 0 {
 			printPass(cfg, "installed %s", p.version)
 		}
 	}
