@@ -47,6 +47,9 @@ GOOS=windows GOARCH=amd64 go build -o ghpm-windows-amd64.exe ./cmd/ghpm
 - `internal/shim/` — shim creation/removal (symlink on Unix, .exe on Windows via sheesh/kebab)
 - `internal/store/` — path helpers for ~/.ghpm/ directories
 - `internal/parallel/` — bounded worker pool
+- `internal/ghbin/` — gh CLI binary discovery (PATH then ~/.ghpm/bin/gh)
+- `internal/ioutils/` — stdin readline helper
+- `internal/version/` — version string normalization (strips leading non-digit prefix)
 
 ## Manifest data model
 

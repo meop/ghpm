@@ -88,13 +88,13 @@ ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the
   "color": {
     "fail": "red",
     "info": "blue",
-    "new": "green",
-    "old": "red",
+    "new": "cyan",
+    "old": "magenta",
     "pass": "green",
     "warn": "yellow"
   },
   "no_color": false,
-  "skip_verify": false,
+  "no_verify": false,
   "num_parallel": 5,
   "repo_sources": ["github.com/meop/ghpm-config"]
 }
@@ -105,7 +105,7 @@ ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the
 | `cache_ttl` | `"5m"` | How long cached version data stays fresh before re-fetching |
 | `color` | see above | Output colors by message type |
 | `no_color` | `false` | Disable colored output |
-| `skip_verify` | `false` | Skip SHA256 verification globally |
+| `no_verify` | `false` | Skip SHA256 verification globally |
 | `num_parallel` | `5` | Max concurrent downloads |
 | `repo_sources` | `["github.com/meop/ghpm-config"]` | Repo sources to fetch from; all their `repos.yaml` files are merged |
 
