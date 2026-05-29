@@ -305,7 +305,7 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 	if showMoreIdx > 0 {
 		maxIdx = showMoreIdx
 	}
-	fmt.Printf("enter number(s) (0=skip | 1[,]2-%d): ", len(compatible))
+	fmt.Printf("enter number(s) (0=skip | 1[,][-]%d): ", len(compatible))
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
@@ -336,7 +336,7 @@ func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
 	for i, a := range all {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	fmt.Printf("enter number(s) (0=skip | 1[,]2-%d): ", len(all))
+	fmt.Printf("enter number(s) (0=skip | 1[,][-]%d): ", len(all))
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)

@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"slices"
-	"strings"
-
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
 )
@@ -100,16 +97,4 @@ func pkgType(p config.PackageEntry) string {
 		return "font"
 	}
 	return "bin"
-}
-
-func pkgAsset(p config.PackageEntry) string {
-	if assetName := p.BinAssetName(); assetName != "" {
-		return assetName
-	}
-	names := make([]string, 0, len(p.Asset))
-	for assetName := range p.Asset {
-		names = append(names, assetName)
-	}
-	slices.Sort(names)
-	return strings.Join(names, ", ")
 }

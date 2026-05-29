@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -61,10 +62,18 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	rows := make([][]string, len(targets))
-	for i, t := range targets {
+	var rows [][]string
+	for _, t := range targets {
 		baseName, _, _ := config.ParseVersionSuffix(t.key)
-		rows[i] = []string{t.key, t.pkg.Pin, t.pkg.Version, pkgAsset(t.pkg), manifest.Repos[baseName]}
+		repo := manifest.Repos[baseName]
+		assetNames := make([]string, 0, len(t.pkg.Asset))
+		for assetName := range t.pkg.Asset {
+			assetNames = append(assetNames, assetName)
+		}
+		slices.Sort(assetNames)
+		for _, assetName := range assetNames {
+			rows = append(rows, []string{t.key, t.pkg.Pin, t.pkg.Version, assetName, repo})
+		}
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
 	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
