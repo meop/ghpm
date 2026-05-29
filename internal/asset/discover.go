@@ -230,7 +230,7 @@ func SelectBinaries(candidates []BinaryCandidate, prevKeys []string) ([]BinaryCa
 		}
 		fmt.Println(entry)
 	}
-	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,]2-%d): ", len(candidates))
+	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,][-]%d): ", len(candidates))
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 
@@ -494,7 +494,7 @@ func SelectFonts(candidates []FontCandidate, prevKeys []string) ([]FontCandidate
 		}
 		fmt.Println(entry)
 	}
-	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,]2-%d): ", len(candidates))
+	fmt.Printf("enter number(s) (empty=all | 0=skip | 1[,][-]%d): ", len(candidates))
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 	indices, err := parseMultiSelect(line, len(candidates))

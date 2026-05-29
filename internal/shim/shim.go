@@ -38,21 +38,12 @@ func Create(shimName, binaryName, pkgDir, binSubdir string) error {
 	source := filepath.Join(pkgDir, binSubdir, binaryName)
 	target := filepath.Join(binDir, shimName)
 
-	if runtime.GOOS != "windows" {
-		return exec.Command(kebabPath, "--source-path", source, "--target-path", target).Run()
+	// On Windows, the loader opens .exe files with FILE_SHARE_DELETE, so Remove
+	// succeeds via delete-on-close even on a running shim, freeing the path for kebab.
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(target)
 	}
-
-	// On Windows a running shim is locked; move it to the system temp dir first.
-	tmpDir := filepath.Join(os.TempDir(), "ghpm", "bin")
-	_ = os.MkdirAll(tmpDir, 0755)
-	old := filepath.Join(tmpDir, filepath.Base(target))
-	_ = os.Remove(old)
-	_ = os.Rename(target, old)
-	err = exec.Command(kebabPath, "--source-path", source, "--target-path", target).Run()
-	if err != nil {
-		_ = os.Rename(old, target)
-	}
-	return err
+	return exec.Command(kebabPath, "--source-path", source, "--target-path", target).Run()
 }
 
 // Remove deletes the shim for shimName from ~/.ghpm/bin/.

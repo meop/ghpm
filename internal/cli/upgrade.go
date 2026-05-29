@@ -145,7 +145,9 @@ func upgradeGh(ctx context.Context, cfg *config.Settings) error {
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return err
 	}
-	if err := replaceFile(ghBin, ghPath); err != nil {
+	// See installFont: FILE_SHARE_DELETE lets Remove succeed on the running binary.
+	_ = os.Remove(ghPath)
+	if err := copyFile(ghBin, ghPath); err != nil {
 		return err
 	}
 	if err := os.Chmod(ghPath, 0755); err != nil {
@@ -351,7 +353,8 @@ func copyExecutablesToDir(srcDir, destDir string) error {
 			}
 		}
 		dest := filepath.Join(destDir, name)
-		if err := replaceFile(path, dest); err != nil {
+		_ = os.Remove(dest)
+		if err := copyFile(path, dest); err != nil {
 			return err
 		}
 		return os.Chmod(dest, 0755)
@@ -368,19 +371,6 @@ func copyFile(src, dst string) error {
 
 func winTempBinDir() string {
 	return filepath.Join(os.TempDir(), "ghpm", "bin")
-}
-
-// replaceFile copies src to dst. On Windows, the existing dst is first moved to
-// the shared temp staging dir so that a locked (in-use) executable can be displaced.
-func replaceFile(src, dst string) error {
-	if runtime.GOOS == "windows" {
-		tmpDir := winTempBinDir()
-		_ = os.MkdirAll(tmpDir, 0755)
-		old := filepath.Join(tmpDir, filepath.Base(dst))
-		_ = os.Remove(old)
-		_ = os.Rename(dst, old)
-	}
-	return copyFile(src, dst)
 }
 
 func replaceSelf(src, dst string) error {
