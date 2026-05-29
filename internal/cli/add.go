@@ -502,7 +502,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		shimFailed := false
 		for shimName, binsKey := range p.bins {
-			binDir, binName := splitBinKey(binsKey)
+			binDir, binName := parseBinPath(binsKey)
 			if err := shim.Create(shimName, binName, p.pkgDirByAsset[p.binAsset], binDir); err != nil {
 				printFail(cfg, "%s: could not create shim: %v", shimName, err)
 				shimFailed = true

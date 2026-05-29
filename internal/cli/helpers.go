@@ -8,6 +8,8 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 )
 
+var noVerify bool
+
 type cmdInit struct {
 	cfg      *config.Settings
 	manifest *config.Manifest

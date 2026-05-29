@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -19,7 +20,8 @@ func newOutdatedCmd() *cobra.Command {
 		Args:    cobra.NoArgs,
 		RunE:    runOutdated,
 	}
-	cmd.Flags().BoolVarP(&onlyNames, "only-names", "o", false, "Print names only, one per line")
+	cmd.Flags().BoolVarP(&longNames, "long-names", "l", false, "Print names only, one per line")
+	cmd.Flags().BoolVarP(&shortNames, "short-names", "s", false, "Print names only, space-separated on one line")
 	return cmd
 }
 
@@ -120,10 +122,21 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		return cmp.Compare(a.key, b.key)
 	})
 
-	if onlyNames {
+	if longNames {
 		for _, o := range outdated {
 			fmt.Println(o.key)
 		}
+		if hadErrors {
+			return errSilent
+		}
+		return nil
+	}
+	if shortNames {
+		keys := make([]string, len(outdated))
+		for i, o := range outdated {
+			keys[i] = o.key
+		}
+		fmt.Println(strings.Join(keys, " "))
 		if hadErrors {
 			return errSilent
 		}
