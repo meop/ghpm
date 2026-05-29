@@ -319,7 +319,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			if hasReservedConflict(proposed, reserved) || (!pinned && needsShimRenamePrompt(r.job.name, selected)) {
 				sep()
 				var promptErr error
-				shimNames, promptErr = asset.PromptShimRenames(rawKeys, proposed, reserved)
+				shimNames, promptErr = asset.PromptBinNames(rawKeys, proposed, reserved)
 				if errors.Is(promptErr, asset.ErrSkip) {
 					continue
 				}
@@ -336,6 +336,26 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		var fontAssets map[string]map[string]string
 		if len(tr.fontsByAsset) > 0 {
 			fontAssets = make(map[string]map[string]string)
+			fontReserved := make(map[string]string)
+			for mKey, mEntry := range manifest.Extracts {
+				ownerPkg, _, _ := config.ParseVersionSuffix(mKey)
+				if ownerPkg == r.job.name {
+					continue
+				}
+				for fontName := range mEntry.AllFonts() {
+					fontReserved[fontName] = ownerPkg
+				}
+			}
+			for _, prev := range shimPlans {
+				if prev.jobName == r.job.name {
+					continue
+				}
+				for _, fonts := range prev.fontAssets {
+					for fontName := range fonts {
+						fontReserved[fontName] = prev.jobName
+					}
+				}
+			}
 			assetNames := make([]string, 0, len(tr.fontsByAsset))
 			for a := range tr.fontsByAsset {
 				assetNames = append(assetNames, a)
@@ -353,9 +373,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				if selErr != nil || len(selectedFonts) == 0 {
 					continue
 				}
-				namedFonts := asset.PromptFontNames(selectedFonts)
+				namedFonts, promptErr := asset.PromptFontNames(selectedFonts, fontReserved)
+				if errors.Is(promptErr, asset.ErrSkip) {
+					continue
+				}
 				if len(namedFonts) > 0 {
 					fontAssets[assetName] = namedFonts
+					for fontName := range namedFonts {
+						fontReserved[fontName] = r.job.name
+					}
 					fontNames := make([]string, 0, len(namedFonts))
 					for k := range namedFonts {
 						fontNames = append(fontNames, k)

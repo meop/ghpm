@@ -12,7 +12,7 @@ import (
 	"github.com/meop/ghpm/internal/ioutils"
 )
 
-var ErrSkip = errors.New("skipped")
+var ErrSkip = ioutils.ErrSkip
 
 var ErrNoCompatibleAsset = errors.New("no compatible assets found")
 
@@ -28,7 +28,7 @@ var archNames = map[string][]string{
 }
 
 var toolPrefs = map[string][]string{
-	"darwin":  {""},
+	"darwin":  {},
 	"linux":   {"gnu", "musl"},
 	"windows": {"msvc", "gnu"},
 }
@@ -271,13 +271,9 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 		showMoreIdx = len(compatible) + 1
 		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
 	}
-	line := ioutils.ReadLine("enter number (0=skip): ")
-	var idx int
-	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
-		return gh.Asset{}, fmt.Errorf("invalid selection")
-	}
-	if idx == 0 {
-		return gh.Asset{}, ErrSkip
+	idx, err := readSingleFirst()
+	if err != nil {
+		return gh.Asset{}, err
 	}
 	if showMoreIdx > 0 && idx == showMoreIdx {
 		return PromptSelect("choose asset:", append(compatible, hidden...))
@@ -293,13 +289,9 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 	for i, a := range assets {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	line := ioutils.ReadLine("enter number (0=skip): ")
-	var idx int
-	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil {
-		return gh.Asset{}, fmt.Errorf("invalid selection")
-	}
-	if idx == 0 {
-		return gh.Asset{}, ErrSkip
+	idx, err := readSingle()
+	if err != nil {
+		return gh.Asset{}, err
 	}
 	if idx < 1 || idx > len(assets) {
 		return gh.Asset{}, fmt.Errorf("invalid selection")
@@ -330,10 +322,9 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 	if showMoreIdx > 0 {
 		maxIdx = showMoreIdx
 	}
-	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) (0=skip | 1[,][-]%d): ", len(compatible)))
-	indices, err := parseMultiSelect(line, maxIdx)
-	if err != nil || indices == nil {
-		return nil, ErrSkip
+	indices, err := readMultiAllWithShowMore(len(compatible), maxIdx)
+	if err != nil {
+		return nil, err
 	}
 	// If show-more was selected, re-prompt with the full list.
 	for _, idx := range indices {
@@ -358,10 +349,9 @@ func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
 	for i, a := range all {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) (0=skip | 1[,][-]%d): ", len(all)))
-	indices, err := parseMultiSelect(line, len(all))
-	if err != nil || indices == nil {
-		return nil, ErrSkip
+	indices, err := readMultiAll(len(all))
+	if err != nil {
+		return nil, err
 	}
 	var selected []gh.Asset
 	for _, idx := range indices {

@@ -1,10 +1,13 @@
 package asset
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/meop/ghpm/internal/ioutils"
 )
 
 func writeFakeBinary(t *testing.T, dir, name string) {
@@ -37,9 +40,14 @@ func fakeStdin(t *testing.T, input string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := os.Stdin
+	oldStdin := os.Stdin
+	oldIoStdin := ioutils.Stdin
 	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = old })
+	ioutils.Stdin = bufio.NewReader(r)
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		ioutils.Stdin = oldIoStdin
+	})
 	if _, err := w.WriteString(input); err != nil {
 		t.Fatal(err)
 	}
@@ -330,19 +338,22 @@ func TestDeriveFontName(t *testing.T) {
 }
 
 func TestPromptFontNames_Empty(t *testing.T) {
-	got := PromptFontNames(nil)
-	if got != nil {
-		t.Errorf("expected nil, got %v", got)
+	got, err := PromptFontNames(nil, nil)
+	if err != nil || got != nil {
+		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
 }
 
 func TestPromptFontNames_DefaultNames(t *testing.T) {
-	fakeStdin(t, "\n") // accept defaults
+	fakeStdin(t, "\n")
 	c := []FontCandidate{
 		{FontDir: "Hack", FontName: "Hack-Regular.ttf"},
 		{FontDir: "Hack", FontName: "Hack-Bold.ttf"},
 	}
-	got := PromptFontNames(c)
+	got, err := PromptFontNames(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(got))
 	}
@@ -360,7 +371,10 @@ func TestPromptFontNames_Deduplicate(t *testing.T) {
 		{FontDir: "a", FontName: "Font.ttf"},
 		{FontDir: "b", FontName: "Font.ttf"},
 	}
-	got := PromptFontNames(c)
+	got, err := PromptFontNames(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 entries, got %d: %v", len(got), got)
 	}
@@ -369,5 +383,141 @@ func TestPromptFontNames_Deduplicate(t *testing.T) {
 	}
 	if _, ok := got["font-2"]; !ok {
 		t.Errorf("expected key %q, got %v", "font-2", got)
+	}
+}
+
+func TestPromptFontNames_Conflict_Reserved(t *testing.T) {
+	fakeStdin(t, "hack-v2\n")
+	c := []FontCandidate{{FontDir: "Hack", FontName: "Hack-Regular.ttf"}}
+	got, err := PromptFontNames(c, map[string]string{"hack-regular": "other-pkg"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["hack-v2"] != "Hack/Hack-Regular.ttf" {
+		t.Errorf("got %v, want hack-v2 → Hack/Hack-Regular.ttf", got)
+	}
+}
+
+func TestPromptFontNames_Conflict_Zero_Skips(t *testing.T) {
+	fakeStdin(t, "0\n")
+	c := []FontCandidate{
+		{FontDir: "Hack", FontName: "Hack-Regular.ttf"},
+		{FontDir: "Hack", FontName: "Hack-Bold.ttf"},
+	}
+	_, err := PromptFontNames(c, map[string]string{"hack-regular": "other-pkg"})
+	if err != ErrSkip {
+		t.Errorf("expected ErrSkip, got %v", err)
+	}
+}
+
+func TestPromptBinNames_NoConflict_Empty(t *testing.T) {
+	fakeStdin(t, "\n")
+	result, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0] != "bun" {
+		t.Errorf("got %v, want [bun]", result)
+	}
+}
+
+func TestPromptBinNames_NoConflict_InvalidInput_Skips(t *testing.T) {
+	fakeStdin(t, "abc\n")
+	_, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	if err != ErrSkip {
+		t.Errorf("expected ErrSkip for invalid input, got %v", err)
+	}
+}
+
+func TestPromptBinNames_NoConflict_Zero_Skips(t *testing.T) {
+	fakeStdin(t, "0\n")
+	_, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	if err != ErrSkip {
+		t.Errorf("expected ErrSkip, got %v", err)
+	}
+}
+
+func TestPromptBinNames_NoConflict_Rename(t *testing.T) {
+	fakeStdin(t, "1\nbun-renamed\n")
+	result, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0] != "bun-renamed" {
+		t.Errorf("got %v, want [bun-renamed]", result)
+	}
+}
+
+func TestPromptBinNames_Conflict_AllConflict_MandatoryRename(t *testing.T) {
+	fakeStdin(t, "bun-new\n")
+	result, err := PromptBinNames(
+		[]string{"bin/bun"},
+		[]string{"bun"},
+		map[string]string{"bun": "other-pkg"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0] != "bun-new" {
+		t.Errorf("got %v, want [bun-new]", result)
+	}
+}
+
+func TestPromptBinNames_Conflict_Duplicate_MandatoryRename(t *testing.T) {
+	// item 1 "bun" is first seen → not conflict; item 2 "bun" is duplicate → mandatory rename
+	// empty additional prompt → only item 2 renamed
+	fakeStdin(t, "\nbun-b\n")
+	result, err := PromptBinNames(
+		[]string{"bun", "bin/bun"},
+		[]string{"bun", "bun"},
+		map[string]string{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 2 || result[0] != "bun" || result[1] != "bun-b" {
+		t.Errorf("got %v, want [bun bun-b]", result)
+	}
+}
+
+func TestPromptBinNames_Conflict_SomeConflict_ZeroSkips(t *testing.T) {
+	fakeStdin(t, "0\n")
+	_, err := PromptBinNames(
+		[]string{"bin/bun", "bin/extra"},
+		[]string{"bun", "extra"},
+		map[string]string{"bun": "other-pkg"},
+	)
+	if err != ErrSkip {
+		t.Errorf("expected ErrSkip, got %v", err)
+	}
+}
+
+func TestPromptBinNames_Conflict_EmptyAdditional_MandatoryOnly(t *testing.T) {
+	fakeStdin(t, "\nbun-new\n")
+	result, err := PromptBinNames(
+		[]string{"bin/bun", "bin/extra"},
+		[]string{"bun", "extra"},
+		map[string]string{"bun": "other-pkg"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 2 || result[0] != "bun-new" || result[1] != "extra" {
+		t.Errorf("got %v, want [bun-new extra]", result)
+	}
+}
+
+func TestPromptBinNames_Conflict_AdditionalRename(t *testing.T) {
+	fakeStdin(t, "2\nbun-new\nextra-new\n")
+	result, err := PromptBinNames(
+		[]string{"bin/bun", "bin/extra"},
+		[]string{"bun", "extra"},
+		map[string]string{"bun": "other-pkg"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 2 || result[0] != "bun-new" || result[1] != "extra-new" {
+		t.Errorf("got %v, want [bun-new extra-new]", result)
 	}
 }

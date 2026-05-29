@@ -269,6 +269,54 @@ func runSync(cmd *cobra.Command, args []string) error {
 				allNewBins[assetName] = newBins
 			}
 
+			if !selectionFailed {
+				pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
+				reserved := make(map[string]string)
+				for mKey, mEntry := range manifest.Extracts {
+					owner, _, _ := config.ParseVersionSuffix(mKey)
+					if owner == pkgBase {
+						continue
+					}
+					for shimName := range mEntry.AllBins() {
+						reserved[shimName] = owner
+					}
+				}
+				var rawKeys, proposed []string
+				type binPos struct{ asset, shimName string }
+				var positions []binPos
+				for _, assetName := range binAssetNames {
+					bins := allNewBins[assetName]
+					binKeysList := make([]string, 0, len(bins))
+					for _, bk := range bins {
+						binKeysList = append(binKeysList, bk)
+					}
+					slices.Sort(binKeysList)
+					shimByKey := make(map[string]string, len(bins))
+					for sh, bk := range bins {
+						shimByKey[bk] = sh
+					}
+					for _, bk := range binKeysList {
+						rawKeys = append(rawKeys, bk)
+						proposed = append(proposed, shimByKey[bk])
+						positions = append(positions, binPos{assetName, shimByKey[bk]})
+					}
+				}
+				if hasReservedConflict(proposed, reserved) {
+					sep()
+					renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved)
+					if errors.Is(promptErr, asset.ErrSkip) {
+						selectionFailed = true
+					} else if renamed != nil {
+						for i, pos := range positions {
+							if renamed[i] != pos.shimName {
+								allNewBins[pos.asset][renamed[i]] = allNewBins[pos.asset][pos.shimName]
+								delete(allNewBins[pos.asset], pos.shimName)
+							}
+						}
+					}
+				}
+			}
+
 			if selectionFailed {
 				pkgFailed = true
 			} else {
@@ -296,69 +344,134 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if len(tr.fontsByAsset) > 0 {
-			fontsDir, err := ensureFontDir()
-			fontFailed := err != nil
-			if err != nil {
-				printFail(cfg, "font dir: %v", err)
-				hadErrors = true
-				pkgFailed = true
+			allFonts := tr.r.pkg.AllFonts()
+			oldPathToName := make(map[string]string)
+			for fontName, fontPath := range allFonts {
+				oldPathToName[fontPath] = fontName
 			}
 
-			if !fontFailed {
-				allFonts := tr.r.pkg.AllFonts()
-				oldPathToName := make(map[string]string)
-				for fontName, fontPath := range allFonts {
-					oldPathToName[fontPath] = fontName
-				}
+			fontAssetNames := make([]string, 0, len(tr.fontsByAsset))
+			for a := range tr.fontsByAsset {
+				fontAssetNames = append(fontAssetNames, a)
+			}
+			slices.Sort(fontAssetNames)
 
-				fontAssetNames := make([]string, 0, len(tr.fontsByAsset))
-				for a := range tr.fontsByAsset {
-					fontAssetNames = append(fontAssetNames, a)
+			// Phase 1: select fonts and pre-compute names (preserve old, derive new).
+			type syncFontAsset struct {
+				assetName string
+				fontMap   map[string]string // fontName → fontPath
+			}
+			var pendingFonts []syncFontAsset
+			for _, assetName := range fontAssetNames {
+				candidates := tr.fontsByAsset[assetName]
+				prevAssetPaths := make([]string, 0, len(tr.r.pkg.Asset[assetName].Font))
+				for _, fontPath := range tr.r.pkg.Asset[assetName].Font {
+					prevAssetPaths = append(prevAssetPaths, fontPath)
 				}
-				slices.Sort(fontAssetNames)
-
-				for _, assetName := range fontAssetNames {
-					candidates := tr.fontsByAsset[assetName]
-					prevAssetPaths := make([]string, 0, len(tr.r.pkg.Asset[assetName].Font))
-					for _, fontPath := range tr.r.pkg.Asset[assetName].Font {
-						prevAssetPaths = append(prevAssetPaths, fontPath)
+				selectedFonts, selErr := asset.SelectFonts(candidates, prevAssetPaths)
+				if errors.Is(selErr, asset.ErrSkip) {
+					continue
+				}
+				if selErr != nil {
+					printFail(cfg, "%v", selErr)
+					hadErrors = true
+					pkgFailed = true
+					continue
+				}
+				fontMap := make(map[string]string, len(selectedFonts))
+				for _, sel := range selectedFonts {
+					fontPath := sel.Key()
+					fontName, hasName := oldPathToName[fontPath]
+					if !hasName {
+						fontName = asset.DeriveFontName(sel.FontName)
 					}
-					selectedFonts, selErr := asset.SelectFonts(candidates, prevAssetPaths)
-					if errors.Is(selErr, asset.ErrSkip) {
+					fontMap[fontName] = fontPath
+				}
+				pendingFonts = append(pendingFonts, syncFontAsset{assetName, fontMap})
+			}
+
+			// Phase 2: conflict check across all pending font names.
+			if !pkgFailed && len(pendingFonts) > 0 {
+				pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
+				fontReserved := make(map[string]string)
+				for mKey, mEntry := range manifest.Extracts {
+					owner, _, _ := config.ParseVersionSuffix(mKey)
+					if owner == pkgBase {
 						continue
 					}
-					if selErr != nil {
-						printFail(cfg, "%v", selErr)
-						hadErrors = true
+					for fontName := range mEntry.AllFonts() {
+						fontReserved[fontName] = owner
+					}
+				}
+				var fontKeys, proposed []string
+				type fontPos struct {
+					assetIdx int
+					name     string
+				}
+				var positions []fontPos
+				for i, pf := range pendingFonts {
+					pathsSorted := make([]string, 0, len(pf.fontMap))
+					for _, fp := range pf.fontMap {
+						pathsSorted = append(pathsSorted, fp)
+					}
+					slices.Sort(pathsSorted)
+					pathToName := make(map[string]string, len(pf.fontMap))
+					for name, fp := range pf.fontMap {
+						pathToName[fp] = name
+					}
+					for _, fp := range pathsSorted {
+						fontKeys = append(fontKeys, fp)
+						proposed = append(proposed, pathToName[fp])
+						positions = append(positions, fontPos{i, pathToName[fp]})
+					}
+				}
+				if hasReservedConflict(proposed, fontReserved) {
+					sep()
+					renamed, promptErr := asset.PromptFontConflicts(fontKeys, proposed, fontReserved)
+					if errors.Is(promptErr, asset.ErrSkip) {
 						pkgFailed = true
-						continue
-					}
-					fontMap := make(map[string]string)
-					for _, sel := range selectedFonts {
-						fontPath := sel.Key()
-						srcPath := filepath.Join(tr.pkgDirByAsset[assetName], filepath.FromSlash(fontPath))
-						if err := installFont(srcPath, fontsDir); err != nil {
-							printFail(cfg, "font %s: %v", fontPath, err)
-							hadErrors = true
-							pkgFailed = true
-							continue
+					} else if renamed != nil {
+						for i, pos := range positions {
+							if renamed[i] != pos.name {
+								pf := &pendingFonts[pos.assetIdx]
+								pf.fontMap[renamed[i]] = pf.fontMap[pos.name]
+								delete(pf.fontMap, pos.name)
+							}
 						}
-						fontName, hasName := oldPathToName[fontPath]
-						if !hasName {
-							fontName = asset.DeriveFontName(sel.FontName)
-						}
-						fontMap[fontName] = fontPath
-					}
-					if len(fontMap) > 0 {
-						newAssets[assetName] = config.AssetEntry{Font: fontMap}
 					}
 				}
+			}
 
-				for _, fontPath := range allFonts {
-					uninstallFont(fontPath, fontsDir)
-				}
-				if !pkgFailed {
-					printPass(cfg, "updated %s → %s", tr.r.pkg.Version, newVer)
+			// Phase 3: install fonts.
+			if !pkgFailed {
+				fontsDir, err := ensureFontDir()
+				if err != nil {
+					printFail(cfg, "font dir: %v", err)
+					hadErrors = true
+					pkgFailed = true
+				} else {
+					for _, pf := range pendingFonts {
+						fontMap := make(map[string]string, len(pf.fontMap))
+						for fontName, fontPath := range pf.fontMap {
+							srcPath := filepath.Join(tr.pkgDirByAsset[pf.assetName], filepath.FromSlash(fontPath))
+							if err := installFont(srcPath, fontsDir); err != nil {
+								printFail(cfg, "font %s: %v", fontPath, err)
+								hadErrors = true
+								pkgFailed = true
+								continue
+							}
+							fontMap[fontName] = fontPath
+						}
+						if len(fontMap) > 0 {
+							newAssets[pf.assetName] = config.AssetEntry{Font: fontMap}
+						}
+					}
+					for _, fontPath := range allFonts {
+						uninstallFont(fontPath, fontsDir)
+					}
+					if !pkgFailed {
+						printPass(cfg, "updated %s → %s", tr.r.pkg.Version, newVer)
+					}
 				}
 			}
 		}
