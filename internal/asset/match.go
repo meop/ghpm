@@ -33,7 +33,7 @@ var toolPrefs = map[string][]string{
 }
 
 var extValues = []string{
-	".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip",
+	"tar.gz", "tgz", "tar.bz2", "tar.xz", "zip",
 }
 
 var extPrefs = map[string][]string{
@@ -48,7 +48,7 @@ func isSkipped(name string) bool {
 		return true
 	}
 	for _, suf := range extValues {
-		if strings.HasSuffix(lower, suf) {
+		if strings.HasSuffix(lower, "."+suf) {
 			return false
 		}
 	}
@@ -76,12 +76,22 @@ func secondaryScore(name string) int {
 	if prefs, ok := extPrefs[goos]; ok {
 		n := len(prefs)
 		for i := n - 1; i >= 0; i-- {
-			if strings.HasSuffix(lower, prefs[i]) {
+			if strings.HasSuffix(lower, "."+prefs[i]) {
 				total += 1 + (n - 1 - i)
 			}
 		}
 	}
 	return total
+}
+
+func stripAssetExt(name string) string {
+	lower := strings.ToLower(name)
+	for _, ext := range extValues {
+		if strings.HasSuffix(lower, "."+ext) {
+			return lower[:len(lower)-len(ext)-1]
+		}
+	}
+	return lower
 }
 
 func containsAny(lower string, prefixes []string) bool {
@@ -206,6 +216,19 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	slices.SortStableFunc(best, func(a, b candidateScore) int {
 		return secondaryScore(b.asset.Name) - secondaryScore(a.asset.Name)
 	})
+
+	seen := make(map[string]bool, len(best))
+	deduped := best[:0]
+	for _, c := range best {
+		base := stripAssetExt(c.asset.Name)
+		if seen[base] {
+			hidden = append(hidden, c)
+		} else {
+			seen[base] = true
+			deduped = append(deduped, c)
+		}
+	}
+	best = deduped
 
 	if len(best) == 1 && best[0].osMatch && best[0].archMatch {
 		return AssetCandidates{Chosen: best[0].asset, All: candidates}, nil
