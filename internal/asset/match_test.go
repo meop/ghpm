@@ -353,6 +353,30 @@ func stdinPipe(t *testing.T, input string) {
 	}
 }
 
+func TestPromptWithShowMore_Empty_SelectsFirst(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}
+	stdinPipe(t, "\n")
+	got, err := promptWithShowMore(assets, nil)
+	if err != nil || got.Name != "a.tar.gz" {
+		t.Errorf("got %q, %v; want a.tar.gz, nil", got.Name, err)
+	}
+}
+
+func TestPromptWithShowMore_SelectSecond(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}
+	stdinPipe(t, "2\n")
+	got, err := promptWithShowMore(assets, nil)
+	if err != nil || got.Name != "b.tar.gz" {
+		t.Errorf("got %q, %v; want b.tar.gz, nil", got.Name, err)
+	}
+}
+
 func TestPromptWithShowMore_Skip(t *testing.T) {
 	assets := []gh.Asset{
 		{Name: "tool-linux-amd64.tar.gz", Size: 100},
@@ -365,6 +389,40 @@ func TestPromptWithShowMore_Skip(t *testing.T) {
 	}
 }
 
+func TestPromptWithShowMore_ShowMore_Empty_SelectsFirst(t *testing.T) {
+	compatible := []gh.Asset{{Name: "a.tar.gz", Size: 1}, {Name: "b.tar.gz", Size: 2}}
+	hidden := []gh.Asset{{Name: "c.tar.gz", Size: 3}}
+	stdinPipe(t, "3\n\n")
+	got, err := promptWithShowMore(compatible, hidden)
+	if err != nil || got.Name != "a.tar.gz" {
+		t.Errorf("got %q, %v; want a.tar.gz, nil", got.Name, err)
+	}
+}
+
+func TestPromptSelect_Empty_SelectsFirst(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}
+	stdinPipe(t, "\n")
+	got, err := PromptSelect("choose:", assets)
+	if err != nil || got.Name != "a.tar.gz" {
+		t.Errorf("got %q, %v; want a.tar.gz, nil", got.Name, err)
+	}
+}
+
+func TestPromptSelect_SelectSecond(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}
+	stdinPipe(t, "2\n")
+	got, err := PromptSelect("choose:", assets)
+	if err != nil || got.Name != "b.tar.gz" {
+		t.Errorf("got %q, %v; want b.tar.gz, nil", got.Name, err)
+	}
+}
+
 func TestPromptSelect_Skip(t *testing.T) {
 	assets := []gh.Asset{
 		{Name: "tool-linux-amd64.tar.gz", Size: 100},
@@ -374,6 +432,60 @@ func TestPromptSelect_Skip(t *testing.T) {
 	_, err := PromptSelect("choose:", assets)
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
+	}
+}
+
+func TestPromptAssetsMulti_AutoChosen(t *testing.T) {
+	chosen := gh.Asset{Name: "a.tar.gz", Size: 1}
+	got, err := PromptAssetsMulti(AssetCandidates{Chosen: chosen})
+	if err != nil || len(got) != 1 || got[0].Name != "a.tar.gz" {
+		t.Errorf("got %v, %v; want [a.tar.gz], nil", got, err)
+	}
+}
+
+func TestPromptAssetsMulti_Empty_SelectsFirst(t *testing.T) {
+	compatible := []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}
+	stdinPipe(t, "\n")
+	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible})
+	if err != nil || len(got) != 1 || got[0].Name != "a.tar.gz" {
+		t.Errorf("got %v, %v; want [a.tar.gz], nil", got, err)
+	}
+}
+
+func TestPromptAssetsMulti_SelectMultiple(t *testing.T) {
+	compatible := []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}
+	stdinPipe(t, "1,2\n")
+	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible})
+	if err != nil || len(got) != 2 {
+		t.Errorf("got %v, %v; want 2 assets, nil", got, err)
+	}
+}
+
+func TestPromptAssetsMulti_Skip(t *testing.T) {
+	compatible := []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}
+	stdinPipe(t, "0\n")
+	_, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible})
+	if err != ErrSkip {
+		t.Errorf("expected ErrSkip, got %v", err)
+	}
+}
+
+func TestPromptAssetsMulti_ShowMore_Empty_SelectsFirst(t *testing.T) {
+	compatible := []gh.Asset{{Name: "a.tar.gz", Size: 1}, {Name: "b.tar.gz", Size: 2}}
+	hidden := []gh.Asset{{Name: "c.tar.gz", Size: 3}}
+	stdinPipe(t, "3\n\n")
+	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible, Hidden: hidden})
+	if err != nil || len(got) != 1 || got[0].Name != "a.tar.gz" {
+		t.Errorf("got %v, %v; want [a.tar.gz], nil", got, err)
 	}
 }
 

@@ -18,9 +18,13 @@ func ReadLine(prompt string) string {
 	return strings.TrimSpace(line)
 }
 
-// ReadSingle reads a single-item selection. Entering 0 or invalid input returns ErrSkip.
+// ReadSingle reads a single-item selection.
+// Empty input selects item 1. Entering 0 or invalid input returns ErrSkip.
 func ReadSingle(label string) (int, error) {
-	line := ReadLine(label + " (0=skip): ")
+	line := ReadLine(label + " [empty=1] (0=skip): ")
+	if line == "" {
+		return 1, nil
+	}
 	var idx int
 	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx == 0 {
 		return 0, ErrSkip

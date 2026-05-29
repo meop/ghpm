@@ -48,10 +48,10 @@ func TestReadSingle_Invalid(t *testing.T) {
 	}
 }
 
-func TestReadSingle_Empty(t *testing.T) {
+func TestReadSingle_Empty_SelectsFirst(t *testing.T) {
 	setStdin(t, "\n")
-	_, err := ioutils.ReadSingle("pick one")
-	if !errors.Is(err, ioutils.ErrSkip) {
-		t.Errorf("expected ErrSkip for empty input, got %v", err)
+	idx, err := ioutils.ReadSingle("pick one")
+	if err != nil || idx != 1 {
+		t.Errorf("got %d, %v; want 1, nil", idx, err)
 	}
 }

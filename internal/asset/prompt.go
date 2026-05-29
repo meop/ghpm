@@ -6,31 +6,19 @@ import (
 	"github.com/meop/ghpm/internal/ioutils"
 )
 
-// readSingleFirst reads a single-item selection.
+// readSingle reads a single-item selection.
 // Empty input selects item 1. Entering 0 or invalid input returns ErrSkip.
-func readSingleFirst() (int, error) {
-	line := ioutils.ReadLine("enter number [empty=1] (0=skip): ")
-	if line == "" {
-		return 1, nil
-	}
-	var idx int
-	if _, err := fmt.Sscanf(line, "%d", &idx); err != nil || idx == 0 {
-		return 0, ErrSkip
-	}
-	return idx, nil
-}
-
-// readSingle reads a single-item selection with no default for empty input.
-// Entering 0 returns ErrSkip. Empty or invalid input returns an error.
 func readSingle() (int, error) {
 	return ioutils.ReadSingle("enter number")
 }
 
-// readMultiAllWithShowMore is like readMultiAll but accepts a separate parse
-// maximum. The range hint displays promptN while selections up to parseN are
-// accepted — used when a synthetic "show more" entry sits above the visible range.
-func readMultiAllWithShowMore(promptN, parseN int) ([]int, error) {
-	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) [empty=all] (0=skip | 1[,][-]%d): ", promptN))
+// readMultiFirstWithShowMore is like readMultiAll but accepts a separate parse
+// selects item 1 instead of all items.
+func readMultiFirstWithShowMore(promptN, parseN int) ([]int, error) {
+	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) [empty=1] (0=skip | 1[,][-]%d): ", promptN))
+	if line == "" {
+		return []int{1}, nil
+	}
 	indices, err := parseMultiSelect(line, parseN)
 	if err != nil || indices == nil {
 		return nil, ErrSkip
@@ -42,6 +30,20 @@ func readMultiAllWithShowMore(promptN, parseN int) ([]int, error) {
 // Entering 0 or invalid input returns ErrSkip.
 func readMultiAll(n int) ([]int, error) {
 	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) [empty=all] (0=skip | 1[,][-]%d): ", n))
+	indices, err := parseMultiSelect(line, n)
+	if err != nil || indices == nil {
+		return nil, ErrSkip
+	}
+	return indices, nil
+}
+
+// readMultiFirst reads a multi-select prompt where empty input selects item 1.
+// Entering 0 or invalid input returns ErrSkip.
+func readMultiFirst(n int) ([]int, error) {
+	line := ioutils.ReadLine(fmt.Sprintf("enter number(s) [empty=1] (0=skip | 1[,][-]%d): ", n))
+	if line == "" {
+		return []int{1}, nil
+	}
 	indices, err := parseMultiSelect(line, n)
 	if err != nil || indices == nil {
 		return nil, ErrSkip

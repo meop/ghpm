@@ -271,7 +271,7 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 		showMoreIdx = len(compatible) + 1
 		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
 	}
-	idx, err := readSingleFirst()
+	idx, err := readSingle()
 	if err != nil {
 		return gh.Asset{}, err
 	}
@@ -322,7 +322,7 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 	if showMoreIdx > 0 {
 		maxIdx = showMoreIdx
 	}
-	indices, err := readMultiAllWithShowMore(len(compatible), maxIdx)
+	indices, err := readMultiFirstWithShowMore(len(compatible), maxIdx)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +349,7 @@ func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
 	for i, a := range all {
 		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
 	}
-	indices, err := readMultiAll(len(all))
+	indices, err := readMultiFirst(len(all))
 	if err != nil {
 		return nil, err
 	}

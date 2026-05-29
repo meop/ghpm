@@ -1,8 +1,27 @@
 package config
 
 import (
+	"bufio"
+	"os"
 	"testing"
+
+	"github.com/meop/ghpm/internal/ioutils"
 )
+
+func setStdin(t *testing.T, input string) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := ioutils.Stdin
+	ioutils.Stdin = bufio.NewReader(r)
+	t.Cleanup(func() { ioutils.Stdin = old })
+	if _, err := w.WriteString(input); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+}
 
 func TestParseVersionSuffix(t *testing.T) {
 	cases := []struct {
@@ -68,20 +87,25 @@ func TestResolveSource_ManifestAndRepos(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		got, err := ResolveSource(c.name, c.version, m, repos)
-		if c.wantErr {
-			if err == nil {
-				t.Errorf("ResolveSource(%q) expected error, got %q", c.name, got)
+		t.Run(c.name, func(t *testing.T) {
+			if c.wantErr {
+				setStdin(t, "0\n")
 			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("ResolveSource(%q) unexpected error: %v", c.name, err)
-			continue
-		}
-		if got != c.want {
-			t.Errorf("ResolveSource(%q) = %q, want %q", c.name, got, c.want)
-		}
+			got, err := ResolveSource(c.name, c.version, m, repos)
+			if c.wantErr {
+				if err == nil {
+					t.Errorf("ResolveSource(%q) expected error, got %q", c.name, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("ResolveSource(%q) unexpected error: %v", c.name, err)
+				return
+			}
+			if got != c.want {
+				t.Errorf("ResolveSource(%q) = %q, want %q", c.name, got, c.want)
+			}
+		})
 	}
 }
 
