@@ -428,6 +428,27 @@ func TestSelectAssetAuto_Dedup(t *testing.T) {
 	}
 }
 
+func TestSelectAssetAuto_CompatibleAlphabeticalOrder(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "tool-zzz.zip", Size: 100},
+		{Name: "tool-aaa.zip", Size: 100},
+		{Name: "tool-mmm.zip", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ac.Compatible) != 3 {
+		t.Fatalf("expected 3 compatible, got %d", len(ac.Compatible))
+	}
+	want := []string{"tool-aaa.zip", "tool-mmm.zip", "tool-zzz.zip"}
+	for i, a := range ac.Compatible {
+		if a.Name != want[i] {
+			t.Errorf("Compatible[%d] = %q, want %q", i, a.Name, want[i])
+		}
+	}
+}
+
 func TestSecondaryScore_Linux(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("linux-specific test")

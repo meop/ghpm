@@ -215,7 +215,10 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	}
 
 	slices.SortStableFunc(best, func(a, b candidateScore) int {
-		return secondaryScore(b.asset.Name) - secondaryScore(a.asset.Name)
+		if d := secondaryScore(b.asset.Name) - secondaryScore(a.asset.Name); d != 0 {
+			return d
+		}
+		return strings.Compare(stripAssetExt(a.asset.Name), stripAssetExt(b.asset.Name))
 	})
 
 	seen := make(map[string]bool, len(best))
@@ -234,6 +237,10 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	if len(best) == 1 && best[0].osMatch && best[0].archMatch {
 		return AssetCandidates{Chosen: best[0].asset, All: candidates}, nil
 	}
+
+	slices.SortStableFunc(hidden, func(a, b candidateScore) int {
+		return strings.Compare(stripAssetExt(a.asset.Name), stripAssetExt(b.asset.Name))
+	})
 
 	var bestAssets []gh.Asset
 	for _, c := range best {
