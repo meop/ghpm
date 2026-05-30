@@ -42,3 +42,41 @@ func fontRegistered(fontFile string) bool {
 	_, _, err = k.GetStringValue(regFontName(fontFile))
 	return err == nil
 }
+
+// findOrphanedFonts returns HKCU font registry entries whose value path is
+// inside fontsDir but whose base filename is not in expected.
+// expected contains base filenames (e.g. "Hack-Regular.ttf") of all fonts
+// currently tracked in the manifest.
+func findOrphanedFonts(expected map[string]bool, fontsDir string) []orphanedFontEntry {
+	k, err := registry.OpenKey(registry.CURRENT_USER, fontRegKey, registry.QUERY_VALUE)
+	if err != nil {
+		return nil
+	}
+	defer k.Close()
+
+	names, err := k.ReadValueNames(-1)
+	if err != nil {
+		return nil
+	}
+
+	lowerFontsDir := strings.ToLower(fontsDir)
+	var orphaned []orphanedFontEntry
+	for _, name := range names {
+		val, _, err := k.GetStringValue(name)
+		if err != nil {
+			continue
+		}
+		if !strings.HasPrefix(strings.ToLower(val), lowerFontsDir) {
+			continue
+		}
+		base := filepath.Base(val)
+		if expected[base] {
+			continue
+		}
+		orphaned = append(orphaned, orphanedFontEntry{
+			display:  base + ": missing manifest",
+			filePath: val,
+		})
+	}
+	return orphaned
+}

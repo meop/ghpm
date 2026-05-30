@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/meop/ghpm/internal/store"
 )
 
 type Settings struct {
@@ -34,7 +36,7 @@ func defaultSettings() *Settings {
 }
 
 func LoadSettings() (*Settings, error) {
-	dir, err := ghpmDir()
+	dir, err := store.Dir()
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +56,7 @@ func LoadSettings() (*Settings, error) {
 }
 
 func EnsureDirs() error {
-	base, err := ghpmDir()
+	base, err := store.Dir()
 	if err != nil {
 		return err
 	}

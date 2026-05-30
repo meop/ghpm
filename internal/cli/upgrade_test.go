@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/store"
 )
 
 func TestRunUpgrade_NoGH(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
-	t.Setenv("HOME", home)
-	writeSettings(t, home, &config.Settings{})
+	writeSettings(t, &config.Settings{})
 	quiet = true
 	defer func() { quiet = false }()
 
@@ -25,8 +25,8 @@ func TestRunUpgrade_NoGH(t *testing.T) {
 }
 
 func TestRunUpgrade_AlreadyLatest(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
+	withHome(t)
+	writeSettings(t, &config.Settings{})
 
 	releaseJSON, _ := json.Marshal(map[string]any{
 		"tagName": "v" + version,
@@ -49,8 +49,8 @@ func TestRunUpgrade_AlreadyLatest(t *testing.T) {
 		},
 	})
 
-	kebabDir := filepath.Join(home, ".ghpm", "shim")
-	if err := os.MkdirAll(kebabDir, 0755); err != nil {
+	kebabDir, err := store.ShimDir()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(kebabDir, "kebab"), []byte("#!/bin/sh\necho 0.1.0"), 0755); err != nil {
@@ -78,7 +78,7 @@ esac`)
 	quiet = true
 	defer func() { quiet = false }()
 
-	err := runUpgrade(cmdWithContext(), nil)
+	err = runUpgrade(cmdWithContext(), nil)
 	if err != nil {
 		t.Logf("upgrade: %v", err)
 	}

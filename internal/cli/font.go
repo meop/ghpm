@@ -80,6 +80,11 @@ func uninstallFont(fontKey, fontsDir string) {
 	unregisterFont(fontName)
 }
 
+type orphanedFontEntry struct {
+	display  string
+	filePath string
+}
+
 func fontInstalled(fontKey, fontsDir string) bool {
 	if _, err := os.Lstat(filepath.Join(fontsDir, filepath.Base(fontKey))); os.IsNotExist(err) {
 		return false

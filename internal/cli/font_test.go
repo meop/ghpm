@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/store"
 )
 
 func makeFontFile(t *testing.T, dir, name string) {
@@ -87,16 +88,21 @@ func TestStaleFontPaths_AllRemovedWhenNoneReinstalled(t *testing.T) {
 
 func TestCleanBrokenInstalls_FontMissing(t *testing.T) {
 	home := withHome(t)
-	xdgDir := filepath.Join(home, ".xdg")
-	t.Setenv("XDG_DATA_HOME", xdgDir)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".xdg"))
 	yes = true
 	defer func() { yes = false }()
 
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.3.0"), 0755); err != nil {
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
 		t.Fatal(err)
 	}
-	downloadDir := filepath.Join(home, ".ghpm", "download")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.3.0", "Hack.zip"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
@@ -118,16 +124,21 @@ func TestCleanBrokenInstalls_FontHealthy(t *testing.T) {
 	home := withHome(t)
 	xdgDir := filepath.Join(home, ".xdg")
 	t.Setenv("XDG_DATA_HOME", xdgDir)
-	fontsDir := filepath.Join(xdgDir, "fonts")
-	makeFontFile(t, fontsDir, "Hack-Regular.ttf")
+	makeFontFile(t, filepath.Join(xdgDir, "fonts"), "Hack-Regular.ttf")
 	yes = true
 	defer func() { yes = false }()
 
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.3.0"), 0755); err != nil {
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
 		t.Fatal(err)
 	}
-	downloadDir := filepath.Join(home, ".ghpm", "download")
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.3.0", "Hack.zip"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},

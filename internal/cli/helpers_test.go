@@ -9,11 +9,15 @@ import (
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/store"
 )
 
-func writeSettings(t *testing.T, home string, s *config.Settings) {
+func writeSettings(t *testing.T, s *config.Settings) {
 	t.Helper()
-	dir := filepath.Join(home, ".ghpm")
+	dir, err := store.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -91,8 +95,8 @@ func TestReservedFontNames_ExcludesOwner(t *testing.T) {
 }
 
 func TestInitCommand_Minimal(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
+	withHome(t)
+	writeSettings(t, &config.Settings{})
 
 	ci, err := initCommand(cmdOptions{})
 	if err != nil {
@@ -110,9 +114,9 @@ func TestInitCommand_Minimal(t *testing.T) {
 }
 
 func TestInitCommand_WithManifest(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
-	writeManifest(t, home, &config.Manifest{
+	withHome(t)
+	writeSettings(t, &config.Settings{})
+	writeManifest(t, &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
 	})
@@ -130,8 +134,8 @@ func TestInitCommand_WithManifest(t *testing.T) {
 }
 
 func TestInitCommand_WithLock(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
+	withHome(t)
+	writeSettings(t, &config.Settings{})
 
 	ci, err := initCommand(cmdOptions{Lock: true})
 	if err != nil {
@@ -144,11 +148,10 @@ func TestInitCommand_WithLock(t *testing.T) {
 }
 
 func TestInitCommand_GHCheckFails(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
-	t.Setenv("HOME", home)
-	writeSettings(t, home, &config.Settings{})
+	writeSettings(t, &config.Settings{})
 
 	_, err := initCommand(cmdOptions{GH: true})
 	if err == nil {
@@ -157,8 +160,8 @@ func TestInitCommand_GHCheckFails(t *testing.T) {
 }
 
 func TestInitCommand_ReposLoadFailure(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
+	withHome(t)
+	writeSettings(t, &config.Settings{})
 
 	ci, err := initCommand(cmdOptions{Repos: true})
 	if err != nil {
@@ -216,8 +219,8 @@ func TestVerifyDigest_BadFormat(t *testing.T) {
 }
 
 func TestInitCommand_SkipHashCheck_PropagatesFromSettings(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{SkipHashCheck: true})
+	withHome(t)
+	writeSettings(t, &config.Settings{SkipHashCheck: true})
 	skipHashCheck = false
 	defer func() { skipHashCheck = false }()
 
@@ -231,14 +234,17 @@ func TestInitCommand_SkipHashCheck_PropagatesFromSettings(t *testing.T) {
 }
 
 func TestInitCommand_WithDirs(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
+	withHome(t)
+	writeSettings(t, &config.Settings{})
 
 	ci, err := initCommand(cmdOptions{Dirs: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	binDir := filepath.Join(home, ".ghpm", "bin")
+	binDir, err := store.BinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(binDir); os.IsNotExist(err) {
 		t.Error("bin dir was not created")
 	}

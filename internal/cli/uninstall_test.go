@@ -7,15 +7,19 @@ import (
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/store"
 )
 
-func writeManifest(t *testing.T, home string, m *config.Manifest) {
+func writeManifest(t *testing.T, m *config.Manifest) {
 	t.Helper()
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(home, ".ghpm")
+	dir, err := store.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -25,11 +29,11 @@ func writeManifest(t *testing.T, home string, m *config.Manifest) {
 }
 
 func TestRunUninstall_RemovesFromManifest(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	writeManifest(t, home, &config.Manifest{
+	writeManifest(t, &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
 	})
@@ -51,11 +55,11 @@ func TestRunUninstall_RemovesFromManifest(t *testing.T) {
 }
 
 func TestRunUninstall_KeepsRepoWhenOtherVersionExists(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	writeManifest(t, home, &config.Manifest{
+	writeManifest(t, &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{
 			"fzf":        {Version: "0.58.0"},

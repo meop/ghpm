@@ -7,8 +7,8 @@ import (
 )
 
 func TestRunList_Empty(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
+	withHome(t)
+	writeSettings(t, &config.Settings{})
 	quiet = true
 	defer func() { quiet = false }()
 
@@ -18,9 +18,9 @@ func TestRunList_Empty(t *testing.T) {
 }
 
 func TestRunList_WithPackages(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
-	writeManifest(t, home, &config.Manifest{
+	withHome(t)
+	writeSettings(t, &config.Settings{})
+	writeManifest(t, &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{
 			"fzf": {Version: "0.58.0", Pin: "latest", Asset: map[string]config.AssetEntry{
@@ -37,9 +37,9 @@ func TestRunList_WithPackages(t *testing.T) {
 }
 
 func TestRunList_LongNames(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
-	writeManifest(t, home, &config.Manifest{
+	withHome(t)
+	writeSettings(t, &config.Settings{})
+	writeManifest(t, &config.Manifest{
 		Repos: map[string]string{
 			"fzf": "github.com/junegunn/fzf",
 			"rg":  "github.com/BurntSushi/ripgrep",
@@ -58,9 +58,9 @@ func TestRunList_LongNames(t *testing.T) {
 }
 
 func TestRunList_ShortNames(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{})
-	writeManifest(t, home, &config.Manifest{
+	withHome(t)
+	writeSettings(t, &config.Settings{})
+	writeManifest(t, &config.Manifest{
 		Repos: map[string]string{
 			"fzf": "github.com/junegunn/fzf",
 			"rg":  "github.com/BurntSushi/ripgrep",
@@ -79,8 +79,8 @@ func TestRunList_ShortNames(t *testing.T) {
 }
 
 func TestRunRefresh(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{
+	withHome(t)
+	writeSettings(t, &config.Settings{
 		RepoSources: []string{"github.com/meop/ghpm-config"},
 	})
 	quiet = true

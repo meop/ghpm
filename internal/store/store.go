@@ -52,6 +52,11 @@ func ghpmDir() (string, error) {
 	return filepath.Join(home, ".ghpm"), nil
 }
 
+// Dir returns the root ~/.ghpm directory path without creating it.
+func Dir() (string, error) {
+	return ghpmDir()
+}
+
 func ghpmSubDir(mkdir bool, elems ...string) (string, error) {
 	base, err := ghpmDir()
 	if err != nil {
@@ -101,13 +106,18 @@ func ReposBaseDir() (string, error) {
 	return ghpmSubDir(false, "repo")
 }
 
+// SourceToRelPath converts a source URI (e.g. "github.com/owner/repo") to a
+// relative filesystem path using the OS path separator.
+func SourceToRelPath(source string) string {
+	return strings.ReplaceAll(source, "/", string(filepath.Separator))
+}
+
 func RepoDir(source string) (string, error) {
 	base, err := ReposBaseDir()
 	if err != nil {
 		return "", err
 	}
-	relPath := strings.ReplaceAll(source, "/", string(filepath.Separator))
-	dir := filepath.Join(base, relPath)
+	dir := filepath.Join(base, SourceToRelPath(source))
 	return dir, os.MkdirAll(dir, 0755)
 }
 
@@ -116,8 +126,7 @@ func ReleaseDir(source, ver string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	relPath := strings.ReplaceAll(source, "/", string(filepath.Separator))
-	dir := filepath.Join(base, relPath, version.Normalize(ver))
+	dir := filepath.Join(base, SourceToRelPath(source), version.Normalize(ver))
 	return dir, os.MkdirAll(dir, 0755)
 }
 

@@ -46,7 +46,7 @@ func runTidy(cmd *cobra.Command, args []string) error {
 			fmt.Printf("remove all cached assets in %s\n", releaseDir)
 		} else {
 			sep()
-			if !promptConfirm(fmt.Sprintf("remove all cached assets in %s", releaseDir)) {
+			if !promptConfirm("remove all download(s)") {
 				return nil
 			}
 			if err := os.RemoveAll(releaseDir); err != nil {
@@ -56,15 +56,15 @@ func runTidy(cmd *cobra.Command, args []string) error {
 			printPass(cfg, "removed all cached assets")
 			_ = os.MkdirAll(releaseDir, 0755)
 		}
-		cleanBrokenInstalls(cfg, manifest, releaseDir)
 		return nil
 	}
 
 	b1 := cleanBrokenInstalls(cfg, manifest, releaseDir)
 	b2 := cleanOrphanedBinShims(cfg, manifest)
-	b3 := cleanOrphanedExtracts(cfg, manifest)
-	b4 := cleanOrphanedReleases(cfg, releaseDir, manifest)
-	if !b1 && !b2 && !b3 && !b4 {
+	b3 := cleanOrphanedFonts(cfg, manifest)
+	b4 := cleanOrphanedExtracts(cfg, manifest)
+	b5 := cleanOrphanedReleases(cfg, releaseDir, manifest)
+	if !b1 && !b2 && !b3 && !b4 && !b5 {
 		print("nothing to tidy")
 	}
 	return nil
@@ -88,6 +88,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		extractPath   string
 		manifestKey   string
 		trimShimNames []string
+		trimFontNames []string
 	}
 	var items []item
 
@@ -96,23 +97,33 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		allFonts := pkg.AllFonts()
 
 		if len(allBins) == 0 && len(allFonts) > 0 {
+			extractMissingFont := false
+			for assetName := range pkg.Asset {
+				if _, err := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version, assetName)); os.IsNotExist(err) {
+					extractMissingFont = true
+					break
+				}
+			}
+			if extractMissingFont {
+				items = append(items, item{
+					display:     fmt.Sprintf("%s: missing extract", key),
+					extractPath: filepath.Join(pkgsDir, key, pkg.Version),
+					manifestKey: key,
+				})
+				continue
+			}
 			fontsDir, err := userFontDir()
 			if err != nil {
 				continue
 			}
-			var missing []string
 			for fontName, fontPath := range allFonts {
 				if !fontInstalled(fontPath, fontsDir) {
-					missing = append(missing, fontName)
+					items = append(items, item{
+						display:       fmt.Sprintf("%s: missing font (%s)", key, fontName),
+						manifestKey:   key,
+						trimFontNames: []string{fontName},
+					})
 				}
-			}
-			if len(missing) > 0 {
-				slices.Sort(missing)
-				items = append(items, item{
-					display:     fmt.Sprintf("%s: missing font(s) (%s)", key, strings.Join(missing, ", ")),
-					extractPath: filepath.Join(pkgsDir, key, pkg.Version),
-					manifestKey: key,
-				})
 			}
 			continue
 		}
@@ -136,31 +147,24 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 				break
 			}
 		}
-		allShimsMissing := len(missingShimNames) == len(allBins)
-
 		if len(missingShimNames) == 0 && !extractMissing {
 			continue
 		}
-		if allShimsMissing || extractMissing {
-			var missing []string
-			if allShimsMissing {
-				missing = append(missing, fmt.Sprintf("bin (%s)", strings.Join(missingShimNames, ", ")))
-			}
-			if extractMissing {
-				missing = append(missing, "extract")
-			}
+		if extractMissing {
 			items = append(items, item{
-				display:     fmt.Sprintf("%s: missing %s", key, strings.Join(missing, ", ")),
+				display:     fmt.Sprintf("%s: missing extract", key),
 				shimPaths:   shimPaths,
 				extractPath: filepath.Join(pkgsDir, key, pkg.Version),
 				manifestKey: key,
 			})
 		} else {
-			items = append(items, item{
-				display:       fmt.Sprintf("%s: missing bin (%s)", key, strings.Join(missingShimNames, ", ")),
-				manifestKey:   key,
-				trimShimNames: missingShimNames,
-			})
+			for _, shimName := range missingShimNames {
+				items = append(items, item{
+					display:       fmt.Sprintf("%s: missing bin (%s)", key, shimName),
+					manifestKey:   key,
+					trimShimNames: []string{shimName},
+				})
+			}
 		}
 	}
 
@@ -179,7 +183,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	}
 
 	sep()
-	if !promptConfirm(fmt.Sprintf("purge %d broken install(s)", len(items))) {
+	if !promptConfirm(fmt.Sprintf("remove %d broken install(s)", len(items))) {
 		return true
 	}
 
@@ -207,14 +211,44 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 					entry.Asset[assetName] = ae
 				}
 				manifest.Extracts[it.manifestKey] = entry
+				if len(entry.AllBins()) == 0 && len(entry.AllFonts()) == 0 {
+					manifest.RemoveExtract(it.manifestKey)
+					extractPath := filepath.Join(pkgsDir, it.manifestKey, entry.Version)
+					_ = os.RemoveAll(extractPath)
+					parent := filepath.Dir(extractPath)
+					if parent != pkgsDir {
+						if es, err := os.ReadDir(parent); err == nil && len(es) == 0 {
+							_ = os.Remove(parent)
+						}
+					}
+				}
+			} else if len(it.trimFontNames) > 0 {
+				entry := manifest.Extracts[it.manifestKey]
+				for assetName, ae := range entry.Asset {
+					for _, fontName := range it.trimFontNames {
+						delete(ae.Font, fontName)
+					}
+					entry.Asset[assetName] = ae
+				}
+				manifest.Extracts[it.manifestKey] = entry
+				if len(entry.AllBins()) == 0 && len(entry.AllFonts()) == 0 {
+					manifest.RemoveExtract(it.manifestKey)
+					extractPath := filepath.Join(pkgsDir, it.manifestKey, entry.Version)
+					_ = os.RemoveAll(extractPath)
+					parent := filepath.Dir(extractPath)
+					if parent != pkgsDir {
+						if es, err := os.ReadDir(parent); err == nil && len(es) == 0 {
+							_ = os.Remove(parent)
+						}
+					}
+				}
 			} else {
 				baseName, _, _ := config.ParseVersionSuffix(it.manifestKey)
 				pkg := manifest.Extracts[it.manifestKey]
 				if src, ok := manifest.Repos[baseName]; ok {
-					relPath := strings.ReplaceAll(src, "/", string(filepath.Separator))
-					downloadVersionDir := filepath.Join(releaseDir, relPath, pkg.Version)
+					downloadVersionDir := filepath.Join(releaseDir, store.SourceToRelPath(src), pkg.Version)
 					_ = os.RemoveAll(downloadVersionDir)
-					parent := filepath.Join(releaseDir, relPath)
+					parent := filepath.Join(releaseDir, store.SourceToRelPath(src))
 					for parent != releaseDir {
 						es, err := os.ReadDir(parent)
 						if err != nil || len(es) > 0 {
@@ -234,6 +268,44 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		if err := saveManifest(cfg, manifest); err != nil {
 			return true
 		}
+	}
+	return true
+}
+
+// cleanOrphanedFonts removes font files in the fonts dir (and registry entries
+// on Windows) that have no corresponding manifest entry.
+func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest) bool {
+	fontsDir, err := userFontDir()
+	if err != nil {
+		return false
+	}
+	expected := map[string]bool{}
+	for _, pkg := range manifest.Extracts {
+		for _, ae := range pkg.Asset {
+			for _, fontRelPath := range ae.Font {
+				expected[filepath.Base(fontRelPath)] = true
+			}
+		}
+	}
+	orphaned := findOrphanedFonts(expected, fontsDir)
+	if len(orphaned) == 0 {
+		return false
+	}
+	sep()
+	printTitle("orphaned fonts")
+	for _, o := range orphaned {
+		printWarn(cfg, "%s", o.display)
+	}
+	if dryRun {
+		return true
+	}
+	sep()
+	if !promptConfirm(fmt.Sprintf("remove %d orphaned font(s)", len(orphaned))) {
+		return true
+	}
+	for _, o := range orphaned {
+		_ = os.Remove(o.filePath)
+		unregisterFont(filepath.Base(o.filePath))
 	}
 	return true
 }
@@ -316,7 +388,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 			for _, ve := range verEntries {
 				if ve.IsDir() && ve.Name() != pkg.Version {
 					paths = append(paths, filepath.Join(pkgsDir, key, ve.Name()))
-					displays = append(displays, fmt.Sprintf("%s@%s: missing manifest", key, ve.Name()))
+					displays = append(displays, fmt.Sprintf("%s: missing manifest (%s)", key, ve.Name()))
 				}
 			}
 		}
@@ -394,7 +466,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		rel, _ := filepath.Rel(releaseDir, p)
 		parts := strings.Split(rel, string(filepath.Separator))
 		if len(parts) >= 5 {
-			printWarn(cfg, "%s: unused download (%s|%s)", parts[2], parts[3], parts[len(parts)-1])
+			printWarn(cfg, "%s: orphaned download (%s|%s)", parts[2], parts[3], parts[len(parts)-1])
 		} else {
 			printWarn(cfg, "%s", rel)
 		}
@@ -405,7 +477,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	}
 
 	sep()
-	if !promptConfirm(fmt.Sprintf("remove %d unused download(s)", len(toRemove))) {
+	if !promptConfirm(fmt.Sprintf("remove %d orphaned download(s)", len(toRemove))) {
 		return true
 	}
 

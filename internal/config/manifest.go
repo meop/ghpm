@@ -5,6 +5,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+
+	"github.com/meop/ghpm/internal/store"
 )
 
 type AssetEntry struct {
@@ -67,16 +69,8 @@ func (m *Manifest) RemoveExtract(key string) {
 	delete(m.Repos, baseName)
 }
 
-func ghpmDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".ghpm"), nil
-}
-
 func manifestPath() (string, error) {
-	dir, err := ghpmDir()
+	dir, err := store.Dir()
 	if err != nil {
 		return "", err
 	}

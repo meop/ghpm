@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/store"
 )
 
 func withHome(t *testing.T) string {
@@ -15,10 +16,10 @@ func withHome(t *testing.T) string {
 	return tmp
 }
 
-func makeBinDir(t *testing.T, home string, files ...string) string {
+func makeBinDir(t *testing.T, files ...string) string {
 	t.Helper()
-	binDir := filepath.Join(home, ".ghpm", "bin")
-	if err := os.MkdirAll(binDir, 0755); err != nil {
+	binDir, err := store.BinDir()
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range files {
@@ -30,15 +31,21 @@ func makeBinDir(t *testing.T, home string, files ...string) string {
 }
 
 func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	downloadDir := filepath.Join(home, ".ghpm", "download")
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	manifest := &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
@@ -58,12 +65,15 @@ func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
 }
 
 func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	makeBinDir(t, home, "fzf")
-	downloadDir := filepath.Join(home, ".ghpm", "download")
+	binDir := makeBinDir(t, "fzf")
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	manifest := &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
@@ -77,23 +87,28 @@ func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
 	if _, ok := manifest.Extracts["fzf"]; ok {
 		t.Error("manifest entry was not removed")
 	}
-	binDir := filepath.Join(home, ".ghpm", "bin")
 	if _, err := os.Lstat(filepath.Join(binDir, "fzf")); !os.IsNotExist(err) {
 		t.Error("shim was not removed")
 	}
 }
 
 func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	makeBinDir(t, home, "fzf")
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	makeBinDir(t, "fzf")
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0", "fzf.tar.gz"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	downloadDir := filepath.Join(home, ".ghpm", "download")
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	manifest := &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
@@ -110,17 +125,23 @@ func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenInstalls_PartialShim(t *testing.T) {
-	home := withHome(t)
+func TestCleanBrokenInstalls_PartialShim_TrimsOne(t *testing.T) {
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	makeBinDir(t, home, "uv")
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	makeBinDir(t, "uv")
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "uv", "0.7.0", "uv.tar.gz"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	downloadDir := filepath.Join(home, ".ghpm", "download")
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	manifest := &config.Manifest{
 		Repos: map[string]string{"uv": "github.com/astral-sh/uv"},
@@ -130,34 +151,67 @@ func TestCleanBrokenInstalls_PartialShim(t *testing.T) {
 	}
 
 	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); !cleaned {
-		t.Error("should have reported partial shim to update manifest")
+		t.Error("should have reported missing shim")
 	}
 	entry, ok := manifest.Extracts["uv"]
 	if !ok {
 		t.Error("manifest entry was removed but should be kept")
 	}
-	if len(entry.AllBins()) != 1 {
-		t.Errorf("expected 1 bin remaining, got %d: %v", len(entry.AllBins()), entry.AllBins())
-	}
 	if _, ok := entry.AllBins()["uv"]; !ok {
-		t.Errorf("expected uv to remain in bins, got %v", entry.AllBins())
+		t.Errorf("uv should remain in bins, got %v", entry.AllBins())
 	}
-	binDir := filepath.Join(home, ".ghpm", "bin")
-	if _, err := os.Lstat(filepath.Join(binDir, "uv")); err != nil {
-		t.Error("uv shim was removed but should have been kept")
+	if _, ok := entry.AllBins()["uvx"]; ok {
+		t.Errorf("uvx should have been trimmed from bins, got %v", entry.AllBins())
 	}
 	if _, err := os.Lstat(filepath.Join(pkgsDir, "uv", "0.7.0")); err != nil {
 		t.Error("extract dir was removed but should have been kept")
 	}
 }
 
-func TestCleanOrphanedBinShims_OrphanedShim(t *testing.T) {
-	home := withHome(t)
+func TestCleanBrokenInstalls_AllShimsMissing_AutoRemovesExtract(t *testing.T) {
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	binDir := makeBinDir(t, home, "fzf", "orphan")
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0", "fzf.tar.gz"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
+			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
+		}}},
+	}
+
+	cleanBrokenInstalls(nil, manifest, downloadDir)
+
+	if _, ok := manifest.Extracts["fzf"]; ok {
+		t.Error("manifest entry should have been auto-removed when last shim was trimmed")
+	}
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.58.0")); !os.IsNotExist(err) {
+		t.Error("extract dir should have been removed when last shim was trimmed")
+	}
+}
+
+func TestCleanOrphanedBinShims_OrphanedShim(t *testing.T) {
+	withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	binDir := makeBinDir(t, "fzf", "orphan")
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -180,11 +234,11 @@ func TestCleanOrphanedBinShims_OrphanedShim(t *testing.T) {
 }
 
 func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	binDir := makeBinDir(t, home, "gh", "ghpm", "orphan")
+	binDir := makeBinDir(t, "gh", "ghpm", "orphan")
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{},
@@ -203,12 +257,116 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 	}
 }
 
-func TestCleanOrphanedExtracts_OrphanedExtract(t *testing.T) {
-	home := withHome(t)
+func TestCleanBrokenInstalls_MissingFonts_OneItemEach(t *testing.T) {
+	withHome(t)
+	t.Setenv("XDG_DATA_HOME", "")
 	yes = true
 	defer func() { yes = false }()
 
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0", "Hack.tar.gz"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos: map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
+		Extracts: map[string]config.PackageEntry{"nerd-fonts": {Version: "3.0.0", Asset: map[string]config.AssetEntry{
+			"Hack.tar.gz": {Font: map[string]string{
+				"hack-regular": "Hack/Hack-Regular.ttf",
+				"hack-bold":    "Hack/Hack-Bold.ttf",
+			}},
+		}}},
+	}
+
+	cleaned := cleanBrokenInstalls(nil, manifest, downloadDir)
+	if !cleaned {
+		t.Fatal("expected broken installs to be found")
+	}
+
+	entry, ok := manifest.Extracts["nerd-fonts"]
+	if ok && (len(entry.AllFonts()) != 0 || len(entry.AllBins()) != 0) {
+		t.Errorf("expected manifest entry to be fully removed, got %+v", entry)
+	}
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0")); !os.IsNotExist(err) {
+		t.Error("extract dir was not removed after all fonts cleaned")
+	}
+}
+
+func TestCleanBrokenInstalls_MissingOneFontKeepsOther(t *testing.T) {
+	withHome(t)
+	t.Setenv("XDG_DATA_HOME", "")
+	yes = true
+	defer func() { yes = false }()
+
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0", "Hack.tar.gz"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fontsDir, err := userFontDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(fontsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fontsDir, "Hack-Regular.ttf"), []byte("font"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos: map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
+		Extracts: map[string]config.PackageEntry{"nerd-fonts": {Version: "3.0.0", Asset: map[string]config.AssetEntry{
+			"Hack.tar.gz": {Font: map[string]string{
+				"hack-regular": "Hack/Hack-Regular.ttf",
+				"hack-bold":    "Hack/Hack-Bold.ttf",
+			}},
+		}}},
+	}
+
+	cleaned := cleanBrokenInstalls(nil, manifest, downloadDir)
+	if !cleaned {
+		t.Fatal("expected broken installs to be found")
+	}
+
+	entry, ok := manifest.Extracts["nerd-fonts"]
+	if !ok {
+		t.Fatal("manifest entry was fully removed, but hack-regular is still installed")
+	}
+	if _, hasBold := entry.AllFonts()["hack-bold"]; hasBold {
+		t.Error("hack-bold should have been removed from manifest")
+	}
+	if _, hasRegular := entry.AllFonts()["hack-regular"]; !hasRegular {
+		t.Error("hack-regular should remain in manifest")
+	}
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0")); err != nil {
+		t.Error("extract dir was removed but should be kept since hack-regular is still installed")
+	}
+}
+
+func TestCleanOrphanedExtracts_OrphanedExtract(t *testing.T) {
+	withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "orphan", "1.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -224,12 +382,15 @@ func TestCleanOrphanedExtracts_OrphanedExtract(t *testing.T) {
 }
 
 func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
-	makeBinDir(t, home, "fzf")
-	pkgsDir := filepath.Join(home, ".ghpm", "extract")
+	makeBinDir(t, "fzf")
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.57.0"), 0755); err != nil {
 		t.Fatal(err)
 	}

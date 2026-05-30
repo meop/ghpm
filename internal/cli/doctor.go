@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -61,6 +62,12 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	fmt.Println("ghpm doctor")
 	fmt.Println(strings.Repeat("─", 50))
 
+	if err := config.CheckLock(); err != nil {
+		warn("lock", err.Error())
+	} else {
+		pass("lock", "no concurrent process detected")
+	}
+
 	ghPath, ghErr := exec.LookPath("gh")
 	if ghErr != nil {
 		fail("gh", "not found")
@@ -78,7 +85,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ghpmDir := mustGhpmDir()
+	ghpmDir, err := store.Dir()
+	if err != nil {
+		printFail(nil, "could not determine ghpm directory: %v", err)
+		return errSilent
+	}
 
 	manifestPath := filepath.Join(ghpmDir, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
@@ -110,27 +121,61 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	repos, repoErr := config.LoadRepos()
+	if repoErr != nil {
+		fail("repos", repoErr.Error())
+	} else {
+		pass("repos", fmt.Sprintf("%d mappings", len(repos)))
+	}
+
 	manifest, manifestErr := config.LoadManifest()
 	pkgsDir, pkgsErr := store.ExtractsDir()
+	binDir, binDirErr := store.BinDir()
+
 	if manifestErr == nil && manifest != nil && pkgsErr == nil {
-		var stale []string
+		var staleExtracts, missingShims, missingFonts []string
 		for key, pkg := range manifest.Extracts {
 			if _, serr := os.Stat(filepath.Join(pkgsDir, key, pkg.Version)); os.IsNotExist(serr) {
-				stale = append(stale, key)
+				staleExtracts = append(staleExtracts, key)
+			}
+			if binDirErr == nil {
+				for shimName := range pkg.AllBins() {
+					if _, serr := os.Lstat(filepath.Join(binDir, shimName)); os.IsNotExist(serr) {
+						missingShims = append(missingShims, shimName)
+					}
+				}
 			}
 		}
-		if len(stale) == 0 {
+		if fontsDir, ferr := userFontDir(); ferr == nil {
+			for key, pkg := range manifest.Extracts {
+				for fontName, fontPath := range pkg.AllFonts() {
+					if !fontInstalled(fontPath, fontsDir) {
+						missingFonts = append(missingFonts, key+"/"+fontName)
+					}
+				}
+			}
+		}
+		if len(staleExtracts) == 0 && len(missingShims) == 0 && len(missingFonts) == 0 {
 			pass("installed packages", fmt.Sprintf("%d installed", len(manifest.Extracts)))
 		} else {
-			for _, key := range stale {
+			for _, key := range staleExtracts {
 				warn("installed packages", key+" — extract dir missing")
+			}
+			for _, shimName := range missingShims {
+				warn("installed packages", shimName+" — shim missing")
+			}
+			for _, name := range missingFonts {
+				warn("installed packages", name+" — font missing")
 			}
 		}
 	}
 
-	if binDir, err := store.BinDir(); err == nil {
-		entries, _ := os.ReadDir(binDir)
-		pass("shims", fmt.Sprintf("%d in %s", len(entries), binDir))
+	if binDirErr == nil {
+		if slices.Contains(filepath.SplitList(os.Getenv("PATH")), binDir) {
+			pass("PATH", binDir+" is on PATH")
+		} else {
+			fail("PATH", binDir+" is not on PATH — shims won't be found")
+		}
 	}
 
 	if shimDir, err := store.ShimDir(); err == nil {
@@ -147,14 +192,6 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-func mustGhpmDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic("could not determine home directory: " + err.Error())
-	}
-	return filepath.Join(home, ".ghpm")
 }
 
 func dirSize(path string) int64 {

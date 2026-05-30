@@ -7,11 +7,10 @@ import (
 )
 
 func TestRunDownload_NoGH(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
-	t.Setenv("HOME", home)
-	writeSettings(t, home, &config.Settings{})
+	writeSettings(t, &config.Settings{})
 	quiet = true
 	defer func() { quiet = false }()
 
@@ -22,11 +21,10 @@ func TestRunDownload_NoGH(t *testing.T) {
 }
 
 func TestRunInfo_NoGH(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
-	t.Setenv("HOME", home)
-	writeSettings(t, home, &config.Settings{})
+	writeSettings(t, &config.Settings{})
 	quiet = true
 	defer func() { quiet = false }()
 
@@ -37,12 +35,11 @@ func TestRunInfo_NoGH(t *testing.T) {
 }
 
 func TestRunOutdated_NoGH(t *testing.T) {
-	home := withHome(t)
+	withHome(t)
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
-	t.Setenv("HOME", home)
-	writeSettings(t, home, &config.Settings{})
-	writeManifest(t, home, &config.Manifest{
+	writeSettings(t, &config.Settings{})
+	writeManifest(t, &config.Manifest{
 		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
 	})

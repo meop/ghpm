@@ -7,16 +7,40 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+
+	"github.com/meop/ghpm/internal/store"
 )
 
 var lockPathFn = defaultLockPath
 
 func defaultLockPath() (string, error) {
-	dir, err := ghpmDir()
+	dir, err := store.Dir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, ".lock"), nil
+}
+
+// CheckLock attempts a single non-blocking lock acquisition to detect whether
+// another ghpm process is running. Returns nil if the lock is free.
+func CheckLock() error {
+	path, err := lockPathFn()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	fl := flock.New(path)
+	ok, err := fl.TryLock()
+	if err != nil {
+		return fmt.Errorf("checking lock: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("lock held — another ghpm process may be running")
+	}
+	_ = fl.Unlock()
+	return nil
 }
 
 func AcquireLock() (func(), error) {

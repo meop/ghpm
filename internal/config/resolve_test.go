@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/meop/ghpm/internal/ioutils"
+	"github.com/meop/ghpm/internal/store"
 )
 
 func withHome(t *testing.T) string {
@@ -38,8 +39,12 @@ func TestLoadRepos_Empty(t *testing.T) {
 }
 
 func TestLoadRepos_Single(t *testing.T) {
-	home := withHome(t)
-	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "a"), "repos:\n  fzf: github.com/junegunn/fzf\n")
+	withHome(t)
+	base, err := store.ReposBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoYAML(t, filepath.Join(base, "a"), "repos:\n  fzf: github.com/junegunn/fzf\n")
 	repos, err := LoadRepos()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -50,9 +55,13 @@ func TestLoadRepos_Single(t *testing.T) {
 }
 
 func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
-	home := withHome(t)
-	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "a"), "repos:\n  tool: github.com/owner/a\n")
-	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "b"), "repos:\n  tool: github.com/owner/b\n")
+	withHome(t)
+	base, err := store.ReposBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoYAML(t, filepath.Join(base, "a"), "repos:\n  tool: github.com/owner/a\n")
+	writeRepoYAML(t, filepath.Join(base, "b"), "repos:\n  tool: github.com/owner/b\n")
 	repos, err := LoadRepos()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -63,9 +72,13 @@ func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
 }
 
 func TestLoadRepos_InvalidYAML_Fatal(t *testing.T) {
-	home := withHome(t)
-	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "bad"), "repos: [\ninvalid yaml{{{\n")
-	_, err := LoadRepos()
+	withHome(t)
+	base, err := store.ReposBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoYAML(t, filepath.Join(base, "bad"), "repos: [\ninvalid yaml{{{\n")
+	_, err = LoadRepos()
 	if err == nil {
 		t.Error("expected error for invalid YAML, got nil")
 	}

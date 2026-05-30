@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/meop/ghpm/internal/store"
 )
 
 // Find resolves the gh CLI binary: checks PATH first, then the ghpm-managed
@@ -13,9 +15,8 @@ func Find() (string, error) {
 	if p, err := exec.LookPath("gh"); err == nil {
 		return p, nil
 	}
-	home, err := os.UserHomeDir()
-	if err == nil {
-		managed := filepath.Join(home, ".ghpm", "bin", "gh")
+	if dir, err := store.Dir(); err == nil {
+		managed := filepath.Join(dir, "bin", "gh")
 		if _, err := os.Stat(managed); err == nil {
 			return managed, nil
 		}
