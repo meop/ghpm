@@ -23,14 +23,14 @@ func newSyncCmd() *cobra.Command {
 		Short:   "Sync packages to their latest releases",
 		RunE:    runSync,
 	}
-	addSkipVerifyFlag(cmd)
+	addSkipHashCheckFlag(cmd)
 	cmd.Flags().BoolP("force", "f", false, "Reinstall even if already at latest version")
 	return cmd
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
 	forceSync, _ := cmd.Flags().GetBool("force")
-	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, NoVerify: true})
+	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}

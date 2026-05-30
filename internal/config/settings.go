@@ -7,16 +7,17 @@ import (
 )
 
 type Settings struct {
-	CacheTTL    string            `json:"cache_ttl"`
-	Color       map[string]string `json:"color"`
-	NoColor     bool              `json:"no_color"`
-	NoVerify    bool              `json:"no_verify"`
-	NumParallel int               `json:"num_parallel"`
-	RepoSources []string          `json:"repo_sources"`
+	CacheTTL      string            `json:"cache_ttl"`
+	Color         map[string]string `json:"color"`
+	NoColor       bool              `json:"no_color"`
+	NumParallel   int               `json:"num_parallel"`
+	RepoSources   []string          `json:"repo_sources"`
+	SkipHashCheck bool              `json:"skip_hash_check"`
 }
 
 func defaultSettings() *Settings {
 	return &Settings{
+		CacheTTL: "5m",
 		Color: map[string]string{
 			"fail": "red",
 			"info": "blue",
@@ -25,11 +26,10 @@ func defaultSettings() *Settings {
 			"pass": "green",
 			"warn": "yellow",
 		},
-		NoColor:     false,
-		NoVerify:    false,
-		NumParallel: 5,
-		CacheTTL:    "5m",
-		RepoSources: []string{RepoGhpmConfig.URI},
+		NoColor:       false,
+		NumParallel:   5,
+		RepoSources:   []string{RepoGhpmConfig.URI},
+		SkipHashCheck: false,
 	}
 }
 

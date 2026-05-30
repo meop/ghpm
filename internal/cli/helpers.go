@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,7 +18,7 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-var noVerify bool
+var skipHashCheck bool
 
 const msgAllUpToDate = "all packages are up to date"
 
@@ -38,12 +40,12 @@ type extractResult struct {
 }
 
 type cmdOptions struct {
-	Lock     bool
-	Manifest bool
-	GH       bool
-	Dirs     bool
-	Repos    bool
-	NoVerify bool
+	Lock          bool
+	Manifest      bool
+	GH            bool
+	Dirs          bool
+	Repos         bool
+	SkipHashCheck bool
 }
 
 func initCommand(opts cmdOptions) (*cmdInit, error) {
@@ -64,10 +66,9 @@ func initCommand(opts cmdOptions) (*cmdInit, error) {
 		return nil, ci.fail()
 	}
 	ci.cfg = cfg
-	if opts.NoVerify && cfg.NoVerify {
-		noVerify = true
+	if opts.SkipHashCheck && cfg.SkipHashCheck {
+		skipHashCheck = true
 	}
-
 	if opts.Manifest {
 		manifest, err := config.LoadManifest()
 		if err != nil {
@@ -93,12 +94,10 @@ func initCommand(opts cmdOptions) (*cmdInit, error) {
 	}
 
 	if opts.Repos {
-		repos, warnings, repoErr := config.LoadRepos()
+		repos, repoErr := config.LoadRepos()
 		if repoErr != nil {
-			printInfo(cfg, "could not load repos: %v", repoErr)
-		}
-		for _, w := range warnings {
-			printWarn(cfg, "%s", w)
+			printFail(cfg, "could not load repos: %v", repoErr)
+			return nil, ci.fail()
 		}
 		ci.repos = repos
 	}
@@ -119,8 +118,28 @@ func (ci *cmdInit) close() {
 	}
 }
 
-func addSkipVerifyFlag(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&noVerify, "skip-verify", false, "Skip SHA256 verification")
+func addSkipHashCheckFlag(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&skipHashCheck, "skip-hash-check", false, "Skip SHA256 hash verification")
+}
+
+func verifyDigest(digest, filePath string) error {
+	algo, hex, ok := strings.Cut(digest, ":")
+	if !ok || algo != "sha256" {
+		return fmt.Errorf("unsupported digest format %q", digest)
+	}
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	if got := fmt.Sprintf("%x", h.Sum(nil)); got != hex {
+		return fmt.Errorf("got %s, want %s", got, hex)
+	}
+	return nil
 }
 
 func addNameFormatFlags(cmd *cobra.Command) {
@@ -172,7 +191,7 @@ func appendAssetEntryRows(rows [][]string, prefix []string, ae config.AssetEntry
 	return rows
 }
 
-// downloadAndExtract downloads, verifies, and extracts each chosen asset for a
+// downloadAndExtract downloads and extracts each chosen asset for a
 // package. displayName is used in progress messages; extractKey and version
 // identify the extract directory; pkgName is used for binary discovery.
 func downloadAndExtract(
@@ -188,19 +207,16 @@ func downloadAndExtract(
 	binsByAsset := make(map[string][]asset.BinCandidate)
 
 	for _, chosen := range chosens {
-		if _, err := os.Stat(filepath.Join(cacheDir, chosen.Name)); os.IsNotExist(err) {
+		assetPath := filepath.Join(cacheDir, chosen.Name)
+		if _, err := os.Stat(assetPath); os.IsNotExist(err) {
 			printInfo(cfg, "%s: downloading %s...", displayName, chosen.Name)
 			if err := ghClient.DownloadAsset(ctx, owner, repo, tagName, chosen.Name, cacheDir); err != nil {
 				return extractResult{}, err
 			}
 		}
-		if !noVerify {
-			verified, err := ghClient.VerifyAsset(ctx, owner, repo, tagName, cacheDir, chosen.Name)
-			if err != nil {
-				return extractResult{}, err
-			}
-			if !verified {
-				printWarn(cfg, "%s: %s unverified (no attestation)", displayName, chosen.Name)
+		if !skipHashCheck && chosen.Digest != "" {
+			if err := verifyDigest(chosen.Digest, assetPath); err != nil {
+				return extractResult{}, fmt.Errorf("%s: %s: %w", displayName, chosen.Name, err)
 			}
 		}
 

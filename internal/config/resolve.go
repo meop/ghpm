@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"go.yaml.in/yaml/v4"
@@ -19,18 +20,16 @@ type reposFile struct {
 	Repos map[string]string `yaml:"repos"`
 }
 
-// LoadRepos scans ~/.ghpm/repos recursively for repo.yaml files,
-// loads all of them, and merges into a single map (later entries win on conflict).
-// Returns an empty map (no error) if the repos directory doesn't exist yet.
-// Non-fatal issues (unreadable or malformed files) are returned as warnings
-// rather than written to stderr, so the caller controls presentation.
-func LoadRepos() (map[string]string, []string, error) {
+// LoadRepos globs ~/.ghpm/repo recursively for repo.yaml files, processes them
+// in alphabetical path order (later files overwrite earlier on key conflicts),
+// and returns the merged map. Returns an empty map if the directory doesn't
+// exist. Returns an error if any repo.yaml is unreadable or invalid YAML.
+func LoadRepos() (map[string]string, error) {
 	base, err := store.ReposBaseDir()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	merged := map[string]string{}
-	var warnings []string
+	var paths []string
 	err = filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -38,18 +37,24 @@ func LoadRepos() (map[string]string, []string, error) {
 			}
 			return err
 		}
-		if d.IsDir() || d.Name() != "repo.yaml" {
-			return nil
+		if !d.IsDir() && d.Name() == "repo.yaml" {
+			paths = append(paths, path)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	merged := map[string]string{}
+	for _, path := range paths {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("skipping %s: %v", path, err))
-			return nil
+			return nil, err
 		}
 		var rf reposFile
 		if err := yaml.Unmarshal(data, &rf); err != nil {
-			warnings = append(warnings, fmt.Sprintf("skipping malformed %s: %v", path, err))
-			return nil
+			return nil, fmt.Errorf("malformed %s: %w", path, err)
 		}
 		for k, v := range rf.Repos {
 			if k == "" || v == "" {
@@ -57,16 +62,11 @@ func LoadRepos() (map[string]string, []string, error) {
 			}
 			merged[k] = v
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, warnings, err
 	}
-	return merged, warnings, nil
+	return merged, nil
 }
 
 // RefreshRepos fetches repo.yaml from each source configured in settings
-// (default: github.com/meop/ghpm-config) and caches it under ~/.ghpm/repos/.
 // SyncResult holds the outcome of syncing a single repo source.
 type SyncResult struct {
 	Source string

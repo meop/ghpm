@@ -25,7 +25,7 @@ func newAddCmd() *cobra.Command {
 		RunE:    runAdd,
 	}
 	cmd.Flags().BoolP("force", "f", false, "Reinstall even if already installed")
-	addSkipVerifyFlag(cmd)
+	addSkipHashCheckFlag(cmd)
 	return cmd
 }
 
@@ -67,7 +67,7 @@ type installTaskResult struct {
 
 func runAdd(cmd *cobra.Command, args []string) error {
 	forceInstall, _ := cmd.Flags().GetBool("force")
-	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, Dirs: true, Repos: true, NoVerify: true})
+	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, Dirs: true, Repos: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}

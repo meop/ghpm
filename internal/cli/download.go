@@ -21,13 +21,13 @@ func newDownloadCmd() *cobra.Command {
 		RunE:    runDownload,
 	}
 	cmd.Flags().String("path", "", "Destination directory (default: ~/.ghpm/download/)")
-	addSkipVerifyFlag(cmd)
+	addSkipHashCheckFlag(cmd)
 	return cmd
 }
 
 func runDownload(cmd *cobra.Command, args []string) error {
 	destPath, _ := cmd.Flags().GetString("path")
-	ci, err := initCommand(cmdOptions{Manifest: true, GH: true, Repos: true, NoVerify: true})
+	ci, err := initCommand(cmdOptions{Manifest: true, GH: true, Repos: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}

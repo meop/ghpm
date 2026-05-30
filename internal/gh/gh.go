@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/meop/ghpm/internal/config"
@@ -23,7 +22,6 @@ type Client interface {
 	FindLatestMatching(ctx context.Context, owner, repo string, c config.Constraint) (Release, error)
 	ListReleases(ctx context.Context, owner, repo string) ([]Release, error)
 	DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest string) error
-	VerifyAsset(ctx context.Context, owner, repo, tag, cacheDir, assetName string) (bool, error)
 	BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult
 }
 
@@ -51,18 +49,15 @@ func (c *CLI) DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest
 	return DownloadAsset(ctx, owner, repo, tag, pattern, dest)
 }
 
-func (c *CLI) VerifyAsset(ctx context.Context, owner, repo, tag, cacheDir, assetName string) (bool, error) {
-	return VerifyAsset(ctx, owner, repo, tag, cacheDir, assetName)
-}
-
 func (c *CLI) BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult {
 	return BatchLatestVersions(ctx, items, cacheTTL)
 }
 
 type Asset struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
-	URL  string `json:"url"`
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	URL    string `json:"url"`
+	Digest string `json:"digest"`
 }
 
 type Release struct {
@@ -165,27 +160,6 @@ func DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest string) 
 		"--clobber",
 	)
 	return err
-}
-
-func VerifyAsset(ctx context.Context, owner, repo, tag, cacheDir, assetName string) (bool, error) {
-	assetPath := filepath.Join(cacheDir, assetName)
-	if _, err := os.Stat(assetPath); os.IsNotExist(err) {
-		return false, fmt.Errorf("asset not found: %s", assetPath)
-	}
-
-	ghPath, err := ghbin.Find()
-	if err != nil {
-		return false, err
-	}
-	cmd := exec.CommandContext(ctx, ghPath, "release", "verify-asset", tag, assetPath, "-R", owner+"/"+repo)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		if strings.Contains(string(out), "no attestation") || strings.Contains(string(out), "not found") {
-			return false, nil
-		}
-		return false, fmt.Errorf("verification failed: %s", string(out))
-	}
-	return true, nil
 }
 
 func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, error) {

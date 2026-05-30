@@ -63,6 +63,17 @@ ghpm doctor               # check system health
 | `--dry-run`, `-n` | Print what would be done without executing |
 | `--yes`, `-y` | Skip confirmation prompts |
 
+### Per-command flags
+
+| Flag | Commands | Description |
+|---|---|---|
+| `--force`, `-f` | `add`, `sync` | Reinstall even if already installed / already at latest version |
+| `--path` | `download` | Destination directory (default: `~/.ghpm/download/`) |
+| `--all` | `tidy` | Remove all cached assets regardless of installation status |
+| `--long-names`, `-l` | `list`, `find`, `outdated` | Print names only, one per line |
+| `--short-names`, `-s` | `list`, `find`, `outdated` | Print names only, space-separated on one line |
+| `--skip-hash-check` | `add`, `sync`, `download`, `upgrade` | Skip SHA256 hash verification of downloaded assets |
+
 ### Version pinning
 
 | Syntax | Meaning | Updates |
@@ -94,9 +105,9 @@ ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the
     "warn": "yellow"
   },
   "no_color": false,
-  "no_verify": false,
   "num_parallel": 5,
-  "repo_sources": ["github.com/meop/ghpm-config"]
+  "repo_sources": ["github.com/meop/ghpm-config"],
+  "skip_hash_check": false
 }
 ```
 
@@ -105,11 +116,17 @@ ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the
 | `cache_ttl` | `"5m"` | How long cached version data stays fresh before re-fetching |
 | `color` | see above | Output colors by message type |
 | `no_color` | `false` | Disable colored output |
-| `no_verify` | `false` | Skip SHA256 verification globally |
 | `num_parallel` | `5` | Max concurrent downloads |
-| `repo_sources` | `["github.com/meop/ghpm-config"]` | Repo sources to fetch from; all their `repos.yaml` files are merged |
+| `repo_sources` | `["github.com/meop/ghpm-config"]` | Remote sources `ghpm refresh` fetches `repo.yaml` files from |
+| `skip_hash_check` | `false` | Permanently skip SHA256 hash verification (same as always passing `--skip-hash-check`) |
 
-Package repos map simple names like `fzf` to GitHub repos. `ghpm update` refreshes all configured repo sources. If a name isn't found, `ghpm` searches GitHub and prompts you to pick a repo.
+### Repo map
+
+Package names like `fzf` are resolved to GitHub repos via `~/.ghpm/repo/`. Any `repo.yaml` file anywhere in that directory tree contributes to the map — files are merged alphabetically by path, with later files taking precedence on conflicts. Invalid YAML is a fatal error.
+
+`ghpm refresh` fetches `repo.yaml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`. You can also place your own `repo.yaml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
+
+If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a repo.
 
 ## How it works
 
@@ -118,7 +135,7 @@ Package repos map simple names like `fzf` to GitHub repos. `ghpm update` refresh
 - Packages are extracted to `~/.ghpm/extract/<key>/<version>/` with full directory structure
 - A shim in `~/.ghpm/bin/` points at the binary in each package's extract dir
 - State is tracked in `~/.ghpm/manifest.json`
-- Sigstore attestation verification runs by default via `gh release verify-asset`; silently skipped if no attestation exists
+- SHA256 of each downloaded asset is verified against the digest returned by the GitHub API; mismatch is a hard error (bypass with `--skip-hash-check`)
 
 ## License
 

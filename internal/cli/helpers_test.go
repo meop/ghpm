@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -154,21 +156,6 @@ func TestInitCommand_GHCheckFails(t *testing.T) {
 	}
 }
 
-func TestInitCommand_NoVerifyPropagation(t *testing.T) {
-	home := withHome(t)
-	writeSettings(t, home, &config.Settings{NoVerify: true})
-	noVerify = false
-	defer func() { noVerify = false }()
-
-	_, err := initCommand(cmdOptions{NoVerify: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !noVerify {
-		t.Error("noVerify should be true when settings say NoVerify")
-	}
-}
-
 func TestInitCommand_ReposLoadFailure(t *testing.T) {
 	home := withHome(t)
 	writeSettings(t, home, &config.Settings{})
@@ -179,6 +166,67 @@ func TestInitCommand_ReposLoadFailure(t *testing.T) {
 	}
 	if ci.repos == nil {
 		t.Error("repos should be empty map, not nil")
+	}
+}
+
+func TestVerifyDigest_Match(t *testing.T) {
+	content := []byte("hello ghpm")
+	sum := sha256.Sum256(content)
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+	f, err := os.CreateTemp(t.TempDir(), "asset-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if err := verifyDigest(digest, f.Name()); err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestVerifyDigest_Mismatch(t *testing.T) {
+	digest := "sha256:" + hex.EncodeToString(make([]byte, 32))
+	f, err := os.CreateTemp(t.TempDir(), "asset-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte("wrong content")); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if err := verifyDigest(digest, f.Name()); err == nil {
+		t.Error("expected mismatch error, got nil")
+	}
+}
+
+func TestVerifyDigest_BadFormat(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "asset-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if err := verifyDigest("md5:abc123", f.Name()); err == nil {
+		t.Error("expected error for unsupported algorithm, got nil")
+	}
+	if err := verifyDigest("nodivider", f.Name()); err == nil {
+		t.Error("expected error for missing colon, got nil")
+	}
+}
+
+func TestInitCommand_SkipHashCheck_PropagatesFromSettings(t *testing.T) {
+	home := withHome(t)
+	writeSettings(t, home, &config.Settings{SkipHashCheck: true})
+	skipHashCheck = false
+	defer func() { skipHashCheck = false }()
+
+	_, err := initCommand(cmdOptions{SkipHashCheck: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skipHashCheck {
+		t.Error("skipHashCheck should be true when settings say SkipHashCheck")
 	}
 }
 

@@ -26,12 +26,12 @@ func newUpgradeCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  runUpgrade,
 	}
-	addSkipVerifyFlag(cmd)
+	addSkipHashCheckFlag(cmd)
 	return cmd
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Lock: true, GH: true, NoVerify: true})
+	ci, err := initCommand(cmdOptions{Lock: true, GH: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}
@@ -265,12 +265,12 @@ func fetchSelected(ctx context.Context, cfg *config.Settings, ghClient gh.Client
 	if err := ghClient.DownloadAsset(ctx, repo.Owner, repo.Repo, rel.TagName, chosen.Name, cacheDir); err != nil {
 		return gh.Asset{}, "", nil, err
 	}
-	if !noVerify {
-		if verified, _ := ghClient.VerifyAsset(ctx, repo.Owner, repo.Repo, rel.TagName, cacheDir, chosen.Name); !verified {
-			printWarn(cfg, "%s: %s unverified (no attestation)", pkgName, chosen.Name)
+	if !skipHashCheck && chosen.Digest != "" {
+		assetPath := filepath.Join(cacheDir, chosen.Name)
+		if err := verifyDigest(chosen.Digest, assetPath); err != nil {
+			return gh.Asset{}, "", nil, fmt.Errorf("%s: %s: %w", pkgName, chosen.Name, err)
 		}
 	}
-
 	tmpDir, err := os.MkdirTemp("", "ghpm-upgrade-*")
 	if err != nil {
 		return gh.Asset{}, "", nil, err

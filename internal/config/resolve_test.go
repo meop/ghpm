@@ -3,10 +3,73 @@ package config
 import (
 	"bufio"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/meop/ghpm/internal/ioutils"
 )
+
+func withHome(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	return dir
+}
+
+func writeRepoYAML(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "repo.yaml"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadRepos_Empty(t *testing.T) {
+	withHome(t)
+	repos, err := LoadRepos()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repos) != 0 {
+		t.Errorf("expected empty map, got %v", repos)
+	}
+}
+
+func TestLoadRepos_Single(t *testing.T) {
+	home := withHome(t)
+	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "a"), "repos:\n  fzf: github.com/junegunn/fzf\n")
+	repos, err := LoadRepos()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repos["fzf"] != "github.com/junegunn/fzf" {
+		t.Errorf("got %v", repos)
+	}
+}
+
+func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
+	home := withHome(t)
+	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "a"), "repos:\n  tool: github.com/owner/a\n")
+	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "b"), "repos:\n  tool: github.com/owner/b\n")
+	repos, err := LoadRepos()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repos["tool"] != "github.com/owner/b" {
+		t.Errorf("expected later file to win, got %q", repos["tool"])
+	}
+}
+
+func TestLoadRepos_InvalidYAML_Fatal(t *testing.T) {
+	home := withHome(t)
+	writeRepoYAML(t, filepath.Join(home, ".ghpm", "repo", "bad"), "repos: [\ninvalid yaml{{{\n")
+	_, err := LoadRepos()
+	if err == nil {
+		t.Error("expected error for invalid YAML, got nil")
+	}
+}
 
 func setStdin(t *testing.T, input string) {
 	t.Helper()
