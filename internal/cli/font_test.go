@@ -86,7 +86,7 @@ func TestStaleFontPaths_AllRemovedWhenNoneReinstalled(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenInstalls_FontMissing(t *testing.T) {
+func TestCleanOrphanedFonts_FontMissing(t *testing.T) {
 	home := withHome(t)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".xdg"))
 	yes = true
@@ -109,8 +109,8 @@ func TestCleanBrokenInstalls_FontMissing(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"nerd-fonts": fontPkg("Hack.zip", map[string]string{"hack": "Hack/Hack-Regular.ttf"})},
 	}
 
-	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); !cleaned {
-		t.Error("expected broken install to be detected")
+	if cleaned := cleanOrphanedFonts(nil, manifest, downloadDir); !cleaned {
+		t.Error("expected orphaned font to be detected")
 	}
 	if _, ok := manifest.Extracts["nerd-fonts"]; ok {
 		t.Error("manifest entry should have been removed")
@@ -120,11 +120,34 @@ func TestCleanBrokenInstalls_FontMissing(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenInstalls_FontHealthy(t *testing.T) {
+func TestCleanOrphanedFonts_Healthy(t *testing.T) {
 	home := withHome(t)
 	xdgDir := filepath.Join(home, ".xdg")
 	t.Setenv("XDG_DATA_HOME", xdgDir)
 	makeFontFile(t, filepath.Join(xdgDir, "fonts"), "Hack-Regular.ttf")
+	yes = true
+	defer func() { yes = false }()
+
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
+		Extracts: map[string]config.PackageEntry{"nerd-fonts": fontPkg("Hack.zip", map[string]string{"hack": "Hack/Hack-Regular.ttf"})},
+	}
+
+	if cleaned := cleanOrphanedFonts(nil, manifest, downloadDir); cleaned {
+		t.Error("installed font should not be flagged as orphaned")
+	}
+	if _, ok := manifest.Extracts["nerd-fonts"]; !ok {
+		t.Error("manifest entry should not have been removed")
+	}
+}
+
+func TestCleanBrokenInstalls_FontOnly_ExtractPresent(t *testing.T) {
+	withHome(t)
 	yes = true
 	defer func() { yes = false }()
 
@@ -146,9 +169,32 @@ func TestCleanBrokenInstalls_FontHealthy(t *testing.T) {
 	}
 
 	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); cleaned {
-		t.Error("healthy font install should not be flagged")
+		t.Error("font-only package with extract present should not be flagged")
 	}
 	if _, ok := manifest.Extracts["nerd-fonts"]; !ok {
 		t.Error("manifest entry should not have been removed")
+	}
+}
+
+func TestCleanBrokenInstalls_FontOnly_ExtractMissing(t *testing.T) {
+	withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
+		Extracts: map[string]config.PackageEntry{"nerd-fonts": fontPkg("Hack.zip", map[string]string{"hack": "Hack/Hack-Regular.ttf"})},
+	}
+
+	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); !cleaned {
+		t.Error("expected broken install to be detected when extract is missing")
+	}
+	if _, ok := manifest.Extracts["nerd-fonts"]; ok {
+		t.Error("manifest entry should have been removed")
 	}
 }

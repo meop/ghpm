@@ -427,36 +427,42 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	type shimRow struct{ shim, binary, pkg string }
-	var shimRows []shimRow
+	type installRow struct{ pkg, version, artifact, target string }
+	var tableRows []installRow
+	totalFonts := 0
 	for _, p := range shimPlans {
 		for _, bins := range p.binsByAsset {
 			for shimName, binKey := range bins {
-				shimRows = append(shimRows, shimRow{shimName, binKey, p.key})
+				tableRows = append(tableRows, installRow{p.key, p.version, binKey, shimName})
+			}
+		}
+		for _, fonts := range p.fontAssets {
+			for fontName, fontPath := range fonts {
+				tableRows = append(tableRows, installRow{p.key, p.version, fontPath, fontName})
+				totalFonts++
 			}
 		}
 	}
-	if len(shimRows) > 0 {
-		slices.SortFunc(shimRows, func(a, b shimRow) int { return strings.Compare(a.shim, b.shim) })
-		rows := make([][]string, len(shimRows))
-		for i, r := range shimRows {
-			rows[i] = []string{r.pkg, r.binary, r.shim}
+	if len(tableRows) > 0 {
+		slices.SortFunc(tableRows, func(a, b installRow) int {
+			if c := strings.Compare(a.pkg, b.pkg); c != 0 {
+				return c
+			}
+			return strings.Compare(a.target, b.target)
+		})
+		rows := make([][]string, len(tableRows))
+		for i, r := range tableRows {
+			rows[i] = []string{r.pkg, r.version, r.artifact, r.target}
 		}
-		printTable([]string{"name", "bin", "target"}, rows, nil)
+		printTable([]string{"name", "version", "artifact", "target"}, rows, nil)
 	}
-
-	totalFonts := 0
-	for _, p := range shimPlans {
-		for _, fonts := range p.fontAssets {
-			totalFonts += len(fonts)
-		}
-	}
+	totalBins := len(tableRows) - totalFonts
 	var confirmMsg string
 	switch {
-	case len(shimRows) > 0 && totalFonts > 0:
-		confirmMsg = fmt.Sprintf("create %d bin(s) and %d font(s)", len(shimRows), totalFonts)
-	case len(shimRows) > 0:
-		confirmMsg = fmt.Sprintf("create %d bin(s)", len(shimRows))
+	case totalBins > 0 && totalFonts > 0:
+		confirmMsg = fmt.Sprintf("create %d bin(s) and %d font(s)", totalBins, totalFonts)
+	case totalBins > 0:
+		confirmMsg = fmt.Sprintf("create %d bin(s)", totalBins)
 	default:
 		confirmMsg = fmt.Sprintf("install %d font(s)", totalFonts)
 	}
@@ -538,17 +544,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 						fontPath := fonts[fontName]
 						srcPath := filepath.Join(p.pkgDirByAsset[assetName], filepath.FromSlash(fontPath))
 						if err := installFont(srcPath, fontsDir); err != nil {
-							printFail(cfg, "font %s: %v", fontName, err)
+							printFail(cfg, "%s: could not install font: %v", fontName, err)
 							hadErrors = true
-						} else {
-							printPass(cfg, "font %s", fontName)
 						}
 					}
 				}
 			}
 		}
-		if !shimFailed && len(p.binsByAsset) > 0 {
-			printPass(cfg, "installed %s", p.version)
+		if !shimFailed && !fontFailed {
+			printPass(cfg, "installed")
 		}
 	}
 
@@ -586,7 +590,7 @@ func promptInstall(cfg *config.Settings, ready []jobWithRelease) bool {
 		}
 	}
 	colors := []func(string) string{nil, nil, colorfn(cfg, "new"), nil, nil}
-	printTable([]string{"name", "pin", "update", "asset", "repo"}, rows, colors)
+	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
 	sep()
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

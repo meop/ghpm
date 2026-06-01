@@ -257,7 +257,7 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenInstalls_MissingFonts_OneItemEach(t *testing.T) {
+func TestCleanOrphanedFonts_AllMissing(t *testing.T) {
 	withHome(t)
 	t.Setenv("XDG_DATA_HOME", "")
 	yes = true
@@ -285,9 +285,9 @@ func TestCleanBrokenInstalls_MissingFonts_OneItemEach(t *testing.T) {
 		}}},
 	}
 
-	cleaned := cleanBrokenInstalls(nil, manifest, downloadDir)
+	cleaned := cleanOrphanedFonts(nil, manifest, downloadDir)
 	if !cleaned {
-		t.Fatal("expected broken installs to be found")
+		t.Fatal("expected orphaned fonts to be found")
 	}
 
 	entry, ok := manifest.Extracts["nerd-fonts"]
@@ -299,7 +299,7 @@ func TestCleanBrokenInstalls_MissingFonts_OneItemEach(t *testing.T) {
 	}
 }
 
-func TestCleanBrokenInstalls_MissingOneFontKeepsOther(t *testing.T) {
+func TestCleanOrphanedFonts_OneMissingKeepsOther(t *testing.T) {
 	withHome(t)
 	t.Setenv("XDG_DATA_HOME", "")
 	yes = true
@@ -338,9 +338,9 @@ func TestCleanBrokenInstalls_MissingOneFontKeepsOther(t *testing.T) {
 		}}},
 	}
 
-	cleaned := cleanBrokenInstalls(nil, manifest, downloadDir)
+	cleaned := cleanOrphanedFonts(nil, manifest, downloadDir)
 	if !cleaned {
-		t.Fatal("expected broken installs to be found")
+		t.Fatal("expected orphaned font to be found")
 	}
 
 	entry, ok := manifest.Extracts["nerd-fonts"]

@@ -437,7 +437,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 						for fontName, fontPath := range pf.fontMap {
 							srcPath := filepath.Join(tr.pkgDirByAsset[pf.assetName], filepath.FromSlash(fontPath))
 							if err := installFont(srcPath, fontsDir); err != nil {
-								printFail(cfg, "font %s: %v", fontPath, err)
+								printFail(cfg, "%s: could not install font: %v", fontName, err)
 								hadErrors = true
 								pkgFailed = true
 								continue

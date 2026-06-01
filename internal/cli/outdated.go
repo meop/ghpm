@@ -124,7 +124,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		}
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil, nil, nil}
-	printTable([]string{"name", "version", "update", "pin", "repo", "asset", "type", "artifact", "path"}, tableRows, colors)
+	printTable([]string{"name", "version", "update", "pin", "repo", "asset", "type", "artifact", "target"}, tableRows, colors)
 
 	if hadErrors {
 		return errSilent

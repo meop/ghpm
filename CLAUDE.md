@@ -61,6 +61,8 @@ Extracted content lives under `~/.ghpm/extract/<key>/<version>/`. Downloaded ass
 
 **Sync** — batch version check, then for outdated packages: fetch release, re-select asset by hint, parallel download+extract → rebuild shims (conflict check) and reinstall fonts (conflict check) → write manifest.
 
+**Tidy** — removes broken installs (manifest entries whose extract or shims are missing), orphaned bin shims (files in `bin/` with no manifest entry), orphaned extracts, and orphaned cached downloads. Tidy does NOT scan the user font directory or Windows font registry for untracked fonts — fonts installed by other tools are not ghpm's responsibility.
+
 ## Print formatting
 
 - No blank line at the start or end of any command's output

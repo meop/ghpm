@@ -166,7 +166,9 @@ func printRateLimitSummary(cfg *config.Settings, checked, total, skipped int) {
 }
 
 // appendAssetEntryRows appends one row per bin or font in ae. prefix provides
-// the leading columns; type, artifact, and path are appended for each entry.
+// the leading columns; type, artifact, and target are appended for each entry.
+// artifact is the source file path within the extract; target is the shim name
+// (for bins) or user-given font name (for fonts).
 func appendAssetEntryRows(rows [][]string, prefix []string, ae config.AssetEntry) [][]string {
 	if ae.IsBin() {
 		shimNames := make([]string, 0, len(ae.Bin))
@@ -175,7 +177,7 @@ func appendAssetEntryRows(rows [][]string, prefix []string, ae config.AssetEntry
 		}
 		slices.Sort(shimNames)
 		for _, shimName := range shimNames {
-			rows = append(rows, append(append([]string(nil), prefix...), "bin", shimName, ae.Bin[shimName]))
+			rows = append(rows, append(append([]string(nil), prefix...), "bin", ae.Bin[shimName], shimName))
 		}
 	}
 	if ae.IsFont() {
@@ -185,7 +187,7 @@ func appendAssetEntryRows(rows [][]string, prefix []string, ae config.AssetEntry
 		}
 		slices.Sort(fontNames)
 		for _, fontName := range fontNames {
-			rows = append(rows, append(append([]string(nil), prefix...), "font", fontName, ae.Font[fontName]))
+			rows = append(rows, append(append([]string(nil), prefix...), "font", ae.Font[fontName], fontName))
 		}
 	}
 	return rows
