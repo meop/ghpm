@@ -87,7 +87,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 		var explicitSource string
 		if src, repoName, err := parseSourceArg(pkgName); err != nil {
-			printFail(cfg, "%v", err)
+			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
 			continue
 		} else if src != "" {
@@ -95,15 +95,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			pkgName = repoName
 		}
 
-		printTitle(pkgName)
-
-		if pkgName == binGhpm || pkgName == binGh {
-			printInfo(cfg, "self managed, skipping")
+		if pkgName == binGh || pkgName == binGhpm {
+			print("%s: already self managed", pkgName)
 			continue
 		}
 		if explicitSource == "" {
 			if err := config.ValidateName(pkgName); err != nil {
-				printFail(cfg, "%v", err)
+				printFail(cfg, "%s: %v", pkgName, err)
 				hadErrors = true
 				continue
 			}
@@ -112,7 +110,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		var source string
 		if explicitSource != "" {
 			source = explicitSource
-			printInfo(cfg, "repo: %s", source)
+			print("%s: repo → %s", pkgName, source)
 		} else {
 			var found bool
 			source, found = config.LookupSource(pkgName, manifest, repos)
@@ -120,29 +118,29 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				var err error
 				source, err = config.SearchGitHub(pkgName)
 				if err != nil {
-					printFail(cfg, "%v", err)
+					printFail(cfg, "%s: %v", pkgName, err)
 					hadErrors = true
 					continue
 				}
 			}
-			printInfo(cfg, "repo: %s", source)
+			print("%s: repo → %s", pkgName, source)
 		}
 
 		partialJob := installJob{name: pkgName, version: ver, pinned: pinned}
 		if entry, exists := manifest.Extracts[partialJob.key()]; exists && !forceInstall {
-			printInfo(cfg, "already installed %s", entry.Version)
+			print("%s: already added → %s", pkgName, entry.Version)
 			continue
 		}
 		if !pinned {
 			if existing, found := manifest.FindBySource(source); found && existing != pkgName && !forceInstall {
-				printInfo(cfg, "already installed as %s — skipping", existing)
+				print("%s: already added as %s", pkgName, existing)
 				continue
 			}
 		}
 
 		owner, repo, err := gh.SplitSource(source)
 		if err != nil {
-			printFail(cfg, "%v", err)
+			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
 			continue
 		}
@@ -152,7 +150,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		} else {
 			c, perr := config.ParseConstraint(ver)
 			if perr != nil {
-				printFail(cfg, "%v", perr)
+				printFail(cfg, "%s: %v", pkgName, perr)
 				hadErrors = true
 				continue
 			}
@@ -163,14 +161,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if err != nil {
-			printFail(cfg, "%v", err)
+			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
 			continue
 		}
 
 		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", pkgName)
 		if err != nil {
-			printFail(cfg, "%v", err)
+			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
 			continue
 		}
@@ -182,12 +180,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		if err != nil {
-			printFail(cfg, "%v", err)
+			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
 			continue
 		}
 		if ac.Chosen.Name != "" {
-			printInfo(cfg, "asset: %s", chosens[0].Name)
+			print("%s: asset → %s", pkgName, chosens[0].Name)
 		}
 		ready = append(ready, jobWithRelease{
 			job:     installJob{name: pkgName, source: source, version: ver, pinned: pinned},
@@ -206,7 +204,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	if dryRun {
 		for _, r := range ready {
 			for _, c := range r.chosens {
-				fmt.Printf("%s: install %s (asset: %s)\n", r.job.name, config.NormalizeVersion(r.release.TagName), c.Name)
+				print("%s: install %s (asset: %s)", r.job.name, config.NormalizeVersion(r.release.TagName), c.Name)
 			}
 		}
 		return nil
@@ -465,7 +463,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	default:
 		confirmMsg = fmt.Sprintf("install %d font(s)", totalFonts)
 	}
-	sep()
 	if !promptConfirm(confirmMsg) {
 		if hadErrors {
 			return errSilent
@@ -593,6 +590,5 @@ func promptInstall(cfg *config.Settings, ready []jobWithRelease) bool {
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "new"), nil, nil, nil}
 	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)
-	sep()
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

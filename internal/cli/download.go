@@ -114,12 +114,11 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, r := range ready {
-			fmt.Printf("%s: download %s (asset: %s)\n", r.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
+			print("%s: download %s (asset: %s)", r.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
 		}
 		return nil
 	}
 
-	sep()
 	if !promptConfirm(fmt.Sprintf("download %d asset(s)", len(ready))) {
 		return nil
 	}

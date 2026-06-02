@@ -2,7 +2,6 @@ package cli
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -64,7 +63,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 			sep()
 		}
 		if len(args) > 1 {
-			fmt.Printf("find: %s\n", term)
+			print("find: %s", term)
 		}
 
 		lower := strings.ToLower(term)

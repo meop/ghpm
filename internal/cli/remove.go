@@ -56,7 +56,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		for _, t := range targets {
-			fmt.Printf("%s: remove %s (extract dir: %s)\n", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
+			print("%s: remove %s (extract dir: %s)", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
 		}
 		return nil
 	}
@@ -76,7 +76,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
 	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)
-	sep()
 	if !promptConfirm(fmt.Sprintf("uninstall %d package(s)", len(targets))) {
 		return nil
 	}

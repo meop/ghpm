@@ -89,7 +89,7 @@ func upgradeGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) er
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		fmt.Printf("gh: already latest → %s\n", currentVer)
+		print("gh: already upgraded → %s", currentVer)
 		return nil
 	}
 
@@ -119,7 +119,6 @@ func upgradeGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) er
 	}
 
 	printPass(cfg, "gh: upgraded %s → %s", currentVer, latestVer)
-	sep()
 	return nil
 }
 
@@ -131,7 +130,7 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) 
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
-		fmt.Printf("ghpm: already latest → %s\n", version)
+		print("ghpm: already upgraded → %s", version)
 		return nil
 	}
 
@@ -169,7 +168,6 @@ func upgradeSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) 
 	}
 
 	printPass(cfg, "ghpm: upgraded %s → %s", version, latestVer)
-	sep()
 	return nil
 }
 
@@ -199,7 +197,7 @@ func upgradeShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) 
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		fmt.Printf("sheesh: already latest → %s\n", currentVer)
+		print("sheesh: already upgraded → %s", currentVer)
 		return nil
 	}
 

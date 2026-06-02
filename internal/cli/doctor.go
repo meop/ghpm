@@ -50,9 +50,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	line := func(status, label, detail string) {
 		if detail != "" {
-			fmt.Printf("  [%s] %s — %s\n", status, label, detail)
+			print("  [%s] %s — %s", status, label, detail)
 		} else {
-			fmt.Printf("  [%s] %s\n", status, label)
+			print("  [%s] %s", status, label)
 		}
 	}
 	pass := func(label, detail string) { line(passLabel, label, detail) }

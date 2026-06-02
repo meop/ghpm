@@ -185,7 +185,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sep()
 	if !promptConfirm(fmt.Sprintf("update %d package(s)", len(ready))) {
 		return nil
 	}

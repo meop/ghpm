@@ -43,9 +43,8 @@ func runTidy(cmd *cobra.Command, args []string) error {
 
 	if all {
 		if dryRun {
-			fmt.Printf("remove all cached assets in %s\n", releaseDir)
+			print("remove all cached assets in %s", releaseDir)
 		} else {
-			sep()
 			if !promptConfirm("remove all download(s)") {
 				return nil
 			}
@@ -168,14 +167,12 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	for i, it := range items {
 		rows[i] = it.tableRow
 	}
-	printTitle("broken install(s)")
-	renderTableBody([]string{"name", "issue"}, rows, nil)
+	printTable([]string{"name", "issue"}, rows, nil)
 
 	if dryRun {
 		return true
 	}
 
-	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d broken install(s)", len(items))) {
 		return true
 	}
@@ -283,15 +280,12 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 	for i, it := range items {
 		fontRows[i] = it.tableRow
 	}
-	sep()
-	printTitle("orphaned font(s)")
-	renderTableBody([]string{"package", "font"}, fontRows, nil)
+	printTable([]string{"package", "font"}, fontRows, nil)
 
 	if dryRun {
 		return true
 	}
 
-	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned font(s)", len(items))) {
 		return true
 	}
@@ -369,14 +363,12 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 		return false
 	}
 
-	printTitle("orphaned bin(s)")
-	renderTableBody([]string{"name"}, binRows, nil)
+	printTable([]string{"name"}, binRows, nil)
 
 	if dryRun {
 		return true
 	}
 
-	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned bin(s)", len(paths))) {
 		return true
 	}
@@ -427,14 +419,12 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 		return false
 	}
 
-	printTitle("orphaned extract(s)")
-	renderTableBody([]string{"name", "version"}, extRows, nil)
+	printTable([]string{"name", "version"}, extRows, nil)
 
 	if dryRun {
 		return true
 	}
 
-	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned extract(s)", len(paths))) {
 		return true
 	}
@@ -485,14 +475,12 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		return false
 	}
 
-	printTitle("orphaned download(s)")
-	renderTableBody([]string{"package", "version", "file"}, dlRows, nil)
+	printTable([]string{"package", "version", "file"}, dlRows, nil)
 
 	if dryRun {
 		return true
 	}
 
-	sep()
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned download(s)", len(toRemove))) {
 		return true
 	}

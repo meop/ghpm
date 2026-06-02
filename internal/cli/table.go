@@ -21,11 +21,6 @@ func sep() {
 	hasOutput = true
 }
 
-func printTitle(s string) {
-	sep()
-	fmt.Println(s + ":")
-}
-
 var defaultColorNames = map[string]color.Attribute{
 	"black":   color.FgBlack,
 	"red":     color.FgRed,

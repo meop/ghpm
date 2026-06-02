@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -35,7 +34,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		pkgName, ver, _ := config.ParseVersionSuffix(arg)
 		sep()
-		fmt.Printf("info: %s\n", pkgName)
+		print("info: %s", pkgName)
 		if err := config.ValidateName(pkgName); err != nil {
 			printFail(cfg, "%s: %v", arg, err)
 			hadErrors = true
@@ -55,8 +54,8 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		}
 
 		sep()
-		fmt.Printf("%s (%s)\n", arg, source)
-		fmt.Println(strings.Repeat("─", 60))
+		print("%s (%s)", arg, source)
+		print("%s", strings.Repeat("─", 60))
 
 		if ver != "" {
 			rel, err := ghClient.GetReleaseByTag(ctx, owner, repo, ver)
@@ -74,9 +73,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			limit := min(len(releases), 10)
-			fmt.Printf("  recent releases (%d shown):\n", limit)
+			print("  recent releases (%d shown):", limit)
 			for _, r := range releases[:limit] {
-				fmt.Printf("    %s\n", config.NormalizeVersion(r.TagName))
+				print("    %s", config.NormalizeVersion(r.TagName))
 			}
 			if len(releases) > 0 {
 				rel, err := ghClient.GetLatestRelease(ctx, owner, repo)
@@ -94,8 +93,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 }
 
 func printReleaseInfo(rel gh.Release) {
-	fmt.Printf("  tag: %s\n  assets:\n", config.NormalizeVersion(rel.TagName))
+	print("  tag: %s", config.NormalizeVersion(rel.TagName))
+	print("  assets:")
 	for _, a := range rel.Assets {
-		fmt.Printf("    %-60s %d bytes\n", a.Name, a.Size)
+		print("    %-60s %d bytes", a.Name, a.Size)
 	}
 }
