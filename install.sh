@@ -39,7 +39,6 @@ fetch_release() {
 }
 
 release_tag() {
-  tag
   tag=$(printf '%s' "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
   if [ -z "$tag" ]; then
     echo "  could not parse tag_name from response:" >&2
@@ -50,7 +49,6 @@ release_tag() {
 }
 
 release_asset_url() {
-  url
   url=$(printf '%s' "$RELEASE_JSON" | grep '"browser_download_url"' | grep "/$1\"" | head -1 | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
   if [ -z "$url" ]; then
     echo "  could not find asset matching '$1'" >&2
@@ -63,7 +61,6 @@ release_asset_url() {
 
 install_shim_from_release() {
   pattern="$1" dest="$2"
-  tmp url pkg
   tmp=$(mktemp -d)
   url=$(release_asset_url "$pattern")
   pkg="$tmp/pkg"
@@ -91,7 +88,6 @@ install_shim_from_release() {
 
 install_from_release() {
   pattern="$1" binary="$2" dest="$3"
-  tmp url
   tmp=$(mktemp -d)
   url=$(release_asset_url "$pattern")
   pkg="$tmp/pkg"
@@ -125,7 +121,6 @@ install_from_release() {
       fi
       ;;
   esac
-  found
   found=$(find "$tmp" -name "$binary" -type f | head -1)
   if [ -z "$found" ]; then
     echo "  binary '$binary' not found in archive" >&2
