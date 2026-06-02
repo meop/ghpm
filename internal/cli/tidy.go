@@ -164,7 +164,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	}
 
 	slices.SortFunc(items, func(a, b item) int { return strings.Compare(a.display, b.display) })
-	printTitle("broken installs")
+	printTitle("broken install(s)")
 	for _, it := range items {
 		printWarn(cfg, "%s", it.display)
 	}
@@ -272,7 +272,7 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 
 	slices.SortFunc(items, func(a, b fontItem) int { return strings.Compare(a.display, b.display) })
 	sep()
-	printTitle("orphaned fonts")
+	printTitle("orphaned font(s)")
 	for _, it := range items {
 		printWarn(cfg, "%s", it.display)
 	}
@@ -358,7 +358,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 		return false
 	}
 
-	printTitle("orphaned bins")
+	printTitle("orphaned bin(s)")
 	for _, d := range displays {
 		printWarn(cfg, "%s", d)
 	}
@@ -417,7 +417,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 		return false
 	}
 
-	printTitle("orphaned extracts")
+	printTitle("orphaned extract(s)")
 	for _, d := range displays {
 		printWarn(cfg, "%s", d)
 	}
@@ -474,7 +474,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		return false
 	}
 
-	printTitle("orphaned downloads")
+	printTitle("orphaned download(s)")
 	for _, p := range toRemove {
 		rel, _ := filepath.Rel(releaseDir, p)
 		parts := strings.Split(rel, string(filepath.Separator))

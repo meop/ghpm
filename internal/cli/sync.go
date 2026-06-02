@@ -213,9 +213,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
-		printTitle(res.Name)
 		if res.Err != nil {
-			printFail(cfg, "%v", res.Err)
+			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
 			continue
 		}
@@ -250,13 +249,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 					break
 				}
 				if len(selected) == 0 {
-					printFail(cfg, msgNoBinaryFound, assetName)
+					printFail(cfg, "%s: no binary found in %s", res.Name, assetName)
 					hadErrors = true
 					selectionFailed = true
 					break
 				}
 				for _, s := range selected {
-					printInfo(cfg, "bin %s", s.Key())
+					printInfo(cfg, "%s: bin %s", res.Name, s.Key())
 				}
 				newBins := make(map[string]string, len(selected))
 				for _, s := range selected {
@@ -322,7 +321,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					for shimName, binsKey := range newBins {
 						binDir, binName := parseBinPath(binsKey)
 						if err := shim.Create(shimName, binName, tr.pkgDirByAsset[assetName], binDir); err != nil {
-							printFail(cfg, "%s: could not update shim: %v", shimName, err)
+							printFail(cfg, "%s: %s: could not update shim: %v", res.Name, shimName, err)
 							shimFailed = true
 							hadErrors = true
 						}
@@ -364,7 +363,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					continue
 				}
 				if selErr != nil {
-					printFail(cfg, "%v", selErr)
+					printFail(cfg, "%s: %v", res.Name, selErr)
 					hadErrors = true
 					pkgFailed = true
 					continue
@@ -428,7 +427,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			if !pkgFailed {
 				fontsDir, err := ensureFontDir()
 				if err != nil {
-					printFail(cfg, "font dir: %v", err)
+					printFail(cfg, "%s: font dir: %v", res.Name, err)
 					hadErrors = true
 					pkgFailed = true
 				} else {
@@ -437,7 +436,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 						for fontName, fontPath := range pf.fontMap {
 							srcPath := filepath.Join(tr.pkgDirByAsset[pf.assetName], filepath.FromSlash(fontPath))
 							if err := installFont(srcPath, fontsDir); err != nil {
-								printFail(cfg, "%s: could not install font: %v", fontName, err)
+								printFail(cfg, "%s: %s: could not install font: %v", res.Name, fontName, err)
 								hadErrors = true
 								pkgFailed = true
 								continue
@@ -464,13 +463,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if !pkgFailed && (len(tr.binsByAsset) > 0 || len(tr.fontsByAsset) > 0) {
-			printPass(cfg, "updated %s → %s", tr.r.pkg.Version, newVer)
+			printPass(cfg, "%s updated %s → %s", res.Name, tr.r.pkg.Version, newVer)
 		}
 
 		if !pkgFailed && tr.r.pkg.Version != newVer {
 			if oldBase, err := dirs.ExtractBaseDir(tr.r.key); err == nil {
 				if err := os.RemoveAll(filepath.Join(oldBase, tr.r.pkg.Version)); err != nil {
-					printWarn(cfg, "could not remove old extract dir: %v", err)
+					printWarn(cfg, "%s: could not remove old extract dir: %v", res.Name, err)
 				}
 			}
 		}

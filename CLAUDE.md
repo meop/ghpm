@@ -68,8 +68,9 @@ Extracted content lives under `~/.ghpm/extract/<key>/<version>/`. Downloaded ass
 - No blank line at the start or end of any command's output
 - Blank lines only between logical blocks; never two in a row — this applies inside loops too
 - `sep()` guards the leading blank via `hasOutput`; safe to call before any block
-- After a confirm prompt returns true and the next output is a `printTitle` loop, reset `hasOutput = false` — the user's Enter already provides visual separation
+- After a confirm prompt returns true and the next block outputs without a leading `sep()`, reset `hasOutput = false` — the user's Enter already provides visual separation
 - `printPass`/`printFail`/`printInfo` do not call `sep()`; safe to use directly after a prompt
+- Per-package messages inline the name (e.g., `"%s installed"`, `"%s: bin %s"`) — no `printTitle` per result in final install/sync/download output loops
 - Never call `sep()` as the last statement before returning
 
 ## Conventions

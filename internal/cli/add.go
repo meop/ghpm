@@ -252,9 +252,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	var shimPlans []shimPlan
 
 	for _, res := range installResults {
-		printTitle(res.Name)
 		if res.Err != nil {
-			printFail(cfg, "%v", res.Err)
+			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
 			continue
 		}
@@ -263,7 +262,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 		if len(tr.binsByAsset) == 0 && len(tr.fontsByAsset) == 0 {
 			for _, c := range r.chosens {
-				printFail(cfg, "no binaries or fonts found in %s", c.Name)
+				printFail(cfg, "%s: no binaries or fonts found in %s", r.job.name, c.Name)
 			}
 			hadErrors = true
 			continue
@@ -292,7 +291,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					break
 				}
 				if len(selected) == 0 {
-					printFail(cfg, msgNoBinaryFound, assetName)
+					printFail(cfg, "%s: no binary found in %s", r.job.name, assetName)
 					hadErrors = true
 					selectionFailed = true
 					break
@@ -302,7 +301,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				}
 				names := proposedShimNames(key, selected)
 				for i, s := range selected {
-					printInfo(cfg, "bin %s", s.Key())
+					printInfo(cfg, "%s: bin %s", r.job.name, s.Key())
 					positions = append(positions, binPos{assetName, s.Key()})
 					rawKeys = append(rawKeys, s.Key())
 					proposed = append(proposed, names[i])
@@ -398,7 +397,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					}
 					slices.Sort(fontNames)
 					for _, fontName := range fontNames {
-						printInfo(cfg, "font %s", fontName)
+						printInfo(cfg, "%s: font %s", r.job.name, fontName)
 					}
 				}
 			}
@@ -476,7 +475,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	hasOutput = false
 
 	for _, p := range shimPlans {
-		printTitle(p.jobName)
 		if forceInstall {
 			if existing, ok := manifest.Extracts[p.key]; ok {
 				for shimName := range existing.AllBins() {
@@ -519,7 +517,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			for shimName, binsKey := range bins {
 				binDir, binName := parseBinPath(binsKey)
 				if err := shim.Create(shimName, binName, p.pkgDirByAsset[assetName], binDir); err != nil {
-					printFail(cfg, "%s: could not create shim: %v", shimName, err)
+					printFail(cfg, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
 					shimFailed = true
 					hadErrors = true
 				}
@@ -529,7 +527,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if len(p.fontAssets) > 0 {
 			fontsDir, err := ensureFontDir()
 			if err != nil {
-				printFail(cfg, "font dir: %v", err)
+				printFail(cfg, "%s: font dir: %v", p.jobName, err)
 				fontFailed = true
 				hadErrors = true
 			}
@@ -544,7 +542,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 						fontPath := fonts[fontName]
 						srcPath := filepath.Join(p.pkgDirByAsset[assetName], filepath.FromSlash(fontPath))
 						if err := installFont(srcPath, fontsDir); err != nil {
-							printFail(cfg, "%s: could not install font: %v", fontName, err)
+							printFail(cfg, "%s: %s: could not install font: %v", p.jobName, fontName, err)
 							hadErrors = true
 						}
 					}
@@ -552,7 +550,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !shimFailed && !fontFailed {
-			printPass(cfg, "installed")
+			printPass(cfg, "%s installed", p.jobName)
 		}
 	}
 

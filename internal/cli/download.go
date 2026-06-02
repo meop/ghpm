@@ -52,15 +52,13 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if err := config.ValidateName(name); err != nil {
-			printTitle(name)
-			printFail(cfg, "%v", err)
+			printFail(cfg, "%s: %v", name, err)
 			hadErrors = true
 			continue
 		}
 		source, err := config.ResolveSource(name, ver, manifest, repos)
 		if err != nil {
-			printTitle(name)
-			printFail(cfg, "%v", err)
+			printFail(cfg, "%s: %v", name, err)
 			hadErrors = true
 			continue
 		}
@@ -99,13 +97,12 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		if errors.Is(res.Err, asset.ErrSkip) {
 			continue
 		}
-		printTitle(res.Name)
 		if res.Err != nil {
-			printFail(cfg, "%v", res.Err)
+			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
 			continue
 		}
-		printInfo(cfg, "asset: %s", res.Value.chosen.Name)
+		printInfo(cfg, "%s: asset: %s", res.Name, res.Value.chosen.Name)
 		ready = append(ready, res.Value)
 	}
 	if len(ready) == 0 {
