@@ -1,13 +1,12 @@
 package config
 
 import (
-	"bufio"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/meop/ghpm/internal/ioutils"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 func withHome(t *testing.T) string {
@@ -90,9 +89,8 @@ func setStdin(t *testing.T, input string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := ioutils.Stdin
-	ioutils.Stdin = bufio.NewReader(r)
-	t.Cleanup(func() { ioutils.Stdin = old })
+	ui.SetInput(r)
+	t.Cleanup(func() { ui.SetInput(os.Stdin) })
 	if _, err := w.WriteString(input); err != nil {
 		t.Fatal(err)
 	}

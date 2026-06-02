@@ -41,8 +41,8 @@ GOOS=windows GOARCH=amd64 go build -o ghpm-windows-amd64.exe ./cmd/ghpm
 - `internal/cli/` — subcommands; `helpers.go` has shared shim-naming and confirm logic
 - `internal/config/` — manifest (JSON), settings, name resolution, semver, file locking
 - `internal/gh/` — all GitHub interaction via `gh` CLI (`os/exec`), never a Go SDK
-- `internal/asset/` — asset scoring/selection, extraction, binary/font discovery, name conflict resolution; `prompt.go` has shared stdin prompt helpers
-- `internal/ioutils/` — low-level stdin helpers (`ReadLine`, `ReadSingle`) and `ErrSkip` sentinel
+- `internal/asset/` — asset scoring/selection, extraction, binary/font discovery, name conflict resolution; `prompt.go` has shared selection-read helpers
+- `internal/ui/` — the single sink for all console output and prompts (deferred separators, styled lines, tables, confirm/select reads, `ErrSkip` sentinel). Imports no other internal package; color is injected via `SetColorResolver`
 - `internal/shim/` — shim creation/removal (symlink on Unix, stamped .exe on Windows)
 - `internal/store/` — `~/.ghpm/` path helpers
 - `internal/parallel/` — bounded worker pool used for parallel download+extract
@@ -65,17 +65,20 @@ Extracted content lives under `~/.ghpm/extract/<key>/<version>/`. Downloaded ass
 
 ## Print formatting
 
-- No blank line at the start or end of any command's output
-- Blank lines only between logical blocks; never two in a row — this applies inside loops too
-- `sep()` guards the leading blank via `hasOutput`; safe to call before any block
-- After a confirm prompt returns true and the next block outputs without a leading `sep()`, reset `hasOutput = false` — the user's Enter already provides visual separation
-- `printPass`/`printFail`/`printInfo` do not call `sep()`; safe to use directly after a prompt
-- Per-package messages inline the name (e.g., `"%s installed"`, `"%s: bin %s"`) — no `printTitle` per result in final install/sync/download output loops
-- Never call `sep()` as the last statement before returning
+All output and prompts go through `internal/ui`, which uses **deferred separators**. This is what makes spacing robust — most of the old footguns no longer exist.
+
+- `ui.Break()` (aliased as `sep()` in `cli`) *requests* a blank line; the blank is only emitted immediately before the next real output. It is idempotent and self-guarding: no leading blank (a Break before any output is a no-op), no double blank (consecutive Breaks collapse), no trailing blank (a Break with nothing after it never prints).
+- Because of this, you can call `sep()` at the **top of any per-item loop** unconditionally — even iterations that print nothing are safe (no stray or double blank). This is the normal way to blank-separate per-package blocks; `add`/`sync`/`info`/`find` all do it.
+- Blank lines appear only where code calls `Break()`. There is no "Enter provides separation" reset to manage anymore: after a prompt, a blank appears before the next block iff that block calls `Break()`. So a resolve loop's next-iteration `sep()` yields the blank after a selection menu, while a final confirm followed by progress output (no `Break`) stays tight.
+- Output styling: `Out` (plain), `Info`/`Warn`/`Fail`/`Pass` (role-prefixed, colored via the injected resolver), `Table` (renders as one Break-separated block). `cli` wraps these as `print`/`printInfo`/.../`printTable`; the `*config.Settings` arg on the `cli` wrappers is vestigial (color comes from the resolver set in `initCommand`) and ignored.
+- Prompts: `ui.Confirm` and the selection menus in `asset` print via `ui.Out` and read via `ui.ReadLine`, so a pending Break flushes correctly across the menu's read prompt. `config.SearchGitHub` also prompts through `ui`.
+- Per-package messages inline the name (e.g., `"%s installed"`, `"%s: bin %s"`) — no per-result title line in the final install/sync/download output loops.
+- `internal/ui/ui_test.go` has golden tests asserting exact blank-line placement (loops, empty iterations, post-prompt separation, tables). Add to them when changing spacing behavior.
 
 ## Conventions
 
 - All GitHub interaction goes through `gh` CLI, never a Go SDK
+- Interactive prompts must run only in the orchestrator goroutine, never inside a `parallel.Task` worker — `ui` is a shared single sink (one stdin reader, shared separator state), so concurrent prompts would interleave and race. The pattern is: parallel workers do network fetch + scoring (`SelectAssetAuto`) and return candidates; the orchestrator then prompts sequentially over the results (see `download`, `add`, `sync`)
 - Manifest is read/written by the orchestrator goroutine only (not by parallel workers)
 - Mutating commands acquire a file lock to prevent concurrent runs
 - Package names must be simple identifiers (no slashes)

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/meop/ghpm/internal/ioutils"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 // BinCandidate is a discovered executable inside an extracted package dir.
@@ -113,9 +113,9 @@ func promptNameConflicts(keys, proposed []string, reserved map[string]string, he
 	}
 
 	if anyConflict {
-		fmt.Println(headerConflict)
+		ui.Out("%s", headerConflict)
 	} else {
-		fmt.Println(headerOK)
+		ui.Out("%s", headerOK)
 	}
 	for i, name := range result {
 		entry := fmt.Sprintf("  %d) %s", i+1, name)
@@ -125,7 +125,7 @@ func promptNameConflicts(keys, proposed []string, reserved map[string]string, he
 		} else if conflicts[i] {
 			entry += "  ! duplicate"
 		}
-		fmt.Println(entry)
+		ui.Out("%s", entry)
 	}
 
 	var toRename []int
@@ -201,12 +201,12 @@ func promptNameConflicts(keys, proposed []string, reserved map[string]string, he
 
 func collectNewName(extra string, taken map[string]bool) string {
 	for {
-		name := ioutils.ReadLine(fmt.Sprintf("  rename%s: ", extra))
+		name := ui.ReadLine(fmt.Sprintf("  rename%s: ", extra))
 		if name == "" {
 			return ""
 		}
 		if taken[name] {
-			fmt.Printf("  %q is already taken, choose another\n", name)
+			ui.Out("  %q is already taken, choose another", name)
 			continue
 		}
 		return name
@@ -237,13 +237,13 @@ func selectItems[C selectCandidate](candidates []C, prevKeys []string, noun stri
 	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
 		return candidates, nil
 	}
-	fmt.Printf("choose %s\n", noun)
+	ui.Out("choose %s", noun)
 	for i, c := range candidates {
 		entry := fmt.Sprintf("  %d) %s", i+1, c.label())
 		if c.Key() != c.label() {
 			entry += fmt.Sprintf("  [%s]", c.Key())
 		}
-		fmt.Println(entry)
+		ui.Out("%s", entry)
 	}
 	indices, err := readMultiAll(len(candidates))
 	if err != nil {

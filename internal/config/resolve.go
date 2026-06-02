@@ -12,8 +12,8 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/meop/ghpm/internal/ghbin"
-	"github.com/meop/ghpm/internal/ioutils"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 type reposFile struct {
@@ -219,11 +219,12 @@ func SearchGitHub(name string) (string, error) {
 		return "", fmt.Errorf("no results found for %q", name)
 	}
 
-	fmt.Println("repo search results:")
+	ui.Break()
+	ui.Out("repo search results:")
 	for i, r := range repos {
-		fmt.Printf("  %d) %s\n", i+1, r.FullName)
+		ui.Out("  %d) %s", i+1, r.FullName)
 	}
-	idx, err := ioutils.ReadSingle("select a repo")
+	idx, err := ui.ReadSingle("select a repo")
 	if err != nil || idx < 1 || idx > len(repos) {
 		return "", fmt.Errorf("skipped")
 	}

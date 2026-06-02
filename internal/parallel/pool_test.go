@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestRunAllComplete(t *testing.T) {
@@ -47,22 +48,22 @@ func TestRunErrorPropagation(t *testing.T) {
 }
 
 func TestRunBoundedConcurrency(t *testing.T) {
-	var concurrent int64
-	var maxSeen int64
+	var concurrent atomic.Int64
+	var maxSeen atomic.Int64
 
 	tasks := make([]Task[any], 20)
 	for i := range tasks {
 		tasks[i] = Task[any]{
 			Name: fmt.Sprintf("t%d", i),
 			Run: func() (any, error) {
-				cur := atomic.AddInt64(&concurrent, 1)
+				cur := concurrent.Add(1)
 				for {
-					old := atomic.LoadInt64(&maxSeen)
-					if cur <= old || atomic.CompareAndSwapInt64(&maxSeen, old, cur) {
+					old := maxSeen.Load()
+					if cur <= old || maxSeen.CompareAndSwap(old, cur) {
 						break
 					}
 				}
-				atomic.AddInt64(&concurrent, -1)
+				concurrent.Add(-1)
 				return nil, nil
 			},
 		}
@@ -70,8 +71,8 @@ func TestRunBoundedConcurrency(t *testing.T) {
 
 	Run(context.Background(), tasks, 4)
 
-	if maxSeen > 4 {
-		t.Errorf("concurrency exceeded workers: max observed %d", maxSeen)
+	if maxSeen.Load() > 4 {
+		t.Errorf("concurrency exceeded workers: max observed %d", maxSeen.Load())
 	}
 }
 
@@ -90,6 +91,34 @@ func TestRunCancellation(t *testing.T) {
 	results := Run(ctx, tasks, 2)
 	if len(results) != 5 {
 		t.Fatalf("expected 5 results (all reported), got %d", len(results))
+	}
+}
+
+func TestRunPreservesInputOrder(t *testing.T) {
+	// Stagger completion (later tasks finish first) to prove ordering is by
+	// input index, not completion order.
+	tasks := make([]Task[any], 8)
+	for i := range tasks {
+		tasks[i] = Task[any]{
+			Name: fmt.Sprintf("t%d", i),
+			Run: func() (any, error) {
+				time.Sleep(time.Duration(len(tasks)-i) * time.Millisecond)
+				return i, nil
+			},
+		}
+	}
+
+	results := Run(context.Background(), tasks, 4)
+	if len(results) != len(tasks) {
+		t.Fatalf("expected %d results, got %d", len(tasks), len(results))
+	}
+	for i, r := range results {
+		if r.Name != fmt.Sprintf("t%d", i) {
+			t.Errorf("result[%d].Name = %q, want t%d", i, r.Name, i)
+		}
+		if v, ok := r.Value.(int); !ok || v != i {
+			t.Errorf("result[%d].Value = %v, want %d", i, r.Value, i)
+		}
 	}
 }
 

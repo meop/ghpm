@@ -16,41 +16,42 @@ type Result[T any] struct {
 	Err   error
 }
 
+// Run executes tasks across at most workers goroutines and returns their
+// results in input order (results[i] corresponds to tasks[i]), regardless of
+// completion order, so callers get deterministic, stable output.
 func Run[T any](ctx context.Context, tasks []Task[T], workers int) []Result[T] {
 	if workers <= 0 {
 		workers = 5
 	}
 
-	taskCh := make(chan Task[T], len(tasks))
-	for _, t := range tasks {
-		taskCh <- t
+	type indexedTask struct {
+		idx  int
+		task Task[T]
+	}
+	taskCh := make(chan indexedTask, len(tasks))
+	for i, t := range tasks {
+		taskCh <- indexedTask{idx: i, task: t}
 	}
 	close(taskCh)
 
-	resultCh := make(chan Result[T], len(tasks))
+	// Each worker writes only to results[it.idx]; distinct indices are
+	// independent memory, so no per-element synchronization is needed.
+	results := make([]Result[T], len(tasks))
 
 	var wg sync.WaitGroup
 	for range min(workers, len(tasks)) {
 		wg.Go(func() {
-			for task := range taskCh {
+			for it := range taskCh {
 				if ctx.Err() != nil {
-					resultCh <- Result[T]{Name: task.Name, Err: ctx.Err()}
+					results[it.idx] = Result[T]{Name: it.task.Name, Err: ctx.Err()}
 					continue
 				}
-				val, err := task.Run()
-				resultCh <- Result[T]{Name: task.Name, Value: val, Err: err}
+				val, err := it.task.Run()
+				results[it.idx] = Result[T]{Name: it.task.Name, Value: val, Err: err}
 			}
 		})
 	}
+	wg.Wait()
 
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
-
-	results := make([]Result[T], 0, len(tasks))
-	for r := range resultCh {
-		results = append(results, r)
-	}
 	return results
 }

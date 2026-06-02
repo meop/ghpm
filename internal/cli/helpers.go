@@ -16,6 +16,7 @@ import (
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 var skipHashCheck bool
@@ -66,6 +67,7 @@ func initCommand(opts cmdOptions) (*cmdInit, error) {
 		return nil, ci.fail()
 	}
 	ci.cfg = cfg
+	ui.SetColorResolver(func(role string) func(string) string { return colorfn(cfg, role) })
 	if opts.SkipHashCheck && cfg.SkipHashCheck {
 		skipHashCheck = true
 	}

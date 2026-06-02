@@ -47,7 +47,16 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		chosen  gh.Asset
 	}
 
-	tasks := make([]parallel.Task[dlJob], 0, len(args))
+	// resolved is the parallel phase's output: the network fetch plus scored
+	// asset candidates. Picking among ambiguous candidates may prompt, so it is
+	// deferred to a sequential phase — interactive prompts must never run inside
+	// parallel workers (interleaved menus, racy stdin, shared ui state).
+	type resolved struct {
+		job dlJob
+		ac  asset.AssetCandidates
+	}
+
+	tasks := make([]parallel.Task[resolved], 0, len(args))
 	var hadErrors bool
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
@@ -62,12 +71,12 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		tasks = append(tasks, parallel.Task[dlJob]{
+		tasks = append(tasks, parallel.Task[resolved]{
 			Name: name,
-			Run: func() (dlJob, error) {
+			Run: func() (resolved, error) {
 				owner, repo, err := gh.SplitSource(source)
 				if err != nil {
-					return dlJob{}, err
+					return resolved{}, err
 				}
 				var rel gh.Release
 				if ver != "" {
@@ -76,34 +85,40 @@ func runDownload(cmd *cobra.Command, args []string) error {
 					rel, err = ghClient.GetLatestRelease(ctx, owner, repo)
 				}
 				if err != nil {
-					return dlJob{}, err
+					return resolved{}, err
 				}
 				ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", name)
 				if err != nil {
-					return dlJob{}, err
+					return resolved{}, err
 				}
-				chosen, err := asset.PromptFromCandidates(ac)
-				if err != nil {
-					return dlJob{}, err
-				}
-				return dlJob{name: name, source: source, version: ver, pinned: pinned, release: rel, chosen: chosen}, nil
+				return resolved{
+					job: dlJob{name: name, source: source, version: ver, pinned: pinned, release: rel},
+					ac:  ac,
+				}, nil
 			},
 		})
 	}
 
-	results := parallel.Run(cmd.Context(), tasks, cfg.NumParallel)
 	var ready []dlJob
-	for _, res := range results {
-		if errors.Is(res.Err, asset.ErrSkip) {
-			continue
-		}
+	for _, res := range parallel.Run(cmd.Context(), tasks, cfg.NumParallel) {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
 			continue
 		}
-		printInfo(cfg, "%s: asset: %s", res.Name, res.Value.chosen.Name)
-		ready = append(ready, res.Value)
+		job := res.Value.job
+		chosen, err := asset.PromptFromCandidates(res.Value.ac)
+		if errors.Is(err, asset.ErrSkip) {
+			continue
+		}
+		if err != nil {
+			printFail(cfg, "%s: %v", res.Name, err)
+			hadErrors = true
+			continue
+		}
+		job.chosen = chosen
+		printInfo(cfg, "%s: asset: %s", job.name, chosen.Name)
+		ready = append(ready, job)
 	}
 	if len(ready) == 0 {
 		if hadErrors {

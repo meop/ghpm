@@ -1,13 +1,12 @@
 package asset
 
 import (
-	"bufio"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	"github.com/meop/ghpm/internal/ioutils"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 func writeFakeBinary(t *testing.T, dir, name string) {
@@ -41,12 +40,11 @@ func fakeStdin(t *testing.T, input string) {
 		t.Fatal(err)
 	}
 	oldStdin := os.Stdin
-	oldIoStdin := ioutils.Stdin
 	os.Stdin = r
-	ioutils.Stdin = bufio.NewReader(r)
+	ui.SetInput(r)
 	t.Cleanup(func() {
 		os.Stdin = oldStdin
-		ioutils.Stdin = oldIoStdin
+		ui.SetInput(oldStdin)
 	})
 	if _, err := w.WriteString(input); err != nil {
 		t.Fatal(err)

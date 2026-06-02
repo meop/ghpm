@@ -92,7 +92,7 @@ func (c Constraint) Matches(version string) bool {
 func CompareVersions(a, b string) int {
 	ap := versionParts(a)
 	bp := versionParts(b)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		ai, bi := 0, 0
 		if i < len(ap) {
 			ai = ap[i]

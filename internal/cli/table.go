@@ -2,23 +2,45 @@ package cli
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 
 	"github.com/fatih/color"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 var errSilent = errors.New("")
 
-var hasOutput bool
+// sep requests a deferred blank line before the next output. See internal/ui.
+func sep() { ui.Break() }
 
-func sep() {
-	if hasOutput {
-		fmt.Println()
+func print(format string, args ...any) {
+	if quiet {
+		return
 	}
-	hasOutput = true
+	ui.Out(format, args...)
+}
+
+func printInfo(_ *config.Settings, format string, args ...any) {
+	if quiet {
+		return
+	}
+	ui.Info(format, args...)
+}
+
+func printWarn(_ *config.Settings, format string, args ...any) {
+	if quiet {
+		return
+	}
+	ui.Warn(format, args...)
+}
+
+func printFail(_ *config.Settings, format string, args ...any) { ui.Fail(format, args...) }
+
+func printPass(_ *config.Settings, format string, args ...any) { ui.Pass(format, args...) }
+
+func printTable(headers []string, rows [][]string, colColors []func(string) string) {
+	ui.Table(headers, rows, colColors)
 }
 
 var defaultColorNames = map[string]color.Attribute{
@@ -47,129 +69,4 @@ func colorfn(cfg *config.Settings, role string) func(string) string {
 	}
 	fn := color.New(attr).SprintFunc()
 	return func(s string) string { return fn(s) }
-}
-
-func print(format string, args ...any) {
-	if quiet {
-		return
-	}
-	hasOutput = true
-	fmt.Printf(format+"\n", args...)
-}
-
-func printInfo(cfg *config.Settings, format string, args ...any) {
-	if quiet {
-		return
-	}
-	hasOutput = true
-	msg := fmt.Sprintf(format, args...)
-	if fn := colorfn(cfg, "info"); fn != nil {
-		fmt.Println(fn("› " + msg))
-	} else {
-		fmt.Println("› " + msg)
-	}
-}
-
-func printWarn(cfg *config.Settings, format string, args ...any) {
-	if quiet {
-		return
-	}
-	hasOutput = true
-	msg := fmt.Sprintf(format, args...)
-	if fn := colorfn(cfg, "warn"); fn != nil {
-		fmt.Println(fn("‼ " + msg))
-	} else {
-		fmt.Println("‼ " + msg)
-	}
-}
-
-func printFail(cfg *config.Settings, format string, args ...any) {
-	hasOutput = true
-	msg := fmt.Sprintf(format, args...)
-	if fn := colorfn(cfg, "fail"); fn != nil {
-		fmt.Println(fn("✗ " + msg))
-	} else {
-		fmt.Println("✗ " + msg)
-	}
-}
-
-func printPass(cfg *config.Settings, format string, args ...any) {
-	hasOutput = true
-	msg := fmt.Sprintf(format, args...)
-	if fn := colorfn(cfg, "pass"); fn != nil {
-		fmt.Println(fn("✓ " + msg))
-	} else {
-		fmt.Println("✓ " + msg)
-	}
-}
-
-func printTable(headers []string, rows [][]string, colColors []func(string) string) {
-	sep()
-	renderTableBody(headers, rows, colColors)
-}
-
-func renderTableBody(headers []string, rows [][]string, colColors []func(string) string) {
-	hasOutput = true
-	widths := make([]int, len(headers))
-	for i, h := range headers {
-		widths[i] = len(h)
-	}
-	for _, row := range rows {
-		for i := range headers {
-			if i < len(row) && len(row[i]) > widths[i] {
-				widths[i] = len(row[i])
-			}
-		}
-	}
-
-	prRaw := func(cells []string) {
-		for i, cell := range cells {
-			if i > 0 {
-				fmt.Print(" ")
-			}
-			if i < len(cells)-1 {
-				fmt.Printf("%-*s", widths[i], cell)
-			} else {
-				fmt.Print(cell)
-			}
-		}
-		fmt.Println()
-	}
-
-	prColored := func(cells []string) {
-		for i, cell := range cells {
-			if i > 0 {
-				fmt.Print(" ")
-			}
-			var fn func(string) string
-			if colColors != nil && i < len(colColors) {
-				fn = colColors[i]
-			}
-			if i < len(cells)-1 {
-				pad := max(widths[i]-len(cell), 0)
-				if fn != nil {
-					fmt.Print(fn(cell) + strings.Repeat(" ", pad))
-				} else {
-					fmt.Printf("%-*s", widths[i], cell)
-				}
-			} else {
-				if fn != nil {
-					fmt.Print(fn(cell))
-				} else {
-					fmt.Print(cell)
-				}
-			}
-		}
-		fmt.Println()
-	}
-
-	dashes := make([]string, len(headers))
-	for i, h := range headers {
-		dashes[i] = strings.Repeat("-", len(h))
-	}
-	prRaw(headers)
-	prRaw(dashes)
-	for _, row := range rows {
-		prColored(row)
-	}
 }

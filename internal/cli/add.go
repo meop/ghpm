@@ -83,6 +83,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	var hadErrors bool
 
 	for _, arg := range args {
+		sep()
 		pkgName, ver, pinned := config.ParseVersionSuffix(arg)
 
 		var explicitSource string
@@ -213,7 +214,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	if !promptInstall(cfg, ready) {
 		return nil
 	}
-	hasOutput = false
 
 	installTasks := make([]parallel.Task[installTaskResult], len(ready))
 	for i, r := range ready {
@@ -469,7 +469,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	}
-	hasOutput = false
 
 	successCount := 0
 	for _, p := range shimPlans {

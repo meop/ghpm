@@ -74,7 +74,7 @@ func upgradeGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) er
 
 	currentVer := ""
 	if out, err := exec.Command(ghPath, "--version").Output(); err == nil {
-		for _, tok := range strings.Fields(string(out)) {
+		for tok := range strings.FieldsSeq(string(out)) {
 			if asset.IsVersionToken(tok) {
 				currentVer = strings.TrimPrefix(tok, "v")
 				break
@@ -181,7 +181,7 @@ func upgradeShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) 
 	currentVer := ""
 	if _, err := os.Stat(kebabPath); err == nil {
 		if out, err := exec.Command(kebabPath, "--version").Output(); err == nil {
-			for _, tok := range strings.Fields(string(out)) {
+			for tok := range strings.FieldsSeq(string(out)) {
 				if asset.IsVersionToken(tok) {
 					currentVer = strings.TrimPrefix(tok, "v")
 					break

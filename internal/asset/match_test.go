@@ -1,7 +1,6 @@
 package asset
 
 import (
-	"bufio"
 	"os"
 	"reflect"
 	"runtime"
@@ -10,7 +9,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
-	"github.com/meop/ghpm/internal/ioutils"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 func testCfg() *config.Settings {
@@ -338,12 +337,11 @@ func stdinPipe(t *testing.T, input string) {
 		t.Fatal(err)
 	}
 	oldStdin := os.Stdin
-	oldIoStdin := ioutils.Stdin
 	os.Stdin = r
-	ioutils.Stdin = bufio.NewReader(r)
+	ui.SetInput(r)
 	t.Cleanup(func() {
 		os.Stdin = oldStdin
-		ioutils.Stdin = oldIoStdin
+		ui.SetInput(oldStdin)
 	})
 	if _, err = w.WriteString(input); err != nil {
 		t.Fatal(err)

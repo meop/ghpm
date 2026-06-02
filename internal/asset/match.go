@@ -9,10 +9,10 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
-	"github.com/meop/ghpm/internal/ioutils"
+	"github.com/meop/ghpm/internal/ui"
 )
 
-var ErrSkip = ioutils.ErrSkip
+var ErrSkip = ui.ErrSkip
 
 var ErrNoCompatibleAsset = errors.New("no compatible assets found")
 
@@ -262,14 +262,14 @@ func PromptFromCandidates(ac AssetCandidates) (gh.Asset, error) {
 }
 
 func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
-	fmt.Println("choose asset:")
+	ui.Out("choose asset:")
 	for i, a := range compatible {
-		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
+		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
 	}
 	showMoreIdx := -1
 	if len(hidden) > 0 {
 		showMoreIdx = len(compatible) + 1
-		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
+		ui.Out("  %d) show more (%d more)", showMoreIdx, len(hidden))
 	}
 	idx, err := readSingle()
 	if err != nil {
@@ -285,9 +285,9 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 }
 
 func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
-	fmt.Println(msg)
+	ui.Out("%s", msg)
 	for i, a := range assets {
-		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
+		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
 	}
 	idx, err := readSingle()
 	if err != nil {
@@ -309,14 +309,14 @@ func PromptAssetsMulti(ac AssetCandidates) ([]gh.Asset, error) {
 }
 
 func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) {
-	fmt.Println("choose asset(s):")
+	ui.Out("choose asset(s):")
 	for i, a := range compatible {
-		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
+		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
 	}
 	showMoreIdx := -1
 	if len(hidden) > 0 {
 		showMoreIdx = len(compatible) + 1
-		fmt.Printf("  %d) show more (%d more)\n", showMoreIdx, len(hidden))
+		ui.Out("  %d) show more (%d more)", showMoreIdx, len(hidden))
 	}
 	maxIdx := len(compatible)
 	if showMoreIdx > 0 {
@@ -345,9 +345,9 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 }
 
 func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
-	fmt.Println("choose asset(s):")
+	ui.Out("choose asset(s):")
 	for i, a := range all {
-		fmt.Printf("  %d) %s (%d bytes)\n", i+1, a.Name, a.Size)
+		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
 	}
 	indices, err := readMultiFirst(len(all))
 	if err != nil {

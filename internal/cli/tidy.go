@@ -498,10 +498,10 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		dirs = append(dirs, path)
 		return nil
 	})
-	for i := len(dirs) - 1; i >= 0; i-- {
-		entries, _ := os.ReadDir(dirs[i])
+	for _, dir := range slices.Backward(dirs) {
+		entries, _ := os.ReadDir(dir)
 		if len(entries) == 0 {
-			_ = os.Remove(dirs[i])
+			_ = os.Remove(dir)
 		}
 	}
 	printPass(cfg, "removed %d orphaned download(s)", len(toRemove))
