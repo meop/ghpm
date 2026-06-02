@@ -93,7 +93,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	}
 
 	type item struct {
-		display       string
+		tableRow      []string
 		shimPaths     []string
 		extractPath   string
 		manifestKey   string
@@ -109,7 +109,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 			for assetName := range pkg.Asset {
 				if _, err := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version, assetName)); os.IsNotExist(err) {
 					items = append(items, item{
-						display:     fmt.Sprintf("%s: missing extract", key),
+						tableRow:    []string{key, "missing extract"},
 						extractPath: filepath.Join(pkgsDir, key, pkg.Version),
 						manifestKey: key,
 					})
@@ -143,7 +143,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		}
 		if extractMissing {
 			items = append(items, item{
-				display:     fmt.Sprintf("%s: missing extract", key),
+				tableRow:    []string{key, "missing extract"},
 				shimPaths:   shimPaths,
 				extractPath: filepath.Join(pkgsDir, key, pkg.Version),
 				manifestKey: key,
@@ -151,7 +151,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		} else {
 			for _, shimName := range missingShimNames {
 				items = append(items, item{
-					display:       fmt.Sprintf("%s: missing bin (%s)", key, shimName),
+					tableRow:      []string{key, fmt.Sprintf("missing bin (%s)", shimName)},
 					manifestKey:   key,
 					trimShimNames: []string{shimName},
 				})
@@ -163,11 +163,13 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		return false
 	}
 
-	slices.SortFunc(items, func(a, b item) int { return strings.Compare(a.display, b.display) })
-	printTitle("broken install(s)")
-	for _, it := range items {
-		printWarn(cfg, "%s", it.display)
+	slices.SortFunc(items, func(a, b item) int { return strings.Compare(a.tableRow[0], b.tableRow[0]) })
+	rows := make([][]string, len(items))
+	for i, it := range items {
+		rows[i] = it.tableRow
 	}
+	printTitle("broken install(s)")
+	renderTableBody([]string{"name", "issue"}, rows, nil)
 
 	if dryRun {
 		return true
@@ -227,6 +229,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 			return true
 		}
 	}
+	printPass(cfg, "removed %d broken install(s)", len(items))
 	return true
 }
 
@@ -244,7 +247,7 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 	}
 
 	type fontItem struct {
-		display     string
+		tableRow    []string
 		manifestKey string
 		fontName    string
 		fontFile    string
@@ -256,7 +259,7 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 			for fontName, fontPath := range ae.Font {
 				if !fontInstalled(fontPath, fontsDir) {
 					items = append(items, fontItem{
-						display:     fmt.Sprintf("%s: orphaned font (%s)", key, fontName),
+						tableRow:    []string{key, fontName},
 						manifestKey: key,
 						fontName:    fontName,
 						fontFile:    filepath.Base(fontPath),
@@ -270,12 +273,19 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 		return false
 	}
 
-	slices.SortFunc(items, func(a, b fontItem) int { return strings.Compare(a.display, b.display) })
+	slices.SortFunc(items, func(a, b fontItem) int {
+		if c := strings.Compare(a.tableRow[0], b.tableRow[0]); c != 0 {
+			return c
+		}
+		return strings.Compare(a.tableRow[1], b.tableRow[1])
+	})
+	fontRows := make([][]string, len(items))
+	for i, it := range items {
+		fontRows[i] = it.tableRow
+	}
 	sep()
 	printTitle("orphaned font(s)")
-	for _, it := range items {
-		printWarn(cfg, "%s", it.display)
-	}
+	renderTableBody([]string{"package", "font"}, fontRows, nil)
 
 	if dryRun {
 		return true
@@ -326,6 +336,7 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 			return true
 		}
 	}
+	printPass(cfg, "removed %d orphaned font(s)", len(items))
 	return true
 }
 
@@ -344,12 +355,12 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	}
 
 	var paths []string
-	var displays []string
+	var binRows [][]string
 	if binEntries, err := os.ReadDir(binDir); err == nil {
 		for _, e := range binEntries {
 			if !expected[e.Name()] {
 				paths = append(paths, filepath.Join(binDir, e.Name()))
-				displays = append(displays, fmt.Sprintf("%s: missing manifest", e.Name()))
+				binRows = append(binRows, []string{e.Name()})
 			}
 		}
 	}
@@ -359,9 +370,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	}
 
 	printTitle("orphaned bin(s)")
-	for _, d := range displays {
-		printWarn(cfg, "%s", d)
-	}
+	renderTableBody([]string{"name"}, binRows, nil)
 
 	if dryRun {
 		return true
@@ -375,6 +384,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	for _, p := range paths {
 		_ = os.Remove(p)
 	}
+	printPass(cfg, "removed %d orphaned bin(s)", len(paths))
 	return true
 }
 
@@ -386,7 +396,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 	}
 
 	var paths []string
-	var displays []string
+	var extRows [][]string
 
 	if pkgEntries, err := os.ReadDir(pkgsDir); err == nil {
 		for _, e := range pkgEntries {
@@ -397,7 +407,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 			pkg, inManifest := manifest.Extracts[key]
 			if !inManifest {
 				paths = append(paths, filepath.Join(pkgsDir, key))
-				displays = append(displays, fmt.Sprintf("%s: missing manifest", key))
+				extRows = append(extRows, []string{key, ""})
 				continue
 			}
 			verEntries, err := os.ReadDir(filepath.Join(pkgsDir, key))
@@ -407,7 +417,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 			for _, ve := range verEntries {
 				if ve.IsDir() && ve.Name() != pkg.Version {
 					paths = append(paths, filepath.Join(pkgsDir, key, ve.Name()))
-					displays = append(displays, fmt.Sprintf("%s: missing manifest (%s)", key, ve.Name()))
+					extRows = append(extRows, []string{key, ve.Name()})
 				}
 			}
 		}
@@ -418,9 +428,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 	}
 
 	printTitle("orphaned extract(s)")
-	for _, d := range displays {
-		printWarn(cfg, "%s", d)
-	}
+	renderTableBody([]string{"name", "version"}, extRows, nil)
 
 	if dryRun {
 		return true
@@ -434,6 +442,7 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 	for _, p := range paths {
 		pruneExtract(p, pkgsDir)
 	}
+	printPass(cfg, "removed %d orphaned extract(s)", len(paths))
 	return true
 }
 
@@ -447,6 +456,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	}
 
 	var toRemove []string
+	var dlRows [][]string
 	_ = filepath.WalkDir(releaseDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -466,6 +476,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		ver := parts[3]
 		if !installed[source+"/"+ver] {
 			toRemove = append(toRemove, path)
+			dlRows = append(dlRows, []string{parts[2], ver, parts[len(parts)-1]})
 		}
 		return nil
 	})
@@ -475,15 +486,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	}
 
 	printTitle("orphaned download(s)")
-	for _, p := range toRemove {
-		rel, _ := filepath.Rel(releaseDir, p)
-		parts := strings.Split(rel, string(filepath.Separator))
-		if len(parts) >= 5 {
-			printWarn(cfg, "%s: orphaned download (%s|%s)", parts[2], parts[3], parts[len(parts)-1])
-		} else {
-			printWarn(cfg, "%s", rel)
-		}
-	}
+	renderTableBody([]string{"package", "version", "file"}, dlRows, nil)
 
 	if dryRun {
 		return true
@@ -513,5 +516,6 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 			_ = os.Remove(dirs[i])
 		}
 	}
+	printPass(cfg, "removed %d orphaned download(s)", len(toRemove))
 	return true
 }

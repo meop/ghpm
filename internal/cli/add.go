@@ -474,6 +474,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	hasOutput = false
 
+	successCount := 0
 	for _, p := range shimPlans {
 		if forceInstall {
 			if existing, ok := manifest.Extracts[p.key]; ok {
@@ -550,8 +551,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !shimFailed && !fontFailed {
-			printPass(cfg, "%s installed", p.jobName)
+			successCount++
 		}
+	}
+	if successCount > 0 {
+		printPass(cfg, "installed %d package(s)", successCount)
 	}
 
 	if err := saveManifest(cfg, manifest); err != nil {
@@ -584,11 +588,11 @@ func promptInstall(cfg *config.Settings, ready []jobWithRelease) bool {
 	var rows [][]string
 	for _, r := range ready {
 		for _, c := range r.chosens {
-			rows = append(rows, []string{r.job.key(), r.job.pin(), config.NormalizeVersion(r.release.TagName), c.Name, r.job.source})
+			rows = append(rows, []string{r.job.key(), config.NormalizeVersion(r.release.TagName), r.job.pin(), r.job.source, c.Name})
 		}
 	}
-	colors := []func(string) string{nil, nil, colorfn(cfg, "new"), nil, nil}
-	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "new"), nil, nil, nil}
+	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)
 	sep()
 	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

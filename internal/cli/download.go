@@ -143,13 +143,17 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	successCount := 0
 	for _, res := range parallel.Run(cmd.Context(), dlTasks, cfg.NumParallel) {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
 		} else {
-			printPass(cfg, "downloaded %s", res.Name)
+			successCount++
 		}
+	}
+	if successCount > 0 {
+		printPass(cfg, "downloaded %d asset(s)", successCount)
 	}
 
 	if hadErrors {

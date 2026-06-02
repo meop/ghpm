@@ -177,7 +177,7 @@ func appendAssetEntryRows(rows [][]string, prefix []string, ae config.AssetEntry
 		}
 		slices.Sort(shimNames)
 		for _, shimName := range shimNames {
-			rows = append(rows, append(append([]string(nil), prefix...), "bin", ae.Bin[shimName], shimName))
+			rows = append(rows, append(append([]string(nil), prefix...), ae.Bin[shimName], "bin", shimName))
 		}
 	}
 	if ae.IsFont() {
@@ -187,7 +187,7 @@ func appendAssetEntryRows(rows [][]string, prefix []string, ae config.AssetEntry
 		}
 		slices.Sort(fontNames)
 		for _, fontName := range fontNames {
-			rows = append(rows, append(append([]string(nil), prefix...), "font", ae.Font[fontName], fontName))
+			rows = append(rows, append(append([]string(nil), prefix...), ae.Font[fontName], "font", fontName))
 		}
 	}
 	return rows

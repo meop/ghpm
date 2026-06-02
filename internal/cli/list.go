@@ -65,6 +65,6 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil, nil, nil, nil}
-	printTable([]string{"name", "version", "pin", "repo", "asset", "type", "artifact", "target"}, tableRows, colors)
+	printTable([]string{"name", "version", "pin", "repo", "asset", "artifact", "type", "target"}, tableRows, colors)
 	return nil
 }

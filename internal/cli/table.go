@@ -110,6 +110,11 @@ func printPass(cfg *config.Settings, format string, args ...any) {
 
 func printTable(headers []string, rows [][]string, colColors []func(string) string) {
 	sep()
+	renderTableBody(headers, rows, colColors)
+}
+
+func renderTableBody(headers []string, rows [][]string, colColors []func(string) string) {
+	hasOutput = true
 	widths := make([]int, len(headers))
 	for i, h := range headers {
 		widths[i] = len(h)

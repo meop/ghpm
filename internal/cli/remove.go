@@ -71,11 +71,11 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		}
 		slices.Sort(assetNames)
 		for _, assetName := range assetNames {
-			rows = append(rows, []string{t.key, t.pkg.Pin, t.pkg.Version, assetName, repo})
+			rows = append(rows, []string{t.key, t.pkg.Version, t.pkg.Pin, repo, assetName})
 		}
 	}
-	colors := []func(string) string{nil, nil, colorfn(cfg, "info"), nil, nil}
-	printTable([]string{"name", "pin", "version", "asset", "repo"}, rows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
+	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)
 	sep()
 	if !promptConfirm(fmt.Sprintf("uninstall %d package(s)", len(targets))) {
 		return nil

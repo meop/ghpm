@@ -175,11 +175,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	var rows [][]string
 	for _, r := range ready {
 		for _, c := range r.chosens {
-			rows = append(rows, []string{r.key, r.pkg.Pin, r.pkg.Version, config.NormalizeVersion(r.release.TagName), c.Name, r.source})
+			rows = append(rows, []string{r.key, r.pkg.Version, config.NormalizeVersion(r.release.TagName), r.pkg.Pin, r.source, c.Name})
 		}
 	}
-	colors := []func(string) string{nil, nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
-	printTable([]string{"name", "pin", "version", "update", "asset", "repo"}, rows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil}
+	printTable([]string{"name", "version", "update", "pin", "repo", "asset"}, rows, colors)
 
 	if dryRun {
 		return nil
@@ -212,6 +212,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	successCount := 0
 	for _, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
@@ -463,7 +464,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if !pkgFailed && (len(tr.binsByAsset) > 0 || len(tr.fontsByAsset) > 0) {
-			printPass(cfg, "%s updated %s → %s", res.Name, tr.r.pkg.Version, newVer)
+			successCount++
 		}
 
 		if !pkgFailed && tr.r.pkg.Version != newVer {
@@ -481,6 +482,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 				Asset:   newAssets,
 			}
 		}
+	}
+
+	if successCount > 0 {
+		printPass(cfg, "updated %d package(s)", successCount)
 	}
 
 	if err := saveManifest(cfg, manifest); err != nil {
