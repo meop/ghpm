@@ -1,9 +1,11 @@
 package asset
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/meop/ghpm/internal/ui"
@@ -107,7 +109,7 @@ func TestFindBins_Multiple(t *testing.T) {
 }
 
 func TestSelectBins_None(t *testing.T) {
-	got, err := SelectBins(nil, nil)
+	got, err := SelectBins(nil, nil, "")
 	if got != nil || err != nil {
 		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
@@ -115,7 +117,7 @@ func TestSelectBins_None(t *testing.T) {
 
 func TestSelectBins_One(t *testing.T) {
 	c := []BinCandidate{{BinDir: "", BinName: "tool"}}
-	got, err := SelectBins(c, nil)
+	got, err := SelectBins(c, nil, "")
 	if err != nil || len(got) != 1 || got[0].BinName != "tool" {
 		t.Errorf("got %v,%v", got, err)
 	}
@@ -123,7 +125,7 @@ func TestSelectBins_One(t *testing.T) {
 
 func TestSelectBins_SamePrevNames(t *testing.T) {
 	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBins(c, []string{"uv", "uvx"})
+	got, err := SelectBins(c, []string{"uv", "uvx"}, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected auto-select all; got %v,%v", got, err)
 	}
@@ -132,7 +134,7 @@ func TestSelectBins_SamePrevNames(t *testing.T) {
 func TestSelectBins_PromptAll(t *testing.T) {
 	fakeStdin(t, "\n")
 	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBins(c, nil)
+	got, err := SelectBins(c, nil, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected 2; got %v,%v", got, err)
 	}
@@ -141,7 +143,7 @@ func TestSelectBins_PromptAll(t *testing.T) {
 func TestSelectBins_PromptSkip(t *testing.T) {
 	fakeStdin(t, "0\n")
 	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	_, err := SelectBins(c, nil)
+	_, err := SelectBins(c, nil, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -150,9 +152,51 @@ func TestSelectBins_PromptSkip(t *testing.T) {
 func TestSelectBins_PromptSubset(t *testing.T) {
 	fakeStdin(t, "1\n")
 	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBins(c, nil)
+	got, err := SelectBins(c, nil, "")
 	if err != nil || len(got) != 1 || got[0].BinName != "uv" {
 		t.Errorf("expected [uv]; got %v,%v", got, err)
+	}
+}
+
+// TestSelectBins_PromptLabelAndBlank guards the prompt UX: when a selection
+// menu interrupts a stream of progress output (e.g. during `up`), it must be
+// preceded and followed by a blank line and name the package it belongs to.
+func TestSelectBins_PromptLabelAndBlank(t *testing.T) {
+	fakeStdin(t, "3\n")
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+	// Prior progress output so the deferred Break is not a no-op.
+	ui.Info("caddy: bin caddy.exe")
+	c := []BinCandidate{{BinName: "codex-command-runner"}, {BinName: "codex-windows-sandbox-setup"}, {BinName: "codex"}}
+	if _, err := SelectBins(c, nil, "codex"); err != nil {
+		t.Fatal(err)
+	}
+	// Resumed progress output flushes the prompt's trailing Break as a blank.
+	ui.Info("uv: bin uv.exe")
+	if !strings.Contains(buf.String(), "caddy.exe\n\ncodex: choose bin(s)\n") {
+		t.Errorf("missing blank line and/or label before menu:\n%q", buf.String())
+	}
+	// In the buffer the user's echoed Enter is absent, so the trailing blank
+	// shows as the prompt line followed by a single newline before "› uv".
+	if !strings.Contains(buf.String(), "): \n› uv: bin uv.exe") {
+		t.Errorf("missing blank line after menu:\n%q", buf.String())
+	}
+}
+
+// TestPromptBinNames_LabelInHeader guards that the rename-conflict prompt, which
+// shares the tight sync/install loops with the selection menu, also names its
+// package so it is identifiable when it interrupts a progress stream.
+func TestPromptBinNames_LabelInHeader(t *testing.T) {
+	fakeStdin(t, "bun-new\n")
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+	if _, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, map[string]string{"bun": "other-pkg"}, "bun"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "bun: bin conflicts — rename required:") {
+		t.Errorf("missing package label in conflict header:\n%q", buf.String())
 	}
 }
 
@@ -256,7 +300,7 @@ func TestFindFonts_Empty(t *testing.T) {
 }
 
 func TestSelectFonts_None(t *testing.T) {
-	got, err := SelectFonts(nil, nil)
+	got, err := SelectFonts(nil, nil, "")
 	if got != nil || err != nil {
 		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
@@ -264,7 +308,7 @@ func TestSelectFonts_None(t *testing.T) {
 
 func TestSelectFonts_One(t *testing.T) {
 	c := []FontCandidate{{FontDir: "", FontName: "Hack-Regular.ttf"}}
-	got, err := SelectFonts(c, nil)
+	got, err := SelectFonts(c, nil, "")
 	if err != nil || len(got) != 1 || got[0].FontName != "Hack-Regular.ttf" {
 		t.Errorf("got %v,%v", got, err)
 	}
@@ -272,7 +316,7 @@ func TestSelectFonts_One(t *testing.T) {
 
 func TestSelectFonts_SamePrevKeys(t *testing.T) {
 	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	got, err := SelectFonts(c, []string{"Hack-Regular.ttf", "Hack-Bold.ttf"})
+	got, err := SelectFonts(c, []string{"Hack-Regular.ttf", "Hack-Bold.ttf"}, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected auto-select all; got %v,%v", got, err)
 	}
@@ -281,7 +325,7 @@ func TestSelectFonts_SamePrevKeys(t *testing.T) {
 func TestSelectFonts_PromptAll(t *testing.T) {
 	fakeStdin(t, "\n")
 	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	got, err := SelectFonts(c, nil)
+	got, err := SelectFonts(c, nil, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected 2; got %v,%v", got, err)
 	}
@@ -290,7 +334,7 @@ func TestSelectFonts_PromptAll(t *testing.T) {
 func TestSelectFonts_PromptSkip(t *testing.T) {
 	fakeStdin(t, "0\n")
 	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	_, err := SelectFonts(c, nil)
+	_, err := SelectFonts(c, nil, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -299,7 +343,7 @@ func TestSelectFonts_PromptSkip(t *testing.T) {
 func TestSelectFonts_PromptSubset(t *testing.T) {
 	fakeStdin(t, "1\n")
 	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	got, err := SelectFonts(c, nil)
+	got, err := SelectFonts(c, nil, "")
 	if err != nil || len(got) != 1 || got[0].FontName != "Hack-Regular.ttf" {
 		t.Errorf("expected [Hack-Regular.ttf]; got %v,%v", got, err)
 	}
@@ -336,7 +380,7 @@ func TestDeriveFontName(t *testing.T) {
 }
 
 func TestPromptFontNames_Empty(t *testing.T) {
-	got, err := PromptFontNames(nil, nil)
+	got, err := PromptFontNames(nil, nil, "")
 	if err != nil || got != nil {
 		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
@@ -348,7 +392,7 @@ func TestPromptFontNames_DefaultNames(t *testing.T) {
 		{FontDir: "Hack", FontName: "Hack-Regular.ttf"},
 		{FontDir: "Hack", FontName: "Hack-Bold.ttf"},
 	}
-	got, err := PromptFontNames(c, nil)
+	got, err := PromptFontNames(c, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +413,7 @@ func TestPromptFontNames_Deduplicate(t *testing.T) {
 		{FontDir: "a", FontName: "Font.ttf"},
 		{FontDir: "b", FontName: "Font.ttf"},
 	}
-	got, err := PromptFontNames(c, nil)
+	got, err := PromptFontNames(c, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +431,7 @@ func TestPromptFontNames_Deduplicate(t *testing.T) {
 func TestPromptFontNames_Conflict_Reserved(t *testing.T) {
 	fakeStdin(t, "hack-v2\n")
 	c := []FontCandidate{{FontDir: "Hack", FontName: "Hack-Regular.ttf"}}
-	got, err := PromptFontNames(c, map[string]string{"hack-regular": "other-pkg"})
+	got, err := PromptFontNames(c, map[string]string{"hack-regular": "other-pkg"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +446,7 @@ func TestPromptFontNames_Conflict_Zero_Skips(t *testing.T) {
 		{FontDir: "Hack", FontName: "Hack-Regular.ttf"},
 		{FontDir: "Hack", FontName: "Hack-Bold.ttf"},
 	}
-	_, err := PromptFontNames(c, map[string]string{"hack-regular": "other-pkg"})
+	_, err := PromptFontNames(c, map[string]string{"hack-regular": "other-pkg"}, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -410,7 +454,7 @@ func TestPromptFontNames_Conflict_Zero_Skips(t *testing.T) {
 
 func TestPromptBinNames_NoConflict_Empty(t *testing.T) {
 	fakeStdin(t, "\n")
-	result, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	result, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +465,7 @@ func TestPromptBinNames_NoConflict_Empty(t *testing.T) {
 
 func TestPromptBinNames_NoConflict_InvalidInput_Skips(t *testing.T) {
 	fakeStdin(t, "abc\n")
-	_, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	_, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip for invalid input, got %v", err)
 	}
@@ -429,7 +473,7 @@ func TestPromptBinNames_NoConflict_InvalidInput_Skips(t *testing.T) {
 
 func TestPromptBinNames_NoConflict_Zero_Skips(t *testing.T) {
 	fakeStdin(t, "0\n")
-	_, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	_, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -437,7 +481,7 @@ func TestPromptBinNames_NoConflict_Zero_Skips(t *testing.T) {
 
 func TestPromptBinNames_NoConflict_Rename(t *testing.T) {
 	fakeStdin(t, "1\nbun-renamed\n")
-	result, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil)
+	result, err := PromptBinNames([]string{"bin/bun"}, []string{"bun"}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,6 +496,7 @@ func TestPromptBinNames_Conflict_AllConflict_MandatoryRename(t *testing.T) {
 		[]string{"bin/bun"},
 		[]string{"bun"},
 		map[string]string{"bun": "other-pkg"},
+		"",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -469,6 +514,7 @@ func TestPromptBinNames_Conflict_Duplicate_MandatoryRename(t *testing.T) {
 		[]string{"bun", "bin/bun"},
 		[]string{"bun", "bun"},
 		map[string]string{},
+		"",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -484,6 +530,7 @@ func TestPromptBinNames_Conflict_SomeConflict_ZeroSkips(t *testing.T) {
 		[]string{"bin/bun", "bin/extra"},
 		[]string{"bun", "extra"},
 		map[string]string{"bun": "other-pkg"},
+		"",
 	)
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
@@ -496,6 +543,7 @@ func TestPromptBinNames_Conflict_EmptyAdditional_MandatoryOnly(t *testing.T) {
 		[]string{"bin/bun", "bin/extra"},
 		[]string{"bun", "extra"},
 		map[string]string{"bun": "other-pkg"},
+		"",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -511,6 +559,7 @@ func TestPromptBinNames_Conflict_AdditionalRename(t *testing.T) {
 		[]string{"bin/bun", "bin/extra"},
 		[]string{"bun", "extra"},
 		map[string]string{"bun": "other-pkg"},
+		"",
 	)
 	if err != nil {
 		t.Fatal(err)

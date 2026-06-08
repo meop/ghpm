@@ -173,9 +173,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		if ac.Chosen.Name == "" {
-			sep()
-		}
 		chosens, err := asset.PromptAssetsMulti(ac)
 		if errors.Is(err, asset.ErrSkip) {
 			continue
@@ -283,7 +280,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			needRename := false
 			selectionFailed := false
 			for _, assetName := range binAssetNames {
-				selected, discoverErr := asset.SelectBins(tr.binsByAsset[assetName], nil)
+				selected, discoverErr := asset.SelectBins(tr.binsByAsset[assetName], nil, r.job.name)
 				if errors.Is(discoverErr, asset.ErrSkip) {
 					selectionFailed = true
 					break
@@ -322,8 +319,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			}
 			shimNames := proposed
 			if hasReservedConflict(proposed, reserved) || (!pinned && needRename) {
-				sep()
-				renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved)
+				renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved, r.job.name)
 				if errors.Is(promptErr, asset.ErrSkip) {
 					continue
 				}
@@ -368,19 +364,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				assetNames = append(assetNames, a)
 			}
 			slices.Sort(assetNames)
-			for i, assetName := range assetNames {
-				if i > 0 {
-					sep()
-				}
+			for _, assetName := range assetNames {
 				candidates := tr.fontsByAsset[assetName]
-				selectedFonts, selErr := asset.SelectFonts(candidates, nil)
+				selectedFonts, selErr := asset.SelectFonts(candidates, nil, r.job.name)
 				if errors.Is(selErr, asset.ErrSkip) {
 					continue
 				}
 				if selErr != nil || len(selectedFonts) == 0 {
 					continue
 				}
-				namedFonts, promptErr := asset.PromptFontNames(selectedFonts, fontReserved)
+				namedFonts, promptErr := asset.PromptFontNames(selectedFonts, fontReserved, r.job.name)
 				if errors.Is(promptErr, asset.ErrSkip) {
 					continue
 				}

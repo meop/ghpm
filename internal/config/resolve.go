@@ -219,16 +219,18 @@ func SearchGitHub(name string) (string, error) {
 		return "", fmt.Errorf("no results found for %q", name)
 	}
 
-	ui.Break()
-	ui.Out("repo search results:")
+	names := make([]string, len(repos))
 	for i, r := range repos {
-		ui.Out("  %d) %s", i+1, r.FullName)
+		names[i] = r.FullName
 	}
-	idx, err := ui.ReadSingle("select a repo")
-	if err != nil || idx < 1 || idx > len(repos) {
-		return "", fmt.Errorf("skipped")
-	}
-	return "github.com/" + repos[idx-1].FullName, nil
+	return ui.Prompt(func() (string, error) {
+		ui.Menu("", "repo search results:", names)
+		idx, err := ui.ReadSingle("select a repo")
+		if err != nil || idx < 1 || idx > len(repos) {
+			return "", fmt.Errorf("skipped")
+		}
+		return "github.com/" + repos[idx-1].FullName, nil
+	})
 }
 
 func normalizeSource(s string) string {

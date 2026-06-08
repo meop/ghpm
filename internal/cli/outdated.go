@@ -12,10 +12,10 @@ import (
 
 func newOutdatedCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "outdated",
+		Use:     "outdated [name...]",
 		Aliases: []string{"ou", "out", "stale"},
-		Short:   "List packages with newer releases available",
-		Args:    cobra.NoArgs,
+		Short:   "List packages with newer releases available, optionally filtered by name",
+		Args:    cobra.ArbitraryArgs,
 		RunE:    runOutdated,
 	}
 	addNameFormatFlags(cmd)
@@ -40,8 +40,13 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		source    string
 	}
 
-	items := buildBatchItems(manifest.Extracts, manifest.Repos)
+	matched := filterExtracts(manifest.Extracts, args)
+	if len(args) > 0 && len(matched) == 0 {
+		print(msgNoMatch)
+		return nil
+	}
 
+	items := buildBatchItems(matched, manifest.Repos)
 	if len(items) == 0 {
 		print(msgAllUpToDate)
 		return nil

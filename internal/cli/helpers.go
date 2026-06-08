@@ -23,6 +23,10 @@ var skipHashCheck bool
 
 const msgAllUpToDate = "all packages are up to date"
 
+// msgNoMatch is shown when a name filter was given but matched nothing installed,
+// to distinguish it from an empty install set ("no packages installed").
+const msgNoMatch = "no packages matched"
+
 type cmdInit struct {
 	cfg      *config.Settings
 	manifest *config.Manifest
@@ -279,6 +283,29 @@ func buildBatchItems(extracts map[string]config.PackageEntry, repos map[string]s
 		})
 	}
 	return items
+}
+
+// filterExtracts returns the subset of extracts whose key matches one of names.
+// A name matches either the full manifest key (the name shown by list/outdated,
+// e.g. "fzf@14") or its base name ("fzf"). With no names it returns extracts
+// unchanged, so commands list everything by default. Used by list, outdated, and
+// sync so a trailing "[name...]" filters their output the same way everywhere.
+func filterExtracts(extracts map[string]config.PackageEntry, names []string) map[string]config.PackageEntry {
+	if len(names) == 0 {
+		return extracts
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	filtered := make(map[string]config.PackageEntry, len(want))
+	for k, p := range extracts {
+		base, _, _ := config.ParseVersionSuffix(k)
+		if want[k] || want[base] {
+			filtered[k] = p
+		}
+	}
+	return filtered
 }
 
 // printNameList prints names in long or short format. Returns true if either flag was set.

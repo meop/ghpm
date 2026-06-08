@@ -76,8 +76,11 @@ func TestBreak_LoopWithEmptyIteration(t *testing.T) {
 	}
 }
 
-// TestResolveLoop_BlankAfterPrompt is the originally reported bug: after a
-// selection prompt, the next package block must be separated by a blank line.
+// TestResolveLoop_BlankAfterPrompt exercises the deferred-Break primitives
+// directly (the next block's Break yields the blank after a prompt). Real
+// prompts now self-bracket via Prompt (see TestPrompt_BlankBeforeAndAfter), so
+// the trailing blank no longer depends on the caller — but the primitive
+// behavior this asserts still underpins it.
 func TestResolveLoop_BlankAfterPrompt(t *testing.T) {
 	buf := capture(t, "1\n")
 	// package 1: header, then a menu + read
@@ -97,6 +100,53 @@ func TestResolveLoop_BlankAfterPrompt(t *testing.T) {
 	want := "pkg1: repo -> x\n\nchoose asset(s):\n  1) a\nenter number: \npkg2: repo -> y\n"
 	if got := buf.String(); got != want {
 		t.Errorf("missing blank before next package block:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestPrompt_BlankBeforeAndAfter(t *testing.T) {
+	buf := capture(t, "1\n")
+	Out("before")
+	_, _ = Prompt(func() (int, error) {
+		Menu("", "choose x:", []string{"a", "b"})
+		return ReadSingle("enter number")
+	})
+	Out("after")
+	want := "before\n\nchoose x:\n  1) a\n  2) b\nenter number [empty=1] (0=skip): \nafter\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+func TestPrompt_NoBlankAtEdges(t *testing.T) {
+	buf := capture(t, "\n")
+	// Leading Break is a no-op (nothing emitted yet); trailing Break never
+	// flushes (no output follows) — so a prompt alone produces no stray blanks.
+	_, _ = Prompt(func() (string, error) { return ReadLine("p: "), nil })
+	if got := buf.String(); got != "p: " {
+		t.Errorf("got %q, want %q", got, "p: ")
+	}
+}
+
+func TestPrompt_AdjacentCollapse(t *testing.T) {
+	buf := capture(t, "\n\n")
+	Out("a")
+	_, _ = Prompt(func() (string, error) { return ReadLine("p1: "), nil })
+	_, _ = Prompt(func() (string, error) { return ReadLine("p2: "), nil })
+	Out("b")
+	// One blank before p1; p1's trailing Break and p2's leading Break collapse
+	// to a single separator (the read-line newline), not a double blank.
+	want := "a\n\np1: \np2: \nb\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+func TestMenu_LabelAndNumbering(t *testing.T) {
+	buf := capture(t, "")
+	Menu("codex", "choose bin(s)", []string{"a", "b"})
+	want := "codex: choose bin(s)\n  1) a\n  2) b\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q\nwant %q", got, want)
 	}
 }
 

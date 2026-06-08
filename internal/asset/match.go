@@ -258,19 +258,30 @@ func PromptFromCandidates(ac AssetCandidates) (gh.Asset, error) {
 	if ac.Chosen.Name != "" {
 		return ac.Chosen, nil
 	}
-	return promptWithShowMore(ac.Compatible, ac.Hidden)
+	// The Prompt bracket spans the whole interaction, including any show-more
+	// expansion, so the inner helpers render + read without their own Break.
+	return ui.Prompt(func() (gh.Asset, error) {
+		return promptWithShowMore(ac.Compatible, ac.Hidden)
+	})
+}
+
+// assetItems formats release assets as menu item bodies for ui.Menu.
+func assetItems(assets []gh.Asset) []string {
+	items := make([]string, len(assets))
+	for i, a := range assets {
+		items[i] = fmt.Sprintf("%s (%d bytes)", a.Name, a.Size)
+	}
+	return items
 }
 
 func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
-	ui.Out("choose asset:")
-	for i, a := range compatible {
-		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
-	}
+	items := assetItems(compatible)
 	showMoreIdx := -1
 	if len(hidden) > 0 {
 		showMoreIdx = len(compatible) + 1
-		ui.Out("  %d) show more (%d more)", showMoreIdx, len(hidden))
+		items = append(items, fmt.Sprintf("show more (%d more)", len(hidden)))
 	}
+	ui.Menu("", "choose asset:", items)
 	idx, err := readSingle()
 	if err != nil {
 		return gh.Asset{}, err
@@ -285,10 +296,7 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 }
 
 func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
-	ui.Out("%s", msg)
-	for i, a := range assets {
-		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
-	}
+	ui.Menu("", msg, assetItems(assets))
 	idx, err := readSingle()
 	if err != nil {
 		return gh.Asset{}, err
@@ -305,19 +313,19 @@ func PromptAssetsMulti(ac AssetCandidates) ([]gh.Asset, error) {
 	if ac.Chosen.Name != "" {
 		return []gh.Asset{ac.Chosen}, nil
 	}
-	return promptMultiWithShowMore(ac.Compatible, ac.Hidden)
+	return ui.Prompt(func() ([]gh.Asset, error) {
+		return promptMultiWithShowMore(ac.Compatible, ac.Hidden)
+	})
 }
 
 func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) {
-	ui.Out("choose asset(s):")
-	for i, a := range compatible {
-		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
-	}
+	items := assetItems(compatible)
 	showMoreIdx := -1
 	if len(hidden) > 0 {
 		showMoreIdx = len(compatible) + 1
-		ui.Out("  %d) show more (%d more)", showMoreIdx, len(hidden))
+		items = append(items, fmt.Sprintf("show more (%d more)", len(hidden)))
 	}
+	ui.Menu("", "choose asset(s):", items)
 	maxIdx := len(compatible)
 	if showMoreIdx > 0 {
 		maxIdx = showMoreIdx
@@ -345,10 +353,7 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 }
 
 func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
-	ui.Out("choose asset(s):")
-	for i, a := range all {
-		ui.Out("  %d) %s (%d bytes)", i+1, a.Name, a.Size)
-	}
+	ui.Menu("", "choose asset(s):", assetItems(all))
 	indices, err := readMultiFirst(len(all))
 	if err != nil {
 		return nil, err

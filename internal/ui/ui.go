@@ -119,12 +119,41 @@ func ReadSingle(label string) (int, error) {
 	return idx, nil
 }
 
+// Prompt brackets an interactive prompt so it forms its own block: a blank line
+// before and after. Both are deferred Breaks, so a prompt at the very start or
+// end of output produces no stray blank, and two adjacent prompts collapse to a
+// single blank between them. Every interactive prompt (Confirm and the
+// asset/config menus) runs through here, so blank-line placement around prompts
+// lives in exactly one place. body performs the prompt's prints and reads —
+// including any multi-step reads — so the trailing blank lands after all of them.
+func Prompt[T any](body func() (T, error)) (T, error) {
+	Break()
+	v, err := body()
+	Break()
+	return v, err
+}
+
+// Menu prints a selection menu: the header (prefixed with "<label>: " when label
+// is non-empty so the prompt names its package) followed by each pre-formatted
+// item as a numbered line. It is meant to be called at the top of a Prompt body.
+func Menu(label, header string, items []string) {
+	if label != "" {
+		header = label + ": " + header
+	}
+	Out("%s", header)
+	for i, item := range items {
+		Out("  %d) %s", i+1, item)
+	}
+}
+
 // Confirm prints "msg [y,[n]]: " as its own block and returns true for empty,
 // "y", or "yes".
 func Confirm(msg string) bool {
-	Break()
-	s := strings.ToLower(ReadLine(msg + " [y,[n]]: "))
-	return s == "" || s == "y" || s == "yes"
+	v, _ := Prompt(func() (bool, error) {
+		s := strings.ToLower(ReadLine(msg + " [y,[n]]: "))
+		return s == "" || s == "y" || s == "yes", nil
+	})
+	return v
 }
 
 // Table renders a space-aligned table as a single block preceded by a Break.

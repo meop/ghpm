@@ -50,16 +50,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		for _, name := range args {
-			p, ok := manifest.Extracts[name]
-			if !ok {
+			matched := filterExtracts(manifest.Extracts, []string{name})
+			if len(matched) == 0 {
 				printInfo(cfg, "%s: not installed", name)
 				continue
 			}
-			if p.Pin == "fixed" {
-				printInfo(cfg, "%s: fixed at %s, skipping", name, p.Version)
-				continue
+			for key, p := range matched {
+				if p.Pin == "fixed" {
+					printInfo(cfg, "%s: fixed at %s, skipping", key, p.Version)
+					continue
+				}
+				targets[key] = p
 			}
-			targets[name] = p
 		}
 	}
 	if len(targets) == 0 {
@@ -135,9 +137,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 				hadErrors = true
 				skippedPkg = true
 				break
-			}
-			if ac.Chosen.Name == "" {
-				sep()
 			}
 			chosen, chErr := asset.PromptFromCandidates(ac)
 			if errors.Is(chErr, asset.ErrSkip) {
@@ -242,7 +241,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				for _, binKey := range tr.r.pkg.Asset[assetName].Bin {
 					prevAssetBinKeys = append(prevAssetBinKeys, binKey)
 				}
-				selected, discoverErr := asset.SelectBins(tr.binsByAsset[assetName], prevAssetBinKeys)
+				selected, discoverErr := asset.SelectBins(tr.binsByAsset[assetName], prevAssetBinKeys, res.Name)
 				if errors.Is(discoverErr, asset.ErrSkip) {
 					selectionFailed = true
 					break
@@ -291,8 +290,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					}
 				}
 				if hasReservedConflict(proposed, reserved) {
-					sep()
-					renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved)
+					renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved, res.Name)
 					if errors.Is(promptErr, asset.ErrSkip) {
 						selectionFailed = true
 					} else if renamed != nil {
@@ -357,7 +355,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				for _, fontPath := range tr.r.pkg.Asset[assetName].Font {
 					prevAssetPaths = append(prevAssetPaths, fontPath)
 				}
-				selectedFonts, selErr := asset.SelectFonts(candidates, prevAssetPaths)
+				selectedFonts, selErr := asset.SelectFonts(candidates, prevAssetPaths, res.Name)
 				if errors.Is(selErr, asset.ErrSkip) {
 					continue
 				}
@@ -406,8 +404,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					}
 				}
 				if hasReservedConflict(proposed, fontReserved) {
-					sep()
-					renamed, promptErr := asset.PromptFontConflicts(fontKeys, proposed, fontReserved)
+					renamed, promptErr := asset.PromptFontConflicts(fontKeys, proposed, fontReserved, res.Name)
 					if errors.Is(promptErr, asset.ErrSkip) {
 						pkgFailed = true
 					} else if renamed != nil {

@@ -35,9 +35,11 @@ ghpm add fzf ripgrep bat  # install multiple in parallel
 ghpm add --force fzf      # reinstall even if already installed
 
 ghpm list                 # show installed packages
+ghpm list fzf ripgrep     # show only the named packages
 ghpm find fzf             # search cached repos by name or source
 ghpm info fzf             # show available releases and assets
 ghpm outdated             # check for updates
+ghpm outdated fzf         # check updates for only the named packages
 
 ghpm sync                 # update all floating and major/minor-pinned packages
 ghpm sync fzf             # update specific package

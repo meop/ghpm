@@ -81,19 +81,21 @@ func FindBins(pkgDir, name string) []BinCandidate {
 // PromptBinNames shows proposed shim names and lets the user rename them.
 // Conflicting entries (reserved by another package OR duplicate) are always renamed.
 // When conflicts exist, the user is also asked if they want to rename any additional entries.
-func PromptBinNames(binKeys, proposed []string, reserved map[string]string) ([]string, error) {
-	return promptNameConflicts(binKeys, proposed, reserved, "bin name(s)", "bin conflicts — rename required:")
+func PromptBinNames(binKeys, proposed []string, reserved map[string]string, label string) ([]string, error) {
+	return promptNameConflicts(binKeys, proposed, reserved, label, "bin name(s)", "bin conflicts — rename required:")
 }
 
 // PromptFontConflicts resolves name conflicts for an already-computed font name mapping.
 // fontKeys and proposed are parallel slices (font file paths and current user-given names).
-func PromptFontConflicts(fontKeys, proposed []string, reserved map[string]string) ([]string, error) {
-	return promptNameConflicts(fontKeys, proposed, reserved, "font name(s)", "font name conflicts — rename required:")
+func PromptFontConflicts(fontKeys, proposed []string, reserved map[string]string, label string) ([]string, error) {
+	return promptNameConflicts(fontKeys, proposed, reserved, label, "font name(s)", "font name conflicts — rename required:")
 }
 
 // promptNameConflicts is the shared rename-conflict engine used by both PromptBinNames
 // and PromptFontConflicts. keys are displayed alongside proposed names for identification.
-func promptNameConflicts(keys, proposed []string, reserved map[string]string, headerOK, headerConflict string) ([]string, error) {
+// label, when non-empty, prefixes the header with the owning package so the prompt is
+// identifiable when it interrupts a tight progress stream.
+func promptNameConflicts(keys, proposed []string, reserved map[string]string, label, headerOK, headerConflict string) ([]string, error) {
 	result := make([]string, len(proposed))
 	copy(result, proposed)
 
@@ -112,91 +114,94 @@ func promptNameConflicts(keys, proposed []string, reserved map[string]string, he
 		}
 	}
 
+	header := headerOK
 	if anyConflict {
-		ui.Out("%s", headerConflict)
-	} else {
-		ui.Out("%s", headerOK)
+		header = headerConflict
 	}
+	items := make([]string, len(result))
 	for i, name := range result {
-		entry := fmt.Sprintf("  %d) %s", i+1, name)
-		entry += fmt.Sprintf("  [%s]", keys[i])
+		entry := name + fmt.Sprintf("  [%s]", keys[i])
 		if owner, ok := reserved[name]; ok {
 			entry += fmt.Sprintf("  ! already used by %s", owner)
 		} else if conflicts[i] {
 			entry += "  ! duplicate"
 		}
-		ui.Out("%s", entry)
+		items[i] = entry
 	}
 
-	var toRename []int
-	if anyConflict {
-		for i, c := range conflicts {
-			if c {
-				toRename = append(toRename, i+1)
+	return ui.Prompt(func() ([]string, error) {
+		ui.Menu(label, header, items)
+
+		var toRename []int
+		if anyConflict {
+			for i, c := range conflicts {
+				if c {
+					toRename = append(toRename, i+1)
+				}
 			}
-		}
-		nonConflictCount := len(proposed) - len(toRename)
-		if nonConflictCount > 0 {
-			additional, err := readMultiOptional("to also rename", len(proposed))
+			nonConflictCount := len(proposed) - len(toRename)
+			if nonConflictCount > 0 {
+				additional, err := readMultiOptional("to also rename", len(proposed))
+				if err != nil {
+					return nil, ErrSkip
+				}
+				if additional != nil {
+					inToRename := make(map[int]bool, len(toRename))
+					for _, idx := range toRename {
+						inToRename[idx] = true
+					}
+					for _, idx := range additional {
+						if !inToRename[idx] {
+							toRename = append(toRename, idx)
+							inToRename[idx] = true
+						}
+					}
+					slices.Sort(toRename)
+				}
+			}
+		} else {
+			optional, err := readMultiOptional("to rename", len(proposed))
 			if err != nil {
 				return nil, ErrSkip
 			}
-			if additional != nil {
-				inToRename := make(map[int]bool, len(toRename))
-				for _, idx := range toRename {
-					inToRename[idx] = true
-				}
-				for _, idx := range additional {
-					if !inToRename[idx] {
-						toRename = append(toRename, idx)
-						inToRename[idx] = true
-					}
-				}
-				slices.Sort(toRename)
-			}
+			toRename = optional
 		}
-	} else {
-		optional, err := readMultiOptional("to rename", len(proposed))
-		if err != nil {
-			return nil, ErrSkip
-		}
-		toRename = optional
-	}
 
-	renamingIdx := make(map[int]bool, len(toRename))
-	for _, idx := range toRename {
-		renamingIdx[idx-1] = true
-	}
-	taken := make(map[string]bool, len(reserved)+len(result))
-	for name := range reserved {
-		taken[name] = true
-	}
-	for i, name := range result {
-		if !renamingIdx[i] {
+		renamingIdx := make(map[int]bool, len(toRename))
+		for _, idx := range toRename {
+			renamingIdx[idx-1] = true
+		}
+		taken := make(map[string]bool, len(reserved)+len(result))
+		for name := range reserved {
 			taken[name] = true
 		}
-	}
-
-	for _, idx := range toRename {
-		var extra string
-		if conflicts[idx-1] {
-			extra = fmt.Sprintf(" %s [%s] (required due to conflict)", result[idx-1], keys[idx-1])
-		} else {
-			extra = fmt.Sprintf(" %s [%s]", result[idx-1], keys[idx-1])
-		}
-		name := collectNewName(extra, taken)
-		if name == "" {
-			if conflicts[idx-1] {
-				return nil, ErrSkip
+		for i, name := range result {
+			if !renamingIdx[i] {
+				taken[name] = true
 			}
-			taken[result[idx-1]] = true
-			continue
 		}
-		result[idx-1] = name
-		taken[name] = true
-	}
 
-	return result, nil
+		for _, idx := range toRename {
+			var extra string
+			if conflicts[idx-1] {
+				extra = fmt.Sprintf(" %s [%s] (required due to conflict)", result[idx-1], keys[idx-1])
+			} else {
+				extra = fmt.Sprintf(" %s [%s]", result[idx-1], keys[idx-1])
+			}
+			name := collectNewName(extra, taken)
+			if name == "" {
+				if conflicts[idx-1] {
+					return nil, ErrSkip
+				}
+				taken[result[idx-1]] = true
+				continue
+			}
+			result[idx-1] = name
+			taken[name] = true
+		}
+
+		return result, nil
+	})
 }
 
 func collectNewName(extra string, taken map[string]bool) string {
@@ -223,7 +228,7 @@ type selectCandidate interface {
 //   - 1 candidate → auto-select
 //   - Multiple: auto-select if candidate keys exactly match prevKeys;
 //     otherwise prompt with yay-style multi-select
-func selectItems[C selectCandidate](candidates []C, prevKeys []string, noun string) ([]C, error) {
+func selectItems[C selectCandidate](candidates []C, prevKeys []string, label, noun string) ([]C, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
@@ -237,27 +242,29 @@ func selectItems[C selectCandidate](candidates []C, prevKeys []string, noun stri
 	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
 		return candidates, nil
 	}
-	ui.Out("choose %s", noun)
+	items := make([]string, len(candidates))
 	for i, c := range candidates {
-		entry := fmt.Sprintf("  %d) %s", i+1, c.label())
+		items[i] = c.label()
 		if c.Key() != c.label() {
-			entry += fmt.Sprintf("  [%s]", c.Key())
+			items[i] += fmt.Sprintf("  [%s]", c.Key())
 		}
-		ui.Out("%s", entry)
 	}
-	indices, err := readMultiAll(len(candidates))
-	if err != nil {
-		return nil, err
-	}
-	var selected []C
-	for _, idx := range indices {
-		selected = append(selected, candidates[idx-1])
-	}
-	return selected, nil
+	return ui.Prompt(func() ([]C, error) {
+		ui.Menu(label, "choose "+noun, items)
+		indices, err := readMultiAll(len(candidates))
+		if err != nil {
+			return nil, err
+		}
+		var selected []C
+		for _, idx := range indices {
+			selected = append(selected, candidates[idx-1])
+		}
+		return selected, nil
+	})
 }
 
-func SelectBins(candidates []BinCandidate, prevKeys []string) ([]BinCandidate, error) {
-	return selectItems(candidates, prevKeys, "bin(s)")
+func SelectBins(candidates []BinCandidate, prevKeys []string, label string) ([]BinCandidate, error) {
+	return selectItems(candidates, prevKeys, label, "bin(s)")
 }
 
 // parseMultiSelect parses yay-style input
@@ -417,7 +424,7 @@ func DeriveFontName(filename string) string {
 // PromptFontNames derives default names for selected font files, checks for conflicts
 // against reserved (other packages' font names), and lets the user rename as needed.
 // Returns {fontName → fontFilePath} and any error.
-func PromptFontNames(selected []FontCandidate, reserved map[string]string) (map[string]string, error) {
+func PromptFontNames(selected []FontCandidate, reserved map[string]string, label string) (map[string]string, error) {
 	if len(selected) == 0 {
 		return nil, nil
 	}
@@ -437,7 +444,7 @@ func PromptFontNames(selected []FontCandidate, reserved map[string]string) (map[
 	for i, c := range selected {
 		keys[i] = c.Key()
 	}
-	renamed, err := promptNameConflicts(keys, names, reserved, "font name(s)", "font name conflicts — rename required:")
+	renamed, err := promptNameConflicts(keys, names, reserved, label, "font name(s)", "font name conflicts — rename required:")
 	if err != nil {
 		return nil, err
 	}
@@ -448,8 +455,8 @@ func PromptFontNames(selected []FontCandidate, reserved map[string]string) (map[
 	return result, nil
 }
 
-func SelectFonts(candidates []FontCandidate, prevKeys []string) ([]FontCandidate, error) {
-	return selectItems(candidates, prevKeys, "font(s)")
+func SelectFonts(candidates []FontCandidate, prevKeys []string, label string) ([]FontCandidate, error) {
+	return selectItems(candidates, prevKeys, label, "font(s)")
 }
 
 func ensureExecutable(path string) {

@@ -12,10 +12,10 @@ var longNames, shortNames bool
 
 func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
+		Use:     "list [name...]",
 		Aliases: []string{"li", "ls"},
-		Short:   "List installed packages",
-		Args:    cobra.NoArgs,
+		Short:   "List installed packages, optionally filtered by name",
+		Args:    cobra.ArbitraryArgs,
 		RunE:    runList,
 	}
 	addNameFormatFlags(cmd)
@@ -34,8 +34,13 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	keys := make([]string, 0, len(manifest.Extracts))
-	for k := range manifest.Extracts {
+	extracts := filterExtracts(manifest.Extracts, args)
+	if len(extracts) == 0 {
+		print(msgNoMatch)
+		return nil
+	}
+	keys := make([]string, 0, len(extracts))
+	for k := range extracts {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
@@ -46,7 +51,7 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	var tableRows [][]string
 	for _, k := range keys {
-		p := manifest.Extracts[k]
+		p := extracts[k]
 		baseName, _, _ := config.ParseVersionSuffix(k)
 		repo := manifest.Repos[baseName]
 		assetNames := make([]string, 0, len(p.Asset))
