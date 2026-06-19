@@ -79,11 +79,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	dirs := ci.dirs
 	ctx := cmd.Context()
 
-	var ready []jobWithRelease
+	var resolved []jobWithRelease
 	var hadErrors bool
 
 	for _, arg := range args {
-		sep()
 		pkgName, ver, pinned := config.ParseVersionSuffix(arg)
 
 		var explicitSource string
@@ -111,7 +110,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		var source string
 		if explicitSource != "" {
 			source = explicitSource
-			print("%s: repo → %s", pkgName, source)
 		} else {
 			var found bool
 			source, found = config.LookupSource(pkgName, manifest, repos)
@@ -124,7 +122,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					continue
 				}
 			}
-			print("%s: repo → %s", pkgName, source)
 		}
 
 		partialJob := installJob{name: pkgName, version: ver, pinned: pinned}
@@ -167,48 +164,57 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		ac, err := asset.SelectAssetAuto(rel.Assets, cfg, "", pkgName)
-		if err != nil {
-			printFail(cfg, "%s: %v", pkgName, err)
-			hadErrors = true
-			continue
-		}
-		chosens, err := asset.PromptAssetsMulti(ac)
-		if errors.Is(err, asset.ErrSkip) {
-			continue
-		}
-		if err != nil {
-			printFail(cfg, "%s: %v", pkgName, err)
-			hadErrors = true
-			continue
-		}
-		if ac.Chosen.Name != "" {
-			print("%s: asset → %s", pkgName, chosens[0].Name)
-		}
-		ready = append(ready, jobWithRelease{
+		resolved = append(resolved, jobWithRelease{
 			job:     installJob{name: pkgName, source: source, version: ver, pinned: pinned},
 			release: rel,
-			chosens: chosens,
 		})
 	}
 
-	if len(ready) == 0 {
+	if len(resolved) == 0 {
 		if hadErrors {
 			return errSilent
 		}
 		return nil
 	}
 
-	if dryRun {
-		for _, r := range ready {
-			for _, c := range r.chosens {
-				print("%s: install %s (asset: %s)", r.job.name, config.NormalizeVersion(r.release.TagName), c.Name)
-			}
-		}
+	// Intro gate: show the resolved packages and let the user bail before any
+	// asset prompt or download. No asset column — assets aren't chosen until
+	// after opt-in.
+	introRows := make([][]string, 0, len(resolved))
+	for _, r := range resolved {
+		introRows = append(introRows, []string{r.job.key(), config.NormalizeVersion(r.release.TagName), r.job.pin(), r.job.source})
+	}
+	if !gate([]string{"name", "version", "pin", "repo"}, introRows, []func(string) string{nil, colorfn(cfg, "new"), nil, nil}, fmt.Sprintf("add %d package(s)", len(resolved))) {
 		return nil
 	}
 
-	if !promptInstall(cfg, ready) {
+	// After opt-in, resolve each package's asset(s), prompting only where the
+	// choice is ambiguous. A skipped package drops out.
+	var ready []jobWithRelease
+	for _, r := range resolved {
+		ac, err := asset.SelectAssetAuto(r.release.Assets, cfg, "", r.job.name)
+		if err != nil {
+			printFail(cfg, "%s: %v", r.job.name, err)
+			hadErrors = true
+			continue
+		}
+		chosens, err := asset.PromptAssetsMulti(ac, r.job.name)
+		if errors.Is(err, asset.ErrSkip) {
+			continue
+		}
+		if err != nil {
+			printFail(cfg, "%s: %v", r.job.name, err)
+			hadErrors = true
+			continue
+		}
+		r.chosens = chosens
+		ready = append(ready, r)
+	}
+
+	if len(ready) == 0 {
+		if hadErrors {
+			return errSilent
+		}
 		return nil
 	}
 
@@ -571,16 +577,4 @@ func parseSourceArg(name string) (source, repoName string, err error) {
 		return "", "", fmt.Errorf("invalid source %q: must be org/repo or host/org/repo", name)
 	}
 	return src, repo, nil
-}
-
-func promptInstall(cfg *config.Settings, ready []jobWithRelease) bool {
-	var rows [][]string
-	for _, r := range ready {
-		for _, c := range r.chosens {
-			rows = append(rows, []string{r.job.key(), config.NormalizeVersion(r.release.TagName), r.job.pin(), r.job.source, c.Name})
-		}
-	}
-	colors := []func(string) string{nil, colorfn(cfg, "new"), nil, nil, nil}
-	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)
-	return promptConfirm(fmt.Sprintf("install %d package(s)", len(ready)))
 }

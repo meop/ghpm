@@ -43,6 +43,19 @@ func printTable(headers []string, rows [][]string, colColors []func(string) stri
 	ui.Table(headers, rows, colColors)
 }
 
+// gate renders the "here's what I'm going to do" preview table and then, unless
+// this is a dry run, asks confirmMsg. It returns true only when the user opts in;
+// both a dry run and a declined prompt return false, signaling the caller to stop.
+// This is the single gate that every mutating multi-package command (add, sync,
+// download, upgrade) shows before doing work.
+func gate(headers []string, rows [][]string, colColors []func(string) string, confirmMsg string) bool {
+	printTable(headers, rows, colColors)
+	if dryRun {
+		return false
+	}
+	return promptConfirm(confirmMsg)
+}
+
 var defaultColorNames = map[string]color.Attribute{
 	"black":   color.FgBlack,
 	"red":     color.FgRed,

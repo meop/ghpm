@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"bytes"
 	"os"
 	"reflect"
 	"runtime"
@@ -357,7 +358,7 @@ func TestPromptWithShowMore_Empty_SelectsFirst(t *testing.T) {
 		{Name: "b.tar.gz", Size: 2},
 	}
 	stdinPipe(t, "\n")
-	got, err := promptWithShowMore(assets, nil)
+	got, err := promptWithShowMore(assets, nil, "")
 	if err != nil || got.Name != "a.tar.gz" {
 		t.Errorf("got %q, %v; want a.tar.gz, nil", got.Name, err)
 	}
@@ -369,7 +370,7 @@ func TestPromptWithShowMore_SelectSecond(t *testing.T) {
 		{Name: "b.tar.gz", Size: 2},
 	}
 	stdinPipe(t, "2\n")
-	got, err := promptWithShowMore(assets, nil)
+	got, err := promptWithShowMore(assets, nil, "")
 	if err != nil || got.Name != "b.tar.gz" {
 		t.Errorf("got %q, %v; want b.tar.gz, nil", got.Name, err)
 	}
@@ -381,7 +382,7 @@ func TestPromptWithShowMore_Skip(t *testing.T) {
 		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
 	}
 	stdinPipe(t, "0\n")
-	_, err := promptWithShowMore(assets, nil)
+	_, err := promptWithShowMore(assets, nil, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -391,9 +392,29 @@ func TestPromptWithShowMore_ShowMore_Empty_SelectsFirst(t *testing.T) {
 	compatible := []gh.Asset{{Name: "a.tar.gz", Size: 1}, {Name: "b.tar.gz", Size: 2}}
 	hidden := []gh.Asset{{Name: "c.tar.gz", Size: 3}}
 	stdinPipe(t, "3\n\n")
-	got, err := promptWithShowMore(compatible, hidden)
+	got, err := promptWithShowMore(compatible, hidden, "")
 	if err != nil || got.Name != "a.tar.gz" {
 		t.Errorf("got %q, %v; want a.tar.gz, nil", got.Name, err)
+	}
+}
+
+// TestPromptFromCandidates_Label guards that the single-asset prompt names its
+// package when it has no preceding context line (sync/download/upgrade).
+func TestPromptFromCandidates_Label(t *testing.T) {
+	stdinPipe(t, "\n")
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+	ac := AssetCandidates{Compatible: []gh.Asset{
+		{Name: "a.tar.gz", Size: 1},
+		{Name: "b.tar.gz", Size: 2},
+	}}
+	got, err := PromptFromCandidates(ac, "yay")
+	if err != nil || got.Name != "a.tar.gz" {
+		t.Fatalf("got %q, %v; want a.tar.gz, nil", got.Name, err)
+	}
+	if !strings.Contains(buf.String(), "yay: choose asset:\n") {
+		t.Errorf("missing package label in prompt header:\n%q", buf.String())
 	}
 }
 
@@ -403,7 +424,7 @@ func TestPromptSelect_Empty_SelectsFirst(t *testing.T) {
 		{Name: "b.tar.gz", Size: 2},
 	}
 	stdinPipe(t, "\n")
-	got, err := PromptSelect("choose:", assets)
+	got, err := PromptSelect("choose:", assets, "")
 	if err != nil || got.Name != "a.tar.gz" {
 		t.Errorf("got %q, %v; want a.tar.gz, nil", got.Name, err)
 	}
@@ -415,7 +436,7 @@ func TestPromptSelect_SelectSecond(t *testing.T) {
 		{Name: "b.tar.gz", Size: 2},
 	}
 	stdinPipe(t, "2\n")
-	got, err := PromptSelect("choose:", assets)
+	got, err := PromptSelect("choose:", assets, "")
 	if err != nil || got.Name != "b.tar.gz" {
 		t.Errorf("got %q, %v; want b.tar.gz, nil", got.Name, err)
 	}
@@ -427,7 +448,7 @@ func TestPromptSelect_Skip(t *testing.T) {
 		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
 	}
 	stdinPipe(t, "0\n")
-	_, err := PromptSelect("choose:", assets)
+	_, err := PromptSelect("choose:", assets, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -435,7 +456,7 @@ func TestPromptSelect_Skip(t *testing.T) {
 
 func TestPromptAssetsMulti_AutoChosen(t *testing.T) {
 	chosen := gh.Asset{Name: "a.tar.gz", Size: 1}
-	got, err := PromptAssetsMulti(AssetCandidates{Chosen: chosen})
+	got, err := PromptAssetsMulti(AssetCandidates{Chosen: chosen}, "")
 	if err != nil || len(got) != 1 || got[0].Name != "a.tar.gz" {
 		t.Errorf("got %v, %v; want [a.tar.gz], nil", got, err)
 	}
@@ -447,7 +468,7 @@ func TestPromptAssetsMulti_Empty_SelectsFirst(t *testing.T) {
 		{Name: "b.tar.gz", Size: 2},
 	}
 	stdinPipe(t, "\n")
-	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible})
+	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible}, "")
 	if err != nil || len(got) != 1 || got[0].Name != "a.tar.gz" {
 		t.Errorf("got %v, %v; want [a.tar.gz], nil", got, err)
 	}
@@ -459,7 +480,7 @@ func TestPromptAssetsMulti_SelectMultiple(t *testing.T) {
 		{Name: "b.tar.gz", Size: 2},
 	}
 	stdinPipe(t, "1,2\n")
-	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible})
+	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible}, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("got %v, %v; want 2 assets, nil", got, err)
 	}
@@ -471,7 +492,7 @@ func TestPromptAssetsMulti_Skip(t *testing.T) {
 		{Name: "b.tar.gz", Size: 2},
 	}
 	stdinPipe(t, "0\n")
-	_, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible})
+	_, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible}, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -481,7 +502,7 @@ func TestPromptAssetsMulti_ShowMore_Empty_SelectsFirst(t *testing.T) {
 	compatible := []gh.Asset{{Name: "a.tar.gz", Size: 1}, {Name: "b.tar.gz", Size: 2}}
 	hidden := []gh.Asset{{Name: "c.tar.gz", Size: 3}}
 	stdinPipe(t, "3\n\n")
-	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible, Hidden: hidden})
+	got, err := PromptAssetsMulti(AssetCandidates{Compatible: compatible, Hidden: hidden}, "")
 	if err != nil || len(got) != 1 || got[0].Name != "a.tar.gz" {
 		t.Errorf("got %v, %v; want [a.tar.gz], nil", got, err)
 	}

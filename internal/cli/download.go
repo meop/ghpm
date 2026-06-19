@@ -99,42 +99,54 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	var ready []dlJob
+	var pending []resolved
 	for _, res := range parallel.Run(cmd.Context(), tasks, cfg.NumParallel) {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
 			continue
 		}
-		job := res.Value.job
-		chosen, err := asset.PromptFromCandidates(res.Value.ac)
-		if errors.Is(err, asset.ErrSkip) {
-			continue
-		}
-		if err != nil {
-			printFail(cfg, "%s: %v", res.Name, err)
-			hadErrors = true
-			continue
-		}
-		job.chosen = chosen
-		printInfo(cfg, "%s: asset: %s", job.name, chosen.Name)
-		ready = append(ready, job)
+		pending = append(pending, res.Value)
 	}
-	if len(ready) == 0 {
+	if len(pending) == 0 {
 		if hadErrors {
 			return errSilent
 		}
 		return nil
 	}
 
-	if dryRun {
-		for _, r := range ready {
-			print("%s: download %s (asset: %s)", r.name, config.NormalizeVersion(r.release.TagName), r.chosen.Name)
-		}
+	// Gate: show what will be downloaded and let the user bail before any asset
+	// prompt or download. Assets aren't chosen until after opt-in, so no asset
+	// column.
+	introRows := make([][]string, 0, len(pending))
+	for _, p := range pending {
+		introRows = append(introRows, []string{p.job.name, config.NormalizeVersion(p.job.release.TagName), p.job.source})
+	}
+	if !gate([]string{"name", "version", "repo"}, introRows, []func(string) string{nil, colorfn(cfg, "new"), nil}, fmt.Sprintf("download %d asset(s)", len(pending))) {
 		return nil
 	}
 
-	if !promptConfirm(fmt.Sprintf("download %d asset(s)", len(ready))) {
+	// After opt-in, resolve each asset, prompting only where ambiguous. A skipped
+	// package drops out.
+	var ready []dlJob
+	for _, p := range pending {
+		chosen, err := asset.PromptFromCandidates(p.ac, p.job.name)
+		if errors.Is(err, asset.ErrSkip) {
+			continue
+		}
+		if err != nil {
+			printFail(cfg, "%s: %v", p.job.name, err)
+			hadErrors = true
+			continue
+		}
+		job := p.job
+		job.chosen = chosen
+		ready = append(ready, job)
+	}
+	if len(ready) == 0 {
+		if hadErrors {
+			return errSilent
+		}
 		return nil
 	}
 

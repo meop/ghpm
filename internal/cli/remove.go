@@ -45,7 +45,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		pkg, ok := manifest.Extracts[arg]
 		if !ok {
-			printInfo(cfg, "%s: not installed", arg)
+			print("%s: not installed", arg)
 			continue
 		}
 		targets = append(targets, uninstallTarget{key: arg, pkg: pkg})

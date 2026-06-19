@@ -37,22 +37,55 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	}
 	defer ci.close()
 	cfg := ci.cfg
-
-	hadErrors := false
 	ctx := cmd.Context()
 	ghClient := ci.gh
 
-	if err := upgradeGh(ctx, cfg, ghClient); err != nil {
-		printFail(cfg, "gh: %v", err)
-		hadErrors = true
+	// Phase 1: check each component's version (no install). Up-to-date ones print
+	// a plain top-level line; outdated ones are collected for the gate.
+	hadErrors := false
+	var items []upgradeItem
+	checks := []struct {
+		name string
+		fn   func(context.Context, *config.Settings, gh.Client) (*upgradeItem, error)
+	}{
+		{binGh, checkGh},
+		{binGhpm, checkSelf},
+		{binSheesh, checkShim},
 	}
-	if err := upgradeSelf(ctx, cfg, ghClient); err != nil {
-		printFail(cfg, "ghpm: %v", err)
-		hadErrors = true
+	for _, c := range checks {
+		item, err := c.fn(ctx, cfg, ghClient)
+		if err != nil {
+			printFail(cfg, "%s: %v", c.name, err)
+			hadErrors = true
+			continue
+		}
+		if item != nil {
+			items = append(items, *item)
+		}
 	}
-	if err := upgradeShim(ctx, cfg, ghClient); err != nil {
-		printFail(cfg, "sheesh: %v", err)
-		hadErrors = true
+
+	if len(items) == 0 {
+		if hadErrors {
+			return errSilent
+		}
+		return nil
+	}
+
+	// Gate: one table + one confirm for everything that will be upgraded.
+	rows := make([][]string, 0, len(items))
+	for _, it := range items {
+		rows = append(rows, []string{it.name, it.current, it.latest})
+	}
+	if !gate([]string{"name", "version", "update"}, rows, []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new")}, fmt.Sprintf("upgrade %d component(s)", len(items))) {
+		return nil
+	}
+
+	// Phase 2: install each, prompting for assets only where ambiguous.
+	for _, it := range items {
+		if err := it.install(); err != nil {
+			printFail(cfg, "%s: %v", it.name, err)
+			hadErrors = true
+		}
 	}
 
 	if hadErrors {
@@ -61,176 +94,175 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func upgradeGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
+// upgradeItem is one outdated self-managed component (gh, ghpm, sheesh): its
+// versions for the gate table and a closure that performs the actual install.
+type upgradeItem struct {
+	name    string
+	current string
+	latest  string
+	install func() error
+}
+
+// installedBinaryVersion runs `<path> --version` and returns the first version
+// token found (without a leading "v"), or "" if the binary is absent or emits none.
+func installedBinaryVersion(path string) string {
+	out, err := exec.Command(path, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	for tok := range strings.FieldsSeq(string(out)) {
+		if asset.IsVersionToken(tok) {
+			return strings.TrimPrefix(tok, "v")
+		}
+	}
+	return ""
+}
+
+func checkGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*upgradeItem, error) {
 	binDir, err := store.BinDir()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ghPath := filepath.Join(binDir, exeName(binGh))
 
 	if _, err := os.Stat(ghPath); err != nil {
-		return nil
+		return nil, nil
 	}
 
-	currentVer := ""
-	if out, err := exec.Command(ghPath, "--version").Output(); err == nil {
-		for tok := range strings.FieldsSeq(string(out)) {
-			if asset.IsVersionToken(tok) {
-				currentVer = strings.TrimPrefix(tok, "v")
-				break
-			}
-		}
-	}
+	currentVer := installedBinaryVersion(ghPath)
 
 	rel, err := ghClient.GetLatestRelease(ctx, config.RepoGh.Owner, config.RepoGh.Repo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		print("gh: already upgraded → %s", currentVer)
+		print("%s: already upgraded → %s", binGh, currentVer)
+		return nil, nil
+	}
+
+	install := func() error {
+		_, ghBin, cleanup, err := fetchBinary(ctx, cfg, ghClient, config.RepoGh, rel, binGh)
+		if err != nil {
+			return err
+		}
+		if cleanup == nil {
+			return nil
+		}
+		defer cleanup()
+
+		if err := os.MkdirAll(binDir, 0755); err != nil {
+			return err
+		}
+		// See installFont: FILE_SHARE_DELETE lets Remove succeed on the running binary.
+		_ = os.Remove(ghPath)
+		if err := copyFile(ghBin, ghPath); err != nil {
+			return err
+		}
+		if err := os.Chmod(ghPath, 0755); err != nil {
+			return err
+		}
+
+		printPass(cfg, "%s: upgraded %s → %s", binGh, currentVer, latestVer)
 		return nil
 	}
-
-	if !promptConfirm(fmt.Sprintf("gh: upgrade %s → %s", currentVer, latestVer)) {
-		return nil
-	}
-
-	_, ghBin, cleanup, err := fetchBinary(ctx, cfg, ghClient, config.RepoGh, rel, binGh)
-	if err != nil {
-		return err
-	}
-	if cleanup == nil {
-		return nil
-	}
-	defer cleanup()
-
-	if err := os.MkdirAll(binDir, 0755); err != nil {
-		return err
-	}
-	// See installFont: FILE_SHARE_DELETE lets Remove succeed on the running binary.
-	_ = os.Remove(ghPath)
-	if err := copyFile(ghBin, ghPath); err != nil {
-		return err
-	}
-	if err := os.Chmod(ghPath, 0755); err != nil {
-		return err
-	}
-
-	printPass(cfg, "gh: upgraded %s → %s", currentVer, latestVer)
-	return nil
+	return &upgradeItem{name: binGh, current: currentVer, latest: latestVer, install: install}, nil
 }
 
-func upgradeSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
+func checkSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*upgradeItem, error) {
 	rel, err := ghClient.GetLatestRelease(ctx, config.RepoGhpm.Owner, config.RepoGhpm.Repo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
-		print("ghpm: already upgraded → %s", version)
+		print("%s: already upgraded → %s", binGhpm, version)
+		return nil, nil
+	}
+
+	install := func() error {
+		_, ghpmBin, cleanup, err := fetchBinary(ctx, cfg, ghClient, config.RepoGhpm, rel, binGhpm)
+		if err != nil {
+			return err
+		}
+		if cleanup == nil {
+			return nil
+		}
+		defer cleanup()
+
+		self, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		self, err = filepath.EvalSymlinks(self)
+		if err != nil {
+			return err
+		}
+
+		tmp := self + ".new"
+		if err := copyFile(ghpmBin, tmp); err != nil {
+			return err
+		}
+		if err := os.Chmod(tmp, 0755); err != nil {
+			return err
+		}
+		if err := replaceSelf(tmp, self); err != nil {
+			return err
+		}
+
+		printPass(cfg, "%s: upgraded %s → %s", binGhpm, version, latestVer)
 		return nil
 	}
-
-	if !promptConfirm(fmt.Sprintf("ghpm: upgrade %s → %s", version, latestVer)) {
-		return nil
-	}
-
-	_, ghpmBin, cleanup, err := fetchBinary(ctx, cfg, ghClient, config.RepoGhpm, rel, binGhpm)
-	if err != nil {
-		return err
-	}
-	if cleanup == nil {
-		return nil
-	}
-	defer cleanup()
-
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	self, err = filepath.EvalSymlinks(self)
-	if err != nil {
-		return err
-	}
-
-	tmp := self + ".new"
-	if err := copyFile(ghpmBin, tmp); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0755); err != nil {
-		return err
-	}
-	if err := replaceSelf(tmp, self); err != nil {
-		return err
-	}
-
-	printPass(cfg, "ghpm: upgraded %s → %s", version, latestVer)
-	return nil
+	return &upgradeItem{name: binGhpm, current: version, latest: latestVer, install: install}, nil
 }
 
-func upgradeShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
+func checkShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*upgradeItem, error) {
 	shimDir, err := store.ShimDir()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	kebabPath := filepath.Join(shimDir, exeName("kebab"))
 
 	currentVer := ""
 	if _, err := os.Stat(kebabPath); err == nil {
-		if out, err := exec.Command(kebabPath, "--version").Output(); err == nil {
-			for tok := range strings.FieldsSeq(string(out)) {
-				if asset.IsVersionToken(tok) {
-					currentVer = strings.TrimPrefix(tok, "v")
-					break
-				}
-			}
-		}
+		currentVer = installedBinaryVersion(kebabPath)
 	}
 
 	rel, err := ghClient.GetLatestRelease(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		print("sheesh: already upgraded → %s", currentVer)
+		print("%s: already upgraded → %s", binSheesh, currentVer)
+		return nil, nil
+	}
+
+	install := func() error {
+		_, tmpDir, cleanup, err := fetchSelected(ctx, cfg, ghClient, config.RepoSheesh, rel, binSheesh)
+		if err != nil {
+			return err
+		}
+		if cleanup == nil {
+			return nil
+		}
+		defer cleanup()
+
+		if err := copyExecutablesToDir(tmpDir, shimDir); err != nil {
+			return err
+		}
+
+		if currentVer == "" {
+			printPass(cfg, "%s: installed %s", binSheesh, latestVer)
+		} else {
+			printPass(cfg, "%s: upgraded %s → %s", binSheesh, currentVer, latestVer)
+		}
 		return nil
 	}
-
-	var action string
-	if currentVer == "" {
-		action = fmt.Sprintf("install %s", latestVer)
-	} else {
-		action = fmt.Sprintf("upgrade %s → %s", currentVer, latestVer)
-	}
-
-	if !promptConfirm("sheesh: " + action) {
-		return nil
-	}
-
-	_, tmpDir, cleanup, err := fetchSelected(ctx, cfg, ghClient, config.RepoSheesh, rel, binSheesh)
-	if err != nil {
-		return err
-	}
-	if cleanup == nil {
-		return nil
-	}
-	defer cleanup()
-
-	if err := copyExecutablesToDir(tmpDir, shimDir); err != nil {
-		return err
-	}
-
-	if currentVer == "" {
-		printPass(cfg, "sheesh: installed %s", latestVer)
-	} else {
-		printPass(cfg, "sheesh: upgraded %s → %s", currentVer, latestVer)
-	}
-	return nil
+	return &upgradeItem{name: binSheesh, current: currentVer, latest: latestVer, install: install}, nil
 }
 
 // fetchSelected selects an asset for pkgName, downloads, verifies, and extracts
@@ -241,7 +273,7 @@ func fetchSelected(ctx context.Context, cfg *config.Settings, ghClient gh.Client
 	if err != nil {
 		return gh.Asset{}, "", nil, err
 	}
-	chosen, err := asset.PromptFromCandidates(ac)
+	chosen, err := asset.PromptFromCandidates(ac, pkgName)
 	if errors.Is(err, asset.ErrSkip) {
 		return gh.Asset{}, "", nil, nil
 	}
@@ -249,7 +281,7 @@ func fetchSelected(ctx context.Context, cfg *config.Settings, ghClient gh.Client
 		return gh.Asset{}, "", nil, err
 	}
 	if ac.Chosen.Name != "" {
-		printInfo(cfg, "asset: %s", chosen.Name)
+		printInfo(cfg, "%s: asset: %s", pkgName, chosen.Name)
 	}
 
 	if dryRun {

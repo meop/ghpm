@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 )
 
 // ErrSkip signals the user declined a selection prompt.
@@ -26,6 +27,11 @@ var (
 	started       bool      // anything emitted yet
 	pending       bool      // a separator was requested
 	colorResolver func(role string) func(string) string
+	// mu guards the separator state and writes so non-prompt output emitted from
+	// parallel workers (e.g. download progress) cannot interleave or race the
+	// deferred-separator check. Held only around the output portion of a read,
+	// never across the blocking stdin read itself.
+	mu sync.Mutex
 )
 
 // SetOutput redirects output and clears separator state (tests).
@@ -52,6 +58,8 @@ func Reset() {
 // idempotent: it does nothing until real output follows, and repeated calls
 // collapse to a single blank.
 func Break() {
+	mu.Lock()
+	defer mu.Unlock()
 	if started {
 		pending = true
 	}
@@ -63,6 +71,7 @@ func wln(args ...any)               { _, _ = fmt.Fprintln(out, args...) }
 func wf(format string, args ...any) { _, _ = fmt.Fprintf(out, format, args...) }
 func ws(s string)                   { _, _ = fmt.Fprint(out, s) }
 
+// flush emits a deferred blank if one is pending. Callers must hold mu.
 func flush() {
 	if pending {
 		wln()
@@ -71,6 +80,8 @@ func flush() {
 }
 
 func line(s string) {
+	mu.Lock()
+	defer mu.Unlock()
 	flush()
 	wln(s)
 	started = true
@@ -98,9 +109,11 @@ func Pass(format string, args ...any) { decorated("pass", "✓ ", format, args..
 // ReadLine flushes any pending Break, prints prompt (no trailing newline), and
 // returns the user's trimmed input line.
 func ReadLine(prompt string) string {
+	mu.Lock()
 	flush()
 	ws(prompt)
 	started = true
+	mu.Unlock()
 	s, _ := in.ReadString('\n')
 	return strings.TrimSpace(s)
 }
@@ -159,7 +172,11 @@ func Confirm(msg string) bool {
 // Table renders a space-aligned table as a single block preceded by a Break.
 // colColors, when non-nil, colorizes each column by index.
 func Table(headers []string, rows [][]string, colColors []func(string) string) {
-	Break()
+	mu.Lock()
+	defer mu.Unlock()
+	if started {
+		pending = true
+	}
 	flush()
 
 	widths := make([]int, len(headers))

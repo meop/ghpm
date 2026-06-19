@@ -254,14 +254,14 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	return AssetCandidates{Compatible: bestAssets, Hidden: hiddenAssets, All: candidates}, nil
 }
 
-func PromptFromCandidates(ac AssetCandidates) (gh.Asset, error) {
+func PromptFromCandidates(ac AssetCandidates, label string) (gh.Asset, error) {
 	if ac.Chosen.Name != "" {
 		return ac.Chosen, nil
 	}
 	// The Prompt bracket spans the whole interaction, including any show-more
 	// expansion, so the inner helpers render + read without their own Break.
 	return ui.Prompt(func() (gh.Asset, error) {
-		return promptWithShowMore(ac.Compatible, ac.Hidden)
+		return promptWithShowMore(ac.Compatible, ac.Hidden, label)
 	})
 }
 
@@ -274,20 +274,20 @@ func assetItems(assets []gh.Asset) []string {
 	return items
 }
 
-func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
+func promptWithShowMore(compatible, hidden []gh.Asset, label string) (gh.Asset, error) {
 	items := assetItems(compatible)
 	showMoreIdx := -1
 	if len(hidden) > 0 {
 		showMoreIdx = len(compatible) + 1
 		items = append(items, fmt.Sprintf("show more (%d more)", len(hidden)))
 	}
-	ui.Menu("", "choose asset:", items)
+	ui.Menu(label, "choose asset:", items)
 	idx, err := readSingle()
 	if err != nil {
 		return gh.Asset{}, err
 	}
 	if showMoreIdx > 0 && idx == showMoreIdx {
-		return PromptSelect("choose asset:", append(compatible, hidden...))
+		return PromptSelect("choose asset:", append(compatible, hidden...), label)
 	}
 	if idx < 1 || idx > len(compatible) {
 		return gh.Asset{}, fmt.Errorf("invalid selection")
@@ -295,8 +295,8 @@ func promptWithShowMore(compatible, hidden []gh.Asset) (gh.Asset, error) {
 	return compatible[idx-1], nil
 }
 
-func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
-	ui.Menu("", msg, assetItems(assets))
+func PromptSelect(msg string, assets []gh.Asset, label string) (gh.Asset, error) {
+	ui.Menu(label, msg, assetItems(assets))
 	idx, err := readSingle()
 	if err != nil {
 		return gh.Asset{}, err
@@ -309,23 +309,23 @@ func PromptSelect(msg string, assets []gh.Asset) (gh.Asset, error) {
 
 // PromptAssetsMulti returns the auto-chosen asset (if unambiguous) or lets the
 // user pick one or more from the candidate list.
-func PromptAssetsMulti(ac AssetCandidates) ([]gh.Asset, error) {
+func PromptAssetsMulti(ac AssetCandidates, label string) ([]gh.Asset, error) {
 	if ac.Chosen.Name != "" {
 		return []gh.Asset{ac.Chosen}, nil
 	}
 	return ui.Prompt(func() ([]gh.Asset, error) {
-		return promptMultiWithShowMore(ac.Compatible, ac.Hidden)
+		return promptMultiWithShowMore(ac.Compatible, ac.Hidden, label)
 	})
 }
 
-func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) {
+func promptMultiWithShowMore(compatible, hidden []gh.Asset, label string) ([]gh.Asset, error) {
 	items := assetItems(compatible)
 	showMoreIdx := -1
 	if len(hidden) > 0 {
 		showMoreIdx = len(compatible) + 1
 		items = append(items, fmt.Sprintf("show more (%d more)", len(hidden)))
 	}
-	ui.Menu("", "choose asset(s):", items)
+	ui.Menu(label, "choose asset(s):", items)
 	maxIdx := len(compatible)
 	if showMoreIdx > 0 {
 		maxIdx = showMoreIdx
@@ -337,7 +337,7 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 	// If show-more was selected, re-prompt with the full list.
 	for _, idx := range indices {
 		if showMoreIdx > 0 && idx == showMoreIdx {
-			return promptMultiAll(append(compatible, hidden...))
+			return promptMultiAll(append(compatible, hidden...), label)
 		}
 	}
 	var selected []gh.Asset
@@ -352,8 +352,8 @@ func promptMultiWithShowMore(compatible, hidden []gh.Asset) ([]gh.Asset, error) 
 	return selected, nil
 }
 
-func promptMultiAll(all []gh.Asset) ([]gh.Asset, error) {
-	ui.Menu("", "choose asset(s):", assetItems(all))
+func promptMultiAll(all []gh.Asset, label string) ([]gh.Asset, error) {
+	ui.Menu(label, "choose asset(s):", assetItems(all))
 	indices, err := readMultiFirst(len(all))
 	if err != nil {
 		return nil, err

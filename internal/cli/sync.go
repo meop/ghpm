@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -52,12 +53,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		for _, name := range args {
 			matched := filterExtracts(manifest.Extracts, []string{name})
 			if len(matched) == 0 {
-				printInfo(cfg, "%s: not installed", name)
+				print("%s: not installed", name)
 				continue
 			}
 			for key, p := range matched {
 				if p.Pin == "fixed" {
-					printInfo(cfg, "%s: fixed at %s, skipping", key, p.Version)
+					print("%s: fixed at %s, skipping", key, p.Version)
 					continue
 				}
 				targets[key] = p
@@ -90,7 +91,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 		extractResult
 	}
 
-	var ready []syncJob
+	// Phase 1: determine what is outdated. This needs only the batched version
+	// check — no release fetch, no asset prompts — so the gate table and its
+	// confirm come before any of that work is spent. The user can bail here.
+	type outdatedPkg struct {
+		key       string
+		source    string
+		pkg       config.PackageEntry
+		latestTag string
+	}
+	var outdated []outdatedPkg
 	checked := 0
 	skipped := 0
 	var hadErrors bool
@@ -112,56 +122,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if config.CompareVersions(latest, pkg.Version) <= 0 && !forceSync {
 			continue
 		}
-		source := keyToSource[res.Key]
-		owner, repo, _ := gh.SplitSource(source)
-		rel, err := ghClient.GetReleaseByTag(ctx, owner, repo, res.LatestTag)
-		if err != nil {
-			printFail(cfg, "%s: %v", res.Key, err)
-			hadErrors = true
-			continue
-		}
-		pkgName, _, _ := config.ParseVersionSuffix(res.Key)
-
-		oldAssetNames := make([]string, 0, len(pkg.Asset))
-		for a := range pkg.Asset {
-			oldAssetNames = append(oldAssetNames, a)
-		}
-		slices.Sort(oldAssetNames)
-
-		var chosens []gh.Asset
-		skippedPkg := false
-		for _, assetName := range oldAssetNames {
-			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, assetName, pkgName)
-			if acErr != nil {
-				printFail(cfg, "%s: %v", res.Key, acErr)
-				hadErrors = true
-				skippedPkg = true
-				break
-			}
-			chosen, chErr := asset.PromptFromCandidates(ac)
-			if errors.Is(chErr, asset.ErrSkip) {
-				skippedPkg = true
-				break
-			}
-			if chErr != nil {
-				printFail(cfg, "%s: %v", res.Key, chErr)
-				hadErrors = true
-				skippedPkg = true
-				break
-			}
-			chosens = append(chosens, chosen)
-		}
-		if skippedPkg || len(chosens) == 0 {
-			continue
-		}
-		ready = append(ready, syncJob{key: res.Key, source: source, pkg: pkg, release: rel, chosens: chosens})
+		outdated = append(outdated, outdatedPkg{key: res.Key, source: keyToSource[res.Key], pkg: pkg, latestTag: res.LatestTag})
 	}
 
 	if skipped > 0 {
 		printRateLimitSummary(cfg, checked, len(items), skipped)
 	}
 
-	if len(ready) == 0 {
+	if len(outdated) == 0 {
 		if skipped == 0 {
 			print(msgAllUpToDate)
 		}
@@ -171,20 +139,70 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	var rows [][]string
-	for _, r := range ready {
-		for _, c := range r.chosens {
-			rows = append(rows, []string{r.key, r.pkg.Version, config.NormalizeVersion(r.release.TagName), r.pkg.Pin, r.source, c.Name})
-		}
-	}
-	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil}
-	printTable([]string{"name", "version", "update", "pin", "repo", "asset"}, rows, colors)
+	slices.SortFunc(outdated, func(a, b outdatedPkg) int { return strings.Compare(a.key, b.key) })
 
-	if dryRun {
+	updateColors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
+	gateRows := make([][]string, 0, len(outdated))
+	for _, o := range outdated {
+		gateRows = append(gateRows, []string{o.key, o.pkg.Version, config.NormalizeVersion(o.latestTag), o.pkg.Pin, o.source})
+	}
+	if !gate([]string{"name", "version", "update", "pin", "repo"}, gateRows, updateColors, fmt.Sprintf("update %d package(s)", len(outdated))) {
 		return nil
 	}
 
-	if !promptConfirm(fmt.Sprintf("update %d package(s)", len(ready))) {
+	// Phase 2: after the user opts in, fetch each release and resolve its
+	// asset(s), prompting only where the choice is ambiguous. A skipped package
+	// drops out here and simply never reaches the final table.
+	var ready []syncJob
+	for _, o := range outdated {
+		owner, repo, _ := gh.SplitSource(o.source)
+		rel, err := ghClient.GetReleaseByTag(ctx, owner, repo, o.latestTag)
+		if err != nil {
+			printFail(cfg, "%s: %v", o.key, err)
+			hadErrors = true
+			continue
+		}
+		pkgName, _, _ := config.ParseVersionSuffix(o.key)
+
+		oldAssetNames := make([]string, 0, len(o.pkg.Asset))
+		for a := range o.pkg.Asset {
+			oldAssetNames = append(oldAssetNames, a)
+		}
+		slices.Sort(oldAssetNames)
+
+		var chosens []gh.Asset
+		skippedPkg := false
+		for _, assetName := range oldAssetNames {
+			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, assetName, pkgName)
+			if acErr != nil {
+				printFail(cfg, "%s: %v", o.key, acErr)
+				hadErrors = true
+				skippedPkg = true
+				break
+			}
+			chosen, chErr := asset.PromptFromCandidates(ac, o.key)
+			if errors.Is(chErr, asset.ErrSkip) {
+				skippedPkg = true
+				break
+			}
+			if chErr != nil {
+				printFail(cfg, "%s: %v", o.key, chErr)
+				hadErrors = true
+				skippedPkg = true
+				break
+			}
+			chosens = append(chosens, chosen)
+		}
+		if skippedPkg || len(chosens) == 0 {
+			continue
+		}
+		ready = append(ready, syncJob{key: o.key, source: o.source, pkg: o.pkg, release: rel, chosens: chosens})
+	}
+
+	if len(ready) == 0 {
+		if hadErrors {
+			return errSilent
+		}
 		return nil
 	}
 
@@ -209,7 +227,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	successCount := 0
+	updated := 0
 	for _, res := range parallel.Run(cmd.Context(), syncTasks, cfg.NumParallel) {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
@@ -459,7 +477,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		if !pkgFailed && (len(tr.binsByAsset) > 0 || len(tr.fontsByAsset) > 0) {
-			successCount++
+			updated++
 		}
 
 		if !pkgFailed && tr.r.pkg.Version != newVer {
@@ -479,8 +497,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if successCount > 0 {
-		printPass(cfg, "updated %d package(s)", successCount)
+	if updated > 0 {
+		printPass(cfg, "updated %d package(s)", updated)
 	}
 
 	if err := saveManifest(cfg, manifest); err != nil {
