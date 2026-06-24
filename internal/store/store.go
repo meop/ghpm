@@ -15,7 +15,7 @@ type Dirs interface {
 	ShimDir() (string, error)
 	ExtractsDir() (string, error)
 	ExtractBaseDir(key string) (string, error)
-	ExtractDir(key, version, assetName string) (string, error)
+	ExtractDir(key, version string) (string, error)
 	ReleaseDir(source, version string) (string, error)
 	ReleaseBaseDir() (string, error)
 	RepoDir(source string) (string, error)
@@ -32,8 +32,8 @@ func (*LocalDirs) ExtractsDir() (string, error) { return ExtractsDir() }
 func (*LocalDirs) ExtractBaseDir(k string) (string, error) {
 	return ExtractBaseDir(k)
 }
-func (*LocalDirs) ExtractDir(key, version, assetName string) (string, error) {
-	return ExtractDir(key, version, assetName)
+func (*LocalDirs) ExtractDir(key, version string) (string, error) {
+	return ExtractDir(key, version)
 }
 func (*LocalDirs) ReleaseDir(source, version string) (string, error) {
 	return ReleaseDir(source, version)
@@ -89,12 +89,12 @@ func ExtractBaseDir(key string) (string, error) {
 	return filepath.Join(base, key), nil
 }
 
-func ExtractDir(key, version, assetName string) (string, error) {
+func ExtractDir(key, version string) (string, error) {
 	base, err := ExtractBaseDir(key)
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, version, assetName)
+	dir := filepath.Join(base, version)
 	return dir, os.MkdirAll(dir, 0755)
 }
 

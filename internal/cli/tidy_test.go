@@ -48,10 +48,8 @@ func TestCleanBrokenInstalls_MissingShim(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
-			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-		}}},
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}}},
 	}
 
 	cleanBrokenInstalls(nil, manifest, downloadDir)
@@ -76,10 +74,8 @@ func TestCleanBrokenInstalls_MissingExtract(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
-			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-		}}},
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}}},
 	}
 
 	cleanBrokenInstalls(nil, manifest, downloadDir)
@@ -102,7 +98,7 @@ func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0", "fzf.tar.gz"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	downloadDir, err := store.ReleaseBaseDir()
@@ -111,10 +107,8 @@ func TestCleanBrokenInstalls_HealthyInstall(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
-			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-		}}},
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}}},
 	}
 
 	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); cleaned {
@@ -135,7 +129,7 @@ func TestCleanBrokenInstalls_PartialShim_TrimsOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "uv", "0.7.0", "uv.tar.gz"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "uv", "0.7.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	downloadDir, err := store.ReleaseBaseDir()
@@ -144,10 +138,8 @@ func TestCleanBrokenInstalls_PartialShim_TrimsOne(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos: map[string]string{"uv": "github.com/astral-sh/uv"},
-		Extracts: map[string]config.PackageEntry{"uv": {Version: "0.7.0", Asset: map[string]config.AssetEntry{
-			"uv.tar.gz": {Bin: map[string]string{"uv": "uv", "uvx": "uvx"}},
-		}}},
+		Repos:    map[string]string{"uv": "github.com/astral-sh/uv"},
+		Extracts: map[string]config.PackageEntry{"uv": {Version: "0.7.0", Assets: []string{"uv.tar.gz"}, Bin: map[string]string{"uv": "uv", "uvx": "uvx"}}},
 	}
 
 	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); !cleaned {
@@ -177,7 +169,7 @@ func TestCleanBrokenInstalls_AllShimsMissing_AutoRemovesExtract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0", "fzf.tar.gz"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	downloadDir, err := store.ReleaseBaseDir()
@@ -186,10 +178,8 @@ func TestCleanBrokenInstalls_AllShimsMissing_AutoRemovesExtract(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
-			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-		}}},
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}}},
 	}
 
 	cleanBrokenInstalls(nil, manifest, downloadDir)
@@ -217,10 +207,8 @@ func TestCleanOrphanedBinShims_OrphanedShim(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
-			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-		}}},
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}}},
 	}
 
 	cleanOrphanedBinShims(nil, manifest)
@@ -267,7 +255,7 @@ func TestCleanOrphanedFonts_AllMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0", "Hack.tar.gz"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	downloadDir, err := store.ReleaseBaseDir()
@@ -277,11 +265,9 @@ func TestCleanOrphanedFonts_AllMissing(t *testing.T) {
 
 	manifest := &config.Manifest{
 		Repos: map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
-		Extracts: map[string]config.PackageEntry{"nerd-fonts": {Version: "3.0.0", Asset: map[string]config.AssetEntry{
-			"Hack.tar.gz": {Font: map[string]string{
-				"hack-regular": "Hack/Hack-Regular.ttf",
-				"hack-bold":    "Hack/Hack-Bold.ttf",
-			}},
+		Extracts: map[string]config.PackageEntry{"nerd-fonts": {Version: "3.0.0", Assets: []string{"Hack.tar.gz"}, Font: map[string]string{
+			"hack-regular": "Hack/Hack-Regular.ttf",
+			"hack-bold":    "Hack/Hack-Bold.ttf",
 		}}},
 	}
 
@@ -309,7 +295,7 @@ func TestCleanOrphanedFonts_OneMissingKeepsOther(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0", "Hack.tar.gz"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "nerd-fonts", "3.0.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	downloadDir, err := store.ReleaseBaseDir()
@@ -330,11 +316,9 @@ func TestCleanOrphanedFonts_OneMissingKeepsOther(t *testing.T) {
 
 	manifest := &config.Manifest{
 		Repos: map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
-		Extracts: map[string]config.PackageEntry{"nerd-fonts": {Version: "3.0.0", Asset: map[string]config.AssetEntry{
-			"Hack.tar.gz": {Font: map[string]string{
-				"hack-regular": "Hack/Hack-Regular.ttf",
-				"hack-bold":    "Hack/Hack-Bold.ttf",
-			}},
+		Extracts: map[string]config.PackageEntry{"nerd-fonts": {Version: "3.0.0", Assets: []string{"Hack.tar.gz"}, Font: map[string]string{
+			"hack-regular": "Hack/Hack-Regular.ttf",
+			"hack-bold":    "Hack/Hack-Bold.ttf",
 		}}},
 	}
 
@@ -399,10 +383,8 @@ func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
 	}
 
 	manifest := &config.Manifest{
-		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
-		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Asset: map[string]config.AssetEntry{
-			"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-		}}},
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}}},
 	}
 
 	cleanOrphanedExtracts(nil, manifest)

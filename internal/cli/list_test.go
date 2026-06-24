@@ -43,12 +43,8 @@ func TestRunList_NameFilter(t *testing.T) {
 			"rg":  "github.com/BurntSushi/ripgrep",
 		},
 		Extracts: map[string]config.PackageEntry{
-			"fzf": {Version: "0.58.0", Pin: "latest", Asset: map[string]config.AssetEntry{
-				"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-			}},
-			"rg": {Version: "14.1.0", Pin: "latest", Asset: map[string]config.AssetEntry{
-				"rg.tar.gz": {Bin: map[string]string{"rg": "rg"}},
-			}},
+			"fzf": {Version: "0.58.0", Pin: "latest", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}},
+			"rg":  {Version: "14.1.0", Pin: "latest", Assets: []string{"rg.tar.gz"}, Bin: map[string]string{"rg": "rg"}},
 		},
 	})
 	var buf bytes.Buffer
@@ -87,9 +83,7 @@ func TestRunList_NoMatchVsEmpty(t *testing.T) {
 	writeManifest(t, &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{
-			"fzf": {Version: "0.58.0", Pin: "latest", Asset: map[string]config.AssetEntry{
-				"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-			}},
+			"fzf": {Version: "0.58.0", Pin: "latest", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}},
 		},
 	})
 	buf.Reset()
@@ -118,9 +112,7 @@ func TestRunList_WithPackages(t *testing.T) {
 	writeManifest(t, &config.Manifest{
 		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
 		Extracts: map[string]config.PackageEntry{
-			"fzf": {Version: "0.58.0", Pin: "latest", Asset: map[string]config.AssetEntry{
-				"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-			}},
+			"fzf": {Version: "0.58.0", Pin: "latest", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}},
 		},
 	})
 	longNames = true

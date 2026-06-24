@@ -16,12 +16,12 @@ func withHome(t *testing.T) string {
 	return dir
 }
 
-func writeRepoYAML(t *testing.T, dir, content string) {
+func writeRepoTOML(t *testing.T, dir, content string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "repo.yaml"), []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "repo.toml"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -43,7 +43,7 @@ func TestLoadRepos_Single(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeRepoYAML(t, filepath.Join(base, "a"), "repos:\n  fzf: github.com/junegunn/fzf\n")
+	writeRepoTOML(t, filepath.Join(base, "a"), "fzf = \"github.com/junegunn/fzf\"\n")
 	repos, err := LoadRepos()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -59,8 +59,8 @@ func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeRepoYAML(t, filepath.Join(base, "a"), "repos:\n  tool: github.com/owner/a\n")
-	writeRepoYAML(t, filepath.Join(base, "b"), "repos:\n  tool: github.com/owner/b\n")
+	writeRepoTOML(t, filepath.Join(base, "a"), "tool = \"github.com/owner/a\"\n")
+	writeRepoTOML(t, filepath.Join(base, "b"), "tool = \"github.com/owner/b\"\n")
 	repos, err := LoadRepos()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -70,16 +70,16 @@ func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
 	}
 }
 
-func TestLoadRepos_InvalidYAML_Fatal(t *testing.T) {
+func TestLoadRepos_InvalidTOML_Fatal(t *testing.T) {
 	withHome(t)
 	base, err := store.ReposBaseDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeRepoYAML(t, filepath.Join(base, "bad"), "repos: [\ninvalid yaml{{{\n")
+	writeRepoTOML(t, filepath.Join(base, "bad"), "fzf = \"unterminated\ninvalid toml {{{\n")
 	_, err = LoadRepos()
 	if err == nil {
-		t.Error("expected error for invalid YAML, got nil")
+		t.Error("expected error for invalid TOML, got nil")
 	}
 }
 

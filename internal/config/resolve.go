@@ -9,21 +9,18 @@ import (
 	"sort"
 	"strings"
 
-	"go.yaml.in/yaml/v4"
+	"github.com/BurntSushi/toml"
 
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/ui"
 )
 
-type reposFile struct {
-	Repos map[string]string `yaml:"repos"`
-}
-
-// LoadRepos globs ~/.ghpm/repo recursively for repo.yaml files, processes them
+// LoadRepos globs ~/.ghpm/repo recursively for repo.toml files, processes them
 // in alphabetical path order (later files overwrite earlier on key conflicts),
-// and returns the merged map. Returns an empty map if the directory doesn't
-// exist. Returns an error if any repo.yaml is unreadable or invalid YAML.
+// and returns the merged map. Each file is a flat table of name = "source"
+// pairs (no top-level key). Returns an empty map if the directory doesn't
+// exist. Returns an error if any repo.toml is unreadable or invalid TOML.
 func LoadRepos() (map[string]string, error) {
 	base, err := store.ReposBaseDir()
 	if err != nil {
@@ -37,7 +34,7 @@ func LoadRepos() (map[string]string, error) {
 			}
 			return err
 		}
-		if !d.IsDir() && d.Name() == "repo.yaml" {
+		if !d.IsDir() && d.Name() == "repo.toml" {
 			paths = append(paths, path)
 		}
 		return nil
@@ -52,11 +49,11 @@ func LoadRepos() (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		var rf reposFile
-		if err := yaml.Unmarshal(data, &rf); err != nil {
+		var m map[string]string
+		if err := toml.Unmarshal(data, &m); err != nil {
 			return nil, fmt.Errorf("malformed %s: %w", path, err)
 		}
-		for k, v := range rf.Repos {
+		for k, v := range m {
 			if k == "" || v == "" {
 				continue
 			}
@@ -66,7 +63,7 @@ func LoadRepos() (map[string]string, error) {
 	return merged, nil
 }
 
-// RefreshRepos fetches repo.yaml from each source configured in settings
+// RefreshRepos fetches repo.toml from each source configured in settings
 // SyncResult holds the outcome of syncing a single repo source.
 type SyncResult struct {
 	Source string
@@ -109,7 +106,7 @@ func fetchAndCacheRepos(source string) (int, error) {
 		return 0, err
 	}
 	cmd := exec.Command(ghPath, "api", //nolint:gosec
-		fmt.Sprintf("repos/%s/contents/repo.yaml", slug),
+		fmt.Sprintf("repos/%s/contents/repo.toml", slug),
 		"--header", "Accept: application/vnd.github.raw+json",
 	)
 	data, err := cmd.Output()
@@ -119,15 +116,15 @@ func fetchAndCacheRepos(source string) (int, error) {
 		}
 		return 0, err
 	}
-	var rf reposFile
-	if err := yaml.Unmarshal(data, &rf); err != nil {
-		return 0, fmt.Errorf("parsing repo.yaml from %s: %w", source, err)
+	var m map[string]string
+	if err := toml.Unmarshal(data, &m); err != nil {
+		return 0, fmt.Errorf("parsing repo.toml from %s: %w", source, err)
 	}
 	dir, err := store.RepoDir(source)
 	if err != nil {
 		return 0, err
 	}
-	path := filepath.Join(dir, "repo.yaml")
+	path := filepath.Join(dir, "repo.toml")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return 0, err
@@ -136,7 +133,7 @@ func fetchAndCacheRepos(source string) (int, error) {
 		_ = os.Remove(tmp)
 		return 0, err
 	}
-	return len(rf.Repos), nil
+	return len(m), nil
 }
 
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).

@@ -30,12 +30,12 @@ func TestSaveAndLoadManifest(t *testing.T) {
 			"bun": "github.com/oven-sh/bun",
 		},
 		Extracts: map[string]PackageEntry{
-			"fzf": {Pin: "latest", Version: "0.56.0", Asset: map[string]AssetEntry{
-				"fzf-0.56.0-linux_amd64.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-			}},
-			"bun": {Pin: "latest", Version: "1.3.13", Asset: map[string]AssetEntry{
-				"bun-linux-x64.zip": {Bin: map[string]string{"bun": "bun"}},
-			}},
+			"fzf": {Pin: "latest", Version: "0.56.0",
+				Assets: []string{"fzf-0.56.0-linux_amd64.tar.gz"},
+				Bin:    map[string]string{"fzf": "fzf"}},
+			"bun": {Pin: "latest", Version: "1.3.13",
+				Assets: []string{"bun-linux-x64.zip"},
+				Bin:    map[string]string{"bun": "bun"}},
 		},
 	}
 
@@ -58,25 +58,29 @@ func TestSaveAndLoadManifest(t *testing.T) {
 	if entry.Pin != "latest" {
 		t.Errorf("unexpected pin: %s", entry.Pin)
 	}
-	if _, ok := entry.Asset["fzf-0.56.0-linux_amd64.tar.gz"]; !ok {
-		t.Errorf("unexpected assets: %v", entry.Asset)
+	if len(entry.Assets) != 1 || entry.Assets[0] != "fzf-0.56.0-linux_amd64.tar.gz" {
+		t.Errorf("unexpected assets: %v", entry.Assets)
+	}
+	if entry.Bin["fzf"] != "fzf" {
+		t.Errorf("unexpected bin: %v", entry.Bin)
 	}
 	if loaded.Repos["fzf"] != "github.com/junegunn/fzf" {
 		t.Errorf("unexpected source: %s", loaded.Repos["fzf"])
 	}
 
 	bunEntry := loaded.Extracts["bun"]
-	if _, ok := bunEntry.Asset["bun-linux-x64.zip"]; !ok {
-		t.Errorf("unexpected bun assets: %v", bunEntry.Asset)
+	if bunEntry.Bin["bun"] != "bun" {
+		t.Errorf("unexpected bun bin: %v", bunEntry.Bin)
 	}
 }
 
-func TestAllFonts_MultiAsset(t *testing.T) {
+func TestAllFonts_Overlay(t *testing.T) {
+	// Fonts discovered across the overlaid extract are tracked as one flat map.
 	p := PackageEntry{
-		Asset: map[string]AssetEntry{
-			// asset key = release filename; font key = user-given name, value = file path
-			"Hack.zip":     {Font: map[string]string{"hack": "Hack/Hack-Regular.ttf"}},
-			"FiraCode.zip": {Font: map[string]string{"firacode": "FiraCode/FiraCode-Regular.ttf"}},
+		Assets: []string{"Hack.zip", "FiraCode.zip"},
+		Font: map[string]string{
+			"hack":     "Hack/Hack-Regular.ttf",
+			"firacode": "FiraCode/FiraCode-Regular.ttf",
 		},
 	}
 	fonts := p.AllFonts()
@@ -91,18 +95,16 @@ func TestAllFonts_MultiAsset(t *testing.T) {
 	}
 }
 
-func TestMixedAsset_BinAndFont(t *testing.T) {
+func TestMixed_BinAndFont(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest.json")
-	// A single asset that ships both an executable and a bundled font.
+	// A package whose overlay ships both an executable and a bundled font.
 	m := &Manifest{
 		Repos: map[string]string{"tool": "github.com/acme/tool"},
 		Extracts: map[string]PackageEntry{
-			"tool": {Pin: "latest", Version: "1.0.0", Asset: map[string]AssetEntry{
-				"tool-linux.tar.gz": {
-					Bin:  map[string]string{"tool": "tool"},
-					Font: map[string]string{"tool-mono": "fonts/ToolMono.ttf"},
-				},
-			}},
+			"tool": {Pin: "latest", Version: "1.0.0",
+				Assets: []string{"tool-linux.tar.gz"},
+				Bin:    map[string]string{"tool": "tool"},
+				Font:   map[string]string{"tool-mono": "fonts/ToolMono.ttf"}},
 		},
 	}
 	if err := saveManifestFile(m, path); err != nil {
@@ -113,10 +115,6 @@ func TestMixedAsset_BinAndFont(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := loaded.Extracts["tool"]
-	ae := entry.Asset["tool-linux.tar.gz"]
-	if !ae.IsBin() || !ae.IsFont() {
-		t.Errorf("expected asset to be both bin and font, got bin=%v font=%v", ae.IsBin(), ae.IsFont())
-	}
 	if entry.AllBins()["tool"] != "tool" {
 		t.Errorf("bin lost: %v", entry.AllBins())
 	}
@@ -127,9 +125,8 @@ func TestMixedAsset_BinAndFont(t *testing.T) {
 
 func TestAllFonts_EmptyForBinPackage(t *testing.T) {
 	p := PackageEntry{
-		Asset: map[string]AssetEntry{
-			"tool.tar.gz": {Bin: map[string]string{"tool": "tool"}},
-		},
+		Assets: []string{"tool.tar.gz"},
+		Bin:    map[string]string{"tool": "tool"},
 	}
 	if fonts := p.AllFonts(); len(fonts) != 0 {
 		t.Errorf("expected empty, got %v", fonts)
@@ -138,14 +135,13 @@ func TestAllFonts_EmptyForBinPackage(t *testing.T) {
 
 func TestLoadManifestFont(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest.json")
-	// asset key = release filename; font key = user-given name, value = file path
+	// font key = user-given name, value = file path within the overlaid extract
 	raw := `{
   "repo": {"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},
   "extract": {
-    "nerd-fonts": {"pin": "latest", "version": "3.3.0", "asset": {
-      "Hack.zip": {"font": {"hack": "Hack/Hack-Regular.ttf", "hack-bold": "Hack/Hack-Bold.ttf"}},
-      "FiraCode.zip": {"font": {"firacode": "FiraCode/FiraCode-Regular.ttf"}}
-    }}
+    "nerd-fonts": {"pin": "latest", "version": "3.3.0",
+      "assets": ["Hack.zip", "FiraCode.zip"],
+      "font": {"hack": "Hack/Hack-Regular.ttf", "hack-bold": "Hack/Hack-Bold.ttf", "firacode": "FiraCode/FiraCode-Regular.ttf"}}
   }
 }`
 	if err := os.WriteFile(path, []byte(raw), 0644); err != nil {

@@ -1,20 +1,21 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/meop/ghpm/internal/store"
 )
 
 type Settings struct {
-	CacheTTL      string            `json:"cache_ttl"`
-	Color         map[string]string `json:"color"`
-	NoColor       bool              `json:"no_color"`
-	NumParallel   int               `json:"num_parallel"`
-	RepoSources   []string          `json:"repo_sources"`
-	SkipHashCheck bool              `json:"skip_hash_check"`
+	CacheTTL      string            `toml:"cache_ttl"`
+	Color         map[string]string `toml:"color"`
+	NoColor       bool              `toml:"no_color"`
+	NumParallel   int               `toml:"num_parallel"`
+	RepoSources   []string          `toml:"repo_sources"`
+	SkipHashCheck bool              `toml:"skip_hash_check"`
 }
 
 func defaultSettings() *Settings {
@@ -40,7 +41,7 @@ func LoadSettings() (*Settings, error) {
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, "settings.json")
+	path := filepath.Join(dir, "config.toml")
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return defaultSettings(), nil
@@ -49,7 +50,7 @@ func LoadSettings() (*Settings, error) {
 		return nil, err
 	}
 	s := defaultSettings()
-	if err := json.Unmarshal(data, s); err != nil {
+	if err := toml.Unmarshal(data, s); err != nil {
 		return nil, err
 	}
 	return s, nil

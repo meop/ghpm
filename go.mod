@@ -3,11 +3,11 @@ module github.com/meop/ghpm
 go 1.26.2
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/fatih/color v1.19.0
 	github.com/gofrs/flock v0.13.0
 	github.com/spf13/cobra v1.10.2
 	github.com/ulikunitz/xz v0.5.15
-	go.yaml.in/yaml/v4 v4.0.0-rc.4
 	golang.org/x/sys v0.45.0
 )
 

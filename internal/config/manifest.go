@@ -2,44 +2,30 @@ package config
 
 import (
 	"encoding/json"
-	"maps"
 	"os"
 	"path/filepath"
 
 	"github.com/meop/ghpm/internal/store"
 )
 
-type AssetEntry struct {
-	Bin  map[string]string `json:"bin,omitempty"`
-	Font map[string]string `json:"font,omitempty"`
-}
-
-func (ae AssetEntry) IsBin() bool  { return len(ae.Bin) > 0 }
-func (ae AssetEntry) IsFont() bool { return len(ae.Font) > 0 }
-
+// PackageEntry records one installed package. Its selected release assets are
+// overlaid (in Assets order, later wins on path collision) into a single extract
+// dir, so bins and fonts are tracked as flat maps over that combined tree rather
+// than per asset. Assets is the ordered list of release asset names, kept so sync
+// can re-download and re-overlay the same set.
 type PackageEntry struct {
-	Pin     string                `json:"pin"`
-	Version string                `json:"version"`
-	Asset   map[string]AssetEntry `json:"asset,omitempty"`
+	Pin     string            `json:"pin"`
+	Version string            `json:"version"`
+	Assets  []string          `json:"assets,omitempty"`
+	Bin     map[string]string `json:"bin,omitempty"`
+	Font    map[string]string `json:"font,omitempty"`
 }
 
-// AllBins returns a merged shimName → binKey map across all assets.
-func (p PackageEntry) AllBins() map[string]string {
-	result := map[string]string{}
-	for _, ae := range p.Asset {
-		maps.Copy(result, ae.Bin)
-	}
-	return result
-}
+// AllBins returns the package's shimName → binKey map.
+func (p PackageEntry) AllBins() map[string]string { return p.Bin }
 
-// AllFonts returns a merged fontKey → fontKey map across all assets.
-func (p PackageEntry) AllFonts() map[string]string {
-	result := map[string]string{}
-	for _, ae := range p.Asset {
-		maps.Copy(result, ae.Font)
-	}
-	return result
-}
+// AllFonts returns the package's fontName → fontPath map.
+func (p PackageEntry) AllFonts() map[string]string { return p.Font }
 
 type Manifest struct {
 	Repos    map[string]string       `json:"repo"`

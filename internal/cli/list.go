@@ -54,22 +54,15 @@ func runList(cmd *cobra.Command, args []string) error {
 		p := extracts[k]
 		baseName, _, _ := config.ParseVersionSuffix(k)
 		repo := manifest.Repos[baseName]
-		assetNames := make([]string, 0, len(p.Asset))
-		for a := range p.Asset {
-			assetNames = append(assetNames, a)
-		}
-		slices.Sort(assetNames)
-		for _, assetName := range assetNames {
-			prefix := []string{k, p.Version, p.Pin, repo, assetName}
-			tableRows = appendAssetEntryRows(tableRows, prefix, p.Asset[assetName])
-		}
+		prefix := []string{k, p.Version, p.Pin, repo}
+		tableRows = appendEntryRows(tableRows, prefix, p)
 	}
 
 	if len(tableRows) == 0 {
 		print("no packages installed")
 		return nil
 	}
-	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil, nil, nil, nil}
-	printTable([]string{"name", "version", "pin", "repo", "asset", "artifact", "type", "target"}, tableRows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil, nil, nil}
+	printTable([]string{"name", "version", "pin", "repo", "artifact", "type", "target"}, tableRows, colors)
 	return nil
 }

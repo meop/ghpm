@@ -39,11 +39,12 @@ type cmdInit struct {
 }
 
 // extractResult is the shared per-package output of a parallel download+extract
-// task: which directory each asset extracted to, plus discovered fonts and bins.
+// task: the single dir all chosen assets were overlaid into, plus the bins and
+// fonts discovered across that combined tree.
 type extractResult struct {
-	pkgDirByAsset map[string]string
-	fontsByAsset  map[string][]asset.FontCandidate
-	binsByAsset   map[string][]asset.BinCandidate
+	pkgDir string
+	bins   []asset.BinCandidate
+	fonts  []asset.FontCandidate
 }
 
 type cmdOptions struct {
@@ -173,36 +174,34 @@ func printRateLimitSummary(cfg *config.Settings, checked, total, skipped int) {
 	printWarn(cfg, "checked %d/%d packages (%d skipped due to rate limiting)", checked, total, skipped)
 }
 
-// appendAssetEntryRows appends one row per bin or font in ae. prefix provides
-// the leading columns; type, artifact, and target are appended for each entry.
-// artifact is the source file path within the extract; target is the shim name
-// (for bins) or user-given font name (for fonts).
-func appendAssetEntryRows(rows [][]string, prefix []string, ae config.AssetEntry) [][]string {
-	if ae.IsBin() {
-		shimNames := make([]string, 0, len(ae.Bin))
-		for s := range ae.Bin {
-			shimNames = append(shimNames, s)
-		}
-		slices.Sort(shimNames)
-		for _, shimName := range shimNames {
-			rows = append(rows, append(append([]string(nil), prefix...), ae.Bin[shimName], "bin", shimName))
-		}
+// appendEntryRows appends one row per bin or font in the package entry. prefix
+// provides the leading columns; type, artifact, and target are appended for each
+// entry. artifact is the source file path within the extract; target is the shim
+// name (for bins) or user-given font name (for fonts).
+func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) [][]string {
+	shimNames := make([]string, 0, len(p.Bin))
+	for s := range p.Bin {
+		shimNames = append(shimNames, s)
 	}
-	if ae.IsFont() {
-		fontNames := make([]string, 0, len(ae.Font))
-		for f := range ae.Font {
-			fontNames = append(fontNames, f)
-		}
-		slices.Sort(fontNames)
-		for _, fontName := range fontNames {
-			rows = append(rows, append(append([]string(nil), prefix...), ae.Font[fontName], "font", fontName))
-		}
+	slices.Sort(shimNames)
+	for _, shimName := range shimNames {
+		rows = append(rows, append(append([]string(nil), prefix...), p.Bin[shimName], "bin", shimName))
+	}
+	fontNames := make([]string, 0, len(p.Font))
+	for f := range p.Font {
+		fontNames = append(fontNames, f)
+	}
+	slices.Sort(fontNames)
+	for _, fontName := range fontNames {
+		rows = append(rows, append(append([]string(nil), prefix...), p.Font[fontName], "font", fontName))
 	}
 	return rows
 }
 
-// downloadAndExtract downloads and extracts each chosen asset for a
-// package. displayName is used in progress messages; extractKey and version
+// downloadAndExtract downloads each chosen asset and overlays them all into a
+// single extract dir, in the order given (a later asset overwrites a colliding
+// path, so "last wins"). Bins and fonts are then discovered once across the
+// combined tree. displayName is used in progress messages; extractKey and version
 // identify the extract directory; pkgName is used for binary discovery.
 func downloadAndExtract(
 	ctx context.Context,
@@ -212,9 +211,16 @@ func downloadAndExtract(
 	owner, repo, tagName, cacheDir, displayName, extractKey, ver, pkgName string,
 	chosens []gh.Asset,
 ) (extractResult, error) {
-	pkgDirByAsset := make(map[string]string, len(chosens))
-	fontsByAsset := make(map[string][]asset.FontCandidate)
-	binsByAsset := make(map[string][]asset.BinCandidate)
+	pkgDir, err := dirs.ExtractDir(extractKey, ver)
+	if err != nil {
+		return extractResult{}, err
+	}
+	if err := os.RemoveAll(pkgDir); err != nil {
+		return extractResult{}, err
+	}
+	if err := os.MkdirAll(pkgDir, 0755); err != nil {
+		return extractResult{}, err
+	}
 
 	for _, chosen := range chosens {
 		assetPath := filepath.Join(cacheDir, chosen.Name)
@@ -230,35 +236,27 @@ func downloadAndExtract(
 			}
 		}
 
-		assetDir, err := dirs.ExtractDir(extractKey, ver, chosen.Name)
-		if err != nil {
+		if err := asset.ExtractPackage(cacheDir, chosen.Name, pkgDir); err != nil {
+			_ = os.RemoveAll(pkgDir)
 			return extractResult{}, err
-		}
-		if err := os.RemoveAll(assetDir); err != nil {
-			return extractResult{}, err
-		}
-		if err := os.MkdirAll(assetDir, 0755); err != nil {
-			return extractResult{}, err
-		}
-		if err := asset.ExtractPackage(cacheDir, chosen.Name, assetDir); err != nil {
-			_ = os.RemoveAll(assetDir)
-			return extractResult{}, err
-		}
-		pkgDirByAsset[chosen.Name] = assetDir
-
-		if fonts := asset.FindFonts(assetDir); len(fonts) > 0 {
-			fontsByAsset[chosen.Name] = fonts
-		}
-		if bins := asset.FindBins(assetDir, pkgName); len(bins) > 0 {
-			binsByAsset[chosen.Name] = bins
 		}
 	}
 
 	return extractResult{
-		pkgDirByAsset: pkgDirByAsset,
-		fontsByAsset:  fontsByAsset,
-		binsByAsset:   binsByAsset,
+		pkgDir: pkgDir,
+		bins:   asset.FindBins(pkgDir, pkgName),
+		fonts:  asset.FindFonts(pkgDir),
 	}, nil
+}
+
+// assetNames returns the names of the chosen assets in order, used as the
+// manifest's ordered asset list (it records the overlay order for re-extraction).
+func assetNames(chosens []gh.Asset) []string {
+	names := make([]string, len(chosens))
+	for i, c := range chosens {
+		names[i] = c.Name
+	}
+	return names
 }
 
 // buildBatchItems constructs version-check batch items for non-fixed extracts,

@@ -22,7 +22,8 @@ func makeFontFile(t *testing.T, dir, name string) {
 func fontPkg(assetName string, fonts map[string]string) config.PackageEntry {
 	return config.PackageEntry{
 		Version: "3.3.0",
-		Asset:   map[string]config.AssetEntry{assetName: {Font: fonts}},
+		Assets:  []string{assetName},
+		Font:    fonts,
 	}
 }
 

@@ -3,10 +3,11 @@ package cli
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/store"
@@ -21,11 +22,11 @@ func writeSettings(t *testing.T, s *config.Settings) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := toml.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "settings.json"), append(data, '\n'), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -43,15 +44,9 @@ func fakeGHBin(t *testing.T, script string) {
 func TestReservedShimNames_ExcludesOwner(t *testing.T) {
 	manifest := &config.Manifest{
 		Extracts: map[string]config.PackageEntry{
-			"fzf": {Asset: map[string]config.AssetEntry{
-				"fzf.tar.gz": {Bin: map[string]string{"fzf": "fzf"}},
-			}},
-			"uv": {Asset: map[string]config.AssetEntry{
-				"uv.tar.gz": {Bin: map[string]string{"uv": "uv", "uvx": "uvx"}},
-			}},
-			"uv@0.7": {Asset: map[string]config.AssetEntry{
-				"uv.tar.gz": {Bin: map[string]string{"uv@0.7": "uv"}},
-			}},
+			"fzf":    {Bin: map[string]string{"fzf": "fzf"}},
+			"uv":     {Bin: map[string]string{"uv": "uv", "uvx": "uvx"}},
+			"uv@0.7": {Bin: map[string]string{"uv@0.7": "uv"}},
 		},
 	}
 
@@ -75,12 +70,8 @@ func TestReservedShimNames_ExcludesOwner(t *testing.T) {
 func TestReservedFontNames_ExcludesOwner(t *testing.T) {
 	manifest := &config.Manifest{
 		Extracts: map[string]config.PackageEntry{
-			"nerd-fonts": {Asset: map[string]config.AssetEntry{
-				"Hack.zip": {Font: map[string]string{"hack": "Hack-Regular.ttf"}},
-			}},
-			"other-fonts": {Asset: map[string]config.AssetEntry{
-				"Mono.zip": {Font: map[string]string{"mono": "Mono.ttf"}},
-			}},
+			"nerd-fonts":  {Font: map[string]string{"hack": "Hack-Regular.ttf"}},
+			"other-fonts": {Font: map[string]string{"mono": "Mono.ttf"}},
 		},
 	}
 

@@ -118,18 +118,11 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 
 	var tableRows [][]string
 	for _, o := range outdated {
-		assetNames := make([]string, 0, len(o.pkg.Asset))
-		for a := range o.pkg.Asset {
-			assetNames = append(assetNames, a)
-		}
-		slices.Sort(assetNames)
-		for _, assetName := range assetNames {
-			prefix := []string{o.key, o.installed, o.latest, o.pkg.Pin, o.source, assetName}
-			tableRows = appendAssetEntryRows(tableRows, prefix, o.pkg.Asset[assetName])
-		}
+		prefix := []string{o.key, o.installed, o.latest, o.pkg.Pin, o.source}
+		tableRows = appendEntryRows(tableRows, prefix, o.pkg)
 	}
-	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil, nil, nil}
-	printTable([]string{"name", "version", "update", "pin", "repo", "asset", "type", "artifact", "target"}, tableRows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil, nil}
+	printTable([]string{"name", "version", "update", "pin", "repo", "type", "artifact", "target"}, tableRows, colors)
 
 	if hadErrors {
 		return errSilent

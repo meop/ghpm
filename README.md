@@ -91,26 +91,26 @@ Manifest key and directory name both use the constraint as written (e.g., `fzf@1
 
 ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the binary automatically. A shim is created in `~/.ghpm/bin/` pointing at the real binary inside the extract dir — a symlink on Linux/macOS, an `.exe` shim on Windows. GitHub releases are portable apps — binaries locate their own resources via paths relative to the executable, so no other env vars are needed.
 
+You can select **multiple assets** from a single release; they are overlaid into one extract dir in selection order (a later asset overwrites a colliding path), then binaries and fonts are discovered across the combined tree. This handles releases split across assets — e.g. a build whose shared libraries ship in a separate archive that must sit beside the executables.
+
 ### Configuration
 
-`~/.ghpm/settings.json` is **not created by default** — ghpm runs fine without it. Create it to override any of these defaults:
+`~/.ghpm/config.toml` is **not created by default** — ghpm runs fine without it. Create it to override any of these defaults:
 
-```json
-{
-  "cache_ttl": "5m",
-  "color": {
-    "fail": "red",
-    "info": "blue",
-    "new": "cyan",
-    "old": "magenta",
-    "pass": "green",
-    "warn": "yellow"
-  },
-  "no_color": false,
-  "num_parallel": 5,
-  "repo_sources": ["github.com/meop/ghpm-config"],
-  "skip_hash_check": false
-}
+```toml
+cache_ttl = "5m"
+no_color = false
+num_parallel = 5
+repo_sources = ["github.com/meop/ghpm-config"]
+skip_hash_check = false
+
+[color]
+fail = "red"
+info = "blue"
+new = "cyan"
+old = "magenta"
+pass = "green"
+warn = "yellow"
 ```
 
 | Field | Default | Description |
@@ -119,14 +119,19 @@ ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the
 | `color` | see above | Output colors by message type |
 | `no_color` | `false` | Disable colored output |
 | `num_parallel` | `5` | Max concurrent downloads |
-| `repo_sources` | `["github.com/meop/ghpm-config"]` | Remote sources `ghpm refresh` fetches `repo.yaml` files from |
+| `repo_sources` | `["github.com/meop/ghpm-config"]` | Remote sources `ghpm refresh` fetches `repo.toml` files from |
 | `skip_hash_check` | `false` | Permanently skip SHA256 hash verification (same as always passing `--skip-hash-check`) |
 
 ### Repo map
 
-Package names like `fzf` are resolved to GitHub repos via `~/.ghpm/repo/`. Any `repo.yaml` file anywhere in that directory tree contributes to the map — files are merged alphabetically by path, with later files taking precedence on conflicts. Invalid YAML is a fatal error.
+Package names like `fzf` are resolved to GitHub repos via `~/.ghpm/repo/`. Any `repo.toml` file anywhere in that directory tree contributes to the map — files are merged alphabetically by path, with later files taking precedence on conflicts. Invalid TOML is a fatal error. Each file is a flat table of `name = "source"` pairs (no top-level key):
 
-`ghpm refresh` fetches `repo.yaml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`. You can also place your own `repo.yaml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
+```toml
+fzf = "github.com/junegunn/fzf"
+rg = "github.com/BurntSushi/ripgrep"
+```
+
+`ghpm refresh` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
 
 If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a repo.
 

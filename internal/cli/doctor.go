@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
@@ -106,18 +107,18 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	settingsPath := filepath.Join(ghpmDir, "settings.json")
-	data, err = os.ReadFile(settingsPath)
+	configPath := filepath.Join(ghpmDir, "config.toml")
+	data, err = os.ReadFile(configPath)
 	if os.IsNotExist(err) {
-		warn("settings.json", "not present (using defaults) — "+settingsPath)
+		warn("config.toml", "not present (using defaults) — "+configPath)
 	} else if err != nil {
-		fail("settings.json", err.Error())
+		fail("config.toml", err.Error())
 	} else {
-		var v any
-		if jsonErr := json.Unmarshal(data, &v); jsonErr != nil {
-			fail("settings.json", "invalid JSON")
+		var v map[string]any
+		if tomlErr := toml.Unmarshal(data, &v); tomlErr != nil {
+			fail("config.toml", "invalid TOML")
 		} else {
-			pass("settings.json", "present — "+settingsPath)
+			pass("config.toml", "present — "+configPath)
 		}
 	}
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -65,17 +65,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	for _, t := range targets {
 		baseName, _, _ := config.ParseVersionSuffix(t.key)
 		repo := manifest.Repos[baseName]
-		assetNames := make([]string, 0, len(t.pkg.Asset))
-		for assetName := range t.pkg.Asset {
-			assetNames = append(assetNames, assetName)
-		}
-		slices.Sort(assetNames)
-		for _, assetName := range assetNames {
-			rows = append(rows, []string{t.key, t.pkg.Version, t.pkg.Pin, repo, assetName})
-		}
+		rows = append(rows, []string{t.key, t.pkg.Version, t.pkg.Pin, repo, strings.Join(t.pkg.Assets, ", ")})
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
-	printTable([]string{"name", "version", "pin", "repo", "asset"}, rows, colors)
+	printTable([]string{"name", "version", "pin", "repo", "assets"}, rows, colors)
 	if !promptConfirm(fmt.Sprintf("uninstall %d package(s)", len(targets))) {
 		return nil
 	}

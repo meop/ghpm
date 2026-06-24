@@ -28,11 +28,11 @@ func TestExtractsDir(t *testing.T) {
 
 func TestExtractDir_CreatesDir(t *testing.T) {
 	home := withHome(t)
-	dir, err := ExtractDir("fzf", "0.58.0", "fzf-0.58.0-linux_amd64.tar.gz")
+	dir, err := ExtractDir("fzf", "0.58.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".ghpm", "extract", "fzf", "0.58.0", "fzf-0.58.0-linux_amd64.tar.gz")
+	want := filepath.Join(home, ".ghpm", "extract", "fzf", "0.58.0")
 	if dir != want {
 		t.Errorf("ExtractDir = %q, want %q", dir, want)
 	}
