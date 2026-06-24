@@ -207,7 +207,7 @@ func downloadAndExtract(
 	ctx context.Context,
 	ghClient gh.Client,
 	dirs store.Dirs,
-	owner, repo, tagName, cacheDir, displayName, extractKey, ver, pkgName string,
+	owner, repo, tagName, cacheDir, displayName, extractKey, ver string,
 	chosens []gh.Asset,
 ) (extractResult, error) {
 	pkgDir, err := dirs.ExtractDir(extractKey, ver)
@@ -243,7 +243,7 @@ func downloadAndExtract(
 
 	return extractResult{
 		pkgDir: pkgDir,
-		bins:   asset.FindBins(pkgDir, pkgName),
+		bins:   asset.FindBins(pkgDir),
 		fonts:  asset.FindFonts(pkgDir),
 	}, nil
 }

@@ -229,7 +229,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					return installTaskResult{}, err
 				}
 				ver := config.NormalizeVersion(r.release.TagName)
-				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.job.name, r.job.key(), ver, r.job.name, r.chosens)
+				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.job.name, r.job.key(), ver, r.chosens)
 				if err != nil {
 					return installTaskResult{}, err
 				}

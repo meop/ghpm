@@ -26,6 +26,26 @@ func readMultiFirstWithShowMore(promptN, parseN int) ([]int, error) {
 	return indices, nil
 }
 
+// readMultiAllShowMore reads a multi-select where empty input selects all
+// preferredN items (never the trailing "show more" entry); explicit input may
+// reference up to maxN, which includes the show-more index. 0 or invalid input
+// returns ErrSkip.
+func readMultiAllShowMore(preferredN, maxN int) ([]int, error) {
+	line := ui.ReadLine(fmt.Sprintf("enter number(s) [empty=all] (0=skip | 1[,][-]%d): ", maxN))
+	if line == "" {
+		all := make([]int, preferredN)
+		for i := range all {
+			all[i] = i + 1
+		}
+		return all, nil
+	}
+	indices, err := parseMultiSelect(line, maxN)
+	if err != nil || indices == nil {
+		return nil, ErrSkip
+	}
+	return indices, nil
+}
+
 // readMultiAll reads a multi-select prompt where empty input selects all items.
 // Entering 0 or invalid input returns ErrSkip.
 func readMultiAll(n int) ([]int, error) {

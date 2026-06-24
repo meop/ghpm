@@ -57,7 +57,7 @@ func fakeStdin(t *testing.T, input string) {
 func TestFindBins_Root(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, dir, "mytool")
-	got := FindBins(dir, "mytool")
+	got := FindBins(dir)
 	if len(got) != 1 || got[0].BinDir != "" || got[0].BinName != "mytool" {
 		t.Errorf("got %v, want [{BinDir:%q BinName:%q}]", got, "", "mytool")
 	}
@@ -66,7 +66,7 @@ func TestFindBins_Root(t *testing.T) {
 func TestFindBins_BinSubdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "bin"), "mytool")
-	got := FindBins(dir, "mytool")
+	got := FindBins(dir)
 	if len(got) != 1 || got[0].BinDir != "bin" || got[0].BinName != "mytool" {
 		t.Errorf("got %v", got)
 	}
@@ -75,7 +75,7 @@ func TestFindBins_BinSubdir(t *testing.T) {
 func TestFindBins_Subdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0"), "mytool")
-	got := FindBins(dir, "mytool")
+	got := FindBins(dir)
 	if len(got) != 1 || got[0].BinDir != "mytool-1.0" || got[0].BinName != "mytool" {
 		t.Errorf("got %v", got)
 	}
@@ -84,7 +84,7 @@ func TestFindBins_Subdir(t *testing.T) {
 func TestFindBins_SubdirBin(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0", "bin"), "mytool")
-	got := FindBins(dir, "mytool")
+	got := FindBins(dir)
 	if len(got) != 1 || got[0].BinDir != "mytool-1.0/bin" || got[0].BinName != "mytool" {
 		t.Errorf("got %v", got)
 	}
@@ -92,7 +92,7 @@ func TestFindBins_SubdirBin(t *testing.T) {
 
 func TestFindBins_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	got := FindBins(dir, "nothere")
+	got := FindBins(dir)
 	if len(got) != 0 {
 		t.Errorf("expected no results, got %v", got)
 	}
@@ -102,9 +102,41 @@ func TestFindBins_Multiple(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, dir, "mytool")
 	writeFakeBinary(t, dir, "mytool-extra")
-	got := FindBins(dir, "mytool")
+	got := FindBins(dir)
 	if len(got) != 2 {
 		t.Errorf("expected 2 results, got %d: %v", len(got), got)
+	}
+}
+
+func TestFindBins_ReturnsAllExecutables(t *testing.T) {
+	dir := t.TempDir()
+	// FindBins is pure discovery — no name filter — so binaries that don't echo
+	// the package name (llama-cli, rpc-server for "llama.cpp") are all returned;
+	// ranking happens later in SelectBins.
+	writeFakeBinary(t, dir, "llama-cli")
+	writeFakeBinary(t, dir, "llama-server")
+	writeFakeBinary(t, dir, "rpc-server")
+	got := FindBins(dir)
+	if len(got) != 3 {
+		t.Errorf("expected all 3 executables, got %d: %v", len(got), got)
+	}
+}
+
+func TestFindBins_ExcludesSharedLibrary(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeBinary(t, dir, "foo")
+	// A shared library carries ELF/Mach-O magic too, but must not be offered as
+	// a bin. (On Windows the .exe-suffix rule already excludes it.)
+	soName := "libfoo.so"
+	if runtime.GOOS == "darwin" {
+		soName = "libfoo.dylib"
+	}
+	if err := os.WriteFile(filepath.Join(dir, soName), []byte{0x7f, 'E', 'L', 'F', 0}, 0755); err != nil {
+		t.Fatal(err)
+	}
+	got := FindBins(dir)
+	if len(got) != 1 {
+		t.Errorf("expected only the executable, got %d: %v", len(got), got)
 	}
 }
 
@@ -155,6 +187,49 @@ func TestSelectBins_PromptSubset(t *testing.T) {
 	got, err := SelectBins(c, nil, "")
 	if err != nil || len(got) != 1 || got[0].BinName != "uv" {
 		t.Errorf("expected [uv]; got %v,%v", got, err)
+	}
+}
+
+func TestNameStem(t *testing.T) {
+	cases := map[string]string{
+		"llama.cpp": "llama",
+		"ast-grep":  "ast",
+		"ripgrep":   "ripgrep",
+		"node.js":   "node",
+		"Foo-Bar":   "foo",
+		"s5cmd":     "s5cmd", // digits stay in the stem
+		"7zip":      "7zip",
+		".hidden":   "", // leading separator → empty stem disables ranking
+	}
+	for in, want := range cases {
+		if got := nameStem(in); got != want {
+			t.Errorf("nameStem(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSelectBins_PreferredShortList(t *testing.T) {
+	// "llama.cpp" → stem "llama": llama-* are preferred, rpc-server hidden.
+	fakeStdin(t, "\n") // empty selects all preferred, not the hidden rpc-server
+	c := []BinCandidate{{BinName: "llama-cli"}, {BinName: "llama-server"}, {BinName: "rpc-server"}}
+	got, err := SelectBins(c, nil, "llama.cpp")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("expected 2 preferred bins; got %v,%v", got, err)
+	}
+	for _, b := range got {
+		if b.BinName == "rpc-server" {
+			t.Errorf("rpc-server should be hidden, not selected by default: %v", got)
+		}
+	}
+}
+
+func TestSelectBins_ShowMoreRevealsHidden(t *testing.T) {
+	// Pick "show more" (index 3 = after the two preferred), then rpc-server (3) from the full list.
+	fakeStdin(t, "3\n3\n")
+	c := []BinCandidate{{BinName: "llama-cli"}, {BinName: "llama-server"}, {BinName: "rpc-server"}}
+	got, err := SelectBins(c, nil, "llama.cpp")
+	if err != nil || len(got) != 1 || got[0].BinName != "rpc-server" {
+		t.Errorf("expected [rpc-server] via show more; got %v,%v", got, err)
 	}
 }
 

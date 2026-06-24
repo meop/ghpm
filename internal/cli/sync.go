@@ -213,8 +213,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					return syncTaskResult{}, err
 				}
 				newVersion := config.NormalizeVersion(r.release.TagName)
-				pkgName, _, _ := config.ParseVersionSuffix(r.key)
-				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.key, r.key, newVersion, pkgName, r.chosens)
+				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.key, r.key, newVersion, r.chosens)
 				if err != nil {
 					return syncTaskResult{}, err
 				}

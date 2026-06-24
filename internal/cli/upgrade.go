@@ -320,7 +320,7 @@ func fetchBinary(ctx context.Context, cfg *config.Settings, ghClient gh.Client, 
 	if err != nil || cleanup == nil {
 		return "", "", cleanup, err
 	}
-	candidates := asset.FindBins(tmpDir, pkgName)
+	candidates := asset.FindBins(tmpDir)
 	if len(candidates) == 0 {
 		cleanup()
 		return "", "", nil, fmt.Errorf(msgNoBinaryFound, chosen.Name)

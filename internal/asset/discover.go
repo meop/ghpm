@@ -28,18 +28,17 @@ func (c BinCandidate) Key() string {
 	return c.BinDir + "/" + c.BinName
 }
 
-func (c BinCandidate) label() string { return c.BinName }
-
-// FindBins searches pkgDir for executables whose name contains name
-// (case-insensitive), checking root, bin/, and one level of subdirs + their bin/.
-func FindBins(pkgDir, name string) []BinCandidate {
+// FindBins returns every executable in pkgDir, checking root, bin/, and one level
+// of subdirs + their bin/. Shared libraries are excluded (see isBinaryFile).
+// Name-based ranking happens at selection time (see SelectBins / rankBins), so
+// suites whose binaries don't echo the package name are never dropped here.
+func FindBins(pkgDir string) []BinCandidate {
 	entries, err := os.ReadDir(pkgDir)
 	if err != nil {
 		return nil
 	}
-	lower := strings.ToLower(name)
 	seen := map[string]bool{}
-	var matches []BinCandidate
+	var bins []BinCandidate
 
 	collect := func(dir, rel string) {
 		dirEntries, err := os.ReadDir(dir)
@@ -50,17 +49,13 @@ func FindBins(pkgDir, name string) []BinCandidate {
 			if e.IsDir() {
 				continue
 			}
-			base := strings.TrimSuffix(e.Name(), ".exe")
-			if !strings.Contains(strings.ToLower(base), lower) {
-				continue
-			}
 			path := filepath.Join(dir, e.Name())
 			if seen[path] || !isBinaryFile(path) {
 				continue
 			}
 			seen[path] = true
 			ensureExecutable(path)
-			matches = append(matches, BinCandidate{BinDir: filepath.ToSlash(rel), BinName: e.Name()})
+			bins = append(bins, BinCandidate{BinDir: filepath.ToSlash(rel), BinName: e.Name()})
 		}
 	}
 
@@ -75,7 +70,43 @@ func FindBins(pkgDir, name string) []BinCandidate {
 			collect(filepath.Join(pkgDir, rel), rel)
 		}
 	}
-	return matches
+	return bins
+}
+
+// nameStem reduces a package name to its leading run of letters and digits,
+// stopping at the first separator (`.`, `-`, `_`, space, …) since those are
+// usually repo-name punctuation/version bits absent from the binary names:
+// "llama.cpp" → "llama" (matches llama-cli, llama-server, …), "ast-grep" → "ast",
+// "s5cmd" → "s5cmd". Lowercased; an empty stem (name starting with a separator)
+// disables ranking so all bins show.
+func nameStem(name string) string {
+	s := strings.ToLower(name)
+	for i, r := range s {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return s[:i]
+		}
+	}
+	return s
+}
+
+// rankBins splits bins into those whose name contains the package-name stem
+// (preferred — the short list) and the rest (hidden behind "show more"), like
+// asset compatible/hidden scoring. When none match the stem, all are preferred
+// so nothing is hidden and the user simply sees every executable.
+func rankBins(bins []BinCandidate, name string) (preferred, hidden []BinCandidate) {
+	stem := nameStem(name)
+	for _, b := range bins {
+		base := strings.ToLower(strings.TrimSuffix(b.BinName, ".exe"))
+		if stem != "" && strings.Contains(base, stem) {
+			preferred = append(preferred, b)
+		} else {
+			hidden = append(hidden, b)
+		}
+	}
+	if len(preferred) == 0 {
+		return bins, nil
+	}
+	return preferred, hidden
 }
 
 // PromptBinNames shows proposed shim names and lets the user rename them.
@@ -223,7 +254,8 @@ type selectCandidate interface {
 	label() string
 }
 
-// selectItems is the shared selection logic for bins and fonts:
+// selectItems is the font selection logic (bins use SelectBins, which adds a
+// preferred/"show more" split):
 //   - 0 candidates → nil, nil
 //   - 1 candidate → auto-select
 //   - Multiple: auto-select if candidate keys exactly match prevKeys;
@@ -263,8 +295,87 @@ func selectItems[C selectCandidate](candidates []C, prevKeys []string, label, no
 	})
 }
 
+// SelectBins picks which discovered bins to shim. Like asset selection, it shows
+// the bins whose name matches the package (rankBins preferred) up front and tucks
+// the rest behind a "show more" entry. 0 → none, 1 → auto-select, and a set that
+// exactly matches the previous install (sync) → auto-select unchanged.
 func SelectBins(candidates []BinCandidate, prevKeys []string, label string) ([]BinCandidate, error) {
-	return selectItems(candidates, prevKeys, label, "bin(s)")
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	if len(candidates) == 1 {
+		return candidates, nil
+	}
+	candidateKeys := make([]string, len(candidates))
+	for i, c := range candidates {
+		candidateKeys[i] = c.Key()
+	}
+	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
+		return candidates, nil
+	}
+	preferred, hidden := rankBins(candidates, label)
+	return ui.Prompt(func() ([]BinCandidate, error) {
+		return promptBinsWithShowMore(preferred, hidden, label)
+	})
+}
+
+// binItems formats bins as menu bodies: the filename, plus its path key in
+// brackets when the bin lives in a subdir (so duplicates are distinguishable).
+func binItems(bins []BinCandidate) []string {
+	items := make([]string, len(bins))
+	for i, b := range bins {
+		items[i] = b.BinName
+		if b.Key() != b.BinName {
+			items[i] += fmt.Sprintf(" [%s]", b.Key())
+		}
+	}
+	return items
+}
+
+func promptBinsWithShowMore(preferred, hidden []BinCandidate, label string) ([]BinCandidate, error) {
+	items := binItems(preferred)
+	showMoreIdx := -1
+	if len(hidden) > 0 {
+		showMoreIdx = len(preferred) + 1
+		items = append(items, fmt.Sprintf("show more (%d more)", len(hidden)))
+	}
+	ui.Menu(label, "choose bin(s)", items)
+	maxIdx := len(preferred)
+	if showMoreIdx > 0 {
+		maxIdx = showMoreIdx
+	}
+	indices, err := readMultiAllShowMore(len(preferred), maxIdx)
+	if err != nil {
+		return nil, err
+	}
+	for _, idx := range indices {
+		if showMoreIdx > 0 && idx == showMoreIdx {
+			return promptBinsAll(append(preferred, hidden...), label)
+		}
+	}
+	return pickBins(preferred, indices)
+}
+
+func promptBinsAll(bins []BinCandidate, label string) ([]BinCandidate, error) {
+	ui.Menu(label, "choose bin(s)", binItems(bins))
+	indices, err := readMultiAll(len(bins))
+	if err != nil {
+		return nil, err
+	}
+	return pickBins(bins, indices)
+}
+
+func pickBins(bins []BinCandidate, indices []int) ([]BinCandidate, error) {
+	var selected []BinCandidate
+	for _, idx := range indices {
+		if idx >= 1 && idx <= len(bins) {
+			selected = append(selected, bins[idx-1])
+		}
+	}
+	if len(selected) == 0 {
+		return nil, ErrSkip
+	}
+	return selected, nil
 }
 
 // parseMultiSelect parses yay-style input
@@ -331,12 +442,20 @@ func sameStringSet(a, b []string) bool {
 }
 
 func isBinaryFile(path string) bool {
+	lower := strings.ToLower(path)
 	switch runtime.GOOS {
 	case "windows":
-		return strings.HasSuffix(strings.ToLower(path), ".exe")
+		return strings.HasSuffix(lower, ".exe")
 	case "darwin":
+		if strings.HasSuffix(lower, ".dylib") {
+			return false
+		}
 		return hasMachOMagic(path)
 	default:
+		// Shared objects are ELF too; exclude them so they aren't offered as bins.
+		if strings.HasSuffix(lower, ".so") || strings.Contains(lower, ".so.") {
+			return false
+		}
 		return hasELFMagic(path)
 	}
 }
