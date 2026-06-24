@@ -21,13 +21,6 @@ func print(format string, args ...any) {
 	ui.Out(format, args...)
 }
 
-func printInfo(_ *config.Settings, format string, args ...any) {
-	if quiet {
-		return
-	}
-	ui.Info(format, args...)
-}
-
 func printWarn(_ *config.Settings, format string, args ...any) {
 	if quiet {
 		return

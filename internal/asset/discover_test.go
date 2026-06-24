@@ -167,19 +167,19 @@ func TestSelectBins_PromptLabelAndBlank(t *testing.T) {
 	ui.SetOutput(&buf)
 	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
 	// Prior progress output so the deferred Break is not a no-op.
-	ui.Info("caddy: bin caddy.exe")
+	ui.Out("caddy: found bin [caddy.exe]")
 	c := []BinCandidate{{BinName: "codex-command-runner"}, {BinName: "codex-windows-sandbox-setup"}, {BinName: "codex"}}
 	if _, err := SelectBins(c, nil, "codex"); err != nil {
 		t.Fatal(err)
 	}
 	// Resumed progress output flushes the prompt's trailing Break as a blank.
-	ui.Info("uv: bin uv.exe")
-	if !strings.Contains(buf.String(), "caddy.exe\n\ncodex: choose bin(s)\n") {
+	ui.Out("uv: found bin [uv.exe]")
+	if !strings.Contains(buf.String(), "caddy.exe]\n\ncodex: choose bin(s)\n") {
 		t.Errorf("missing blank line and/or label before menu:\n%q", buf.String())
 	}
 	// In the buffer the user's echoed Enter is absent, so the trailing blank
-	// shows as the prompt line followed by a single newline before "› uv".
-	if !strings.Contains(buf.String(), "): \n› uv: bin uv.exe") {
+	// shows as the prompt line followed by a single newline before "uv".
+	if !strings.Contains(buf.String(), "): \nuv: found bin [uv.exe]") {
 		t.Errorf("missing blank line after menu:\n%q", buf.String())
 	}
 }

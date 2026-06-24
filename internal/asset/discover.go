@@ -120,7 +120,7 @@ func promptNameConflicts(keys, proposed []string, reserved map[string]string, la
 	}
 	items := make([]string, len(result))
 	for i, name := range result {
-		entry := name + fmt.Sprintf("  [%s]", keys[i])
+		entry := name + fmt.Sprintf(" [%s]", keys[i])
 		if owner, ok := reserved[name]; ok {
 			entry += fmt.Sprintf("  ! already used by %s", owner)
 		} else if conflicts[i] {
@@ -246,7 +246,7 @@ func selectItems[C selectCandidate](candidates []C, prevKeys []string, label, no
 	for i, c := range candidates {
 		items[i] = c.label()
 		if c.Key() != c.label() {
-			items[i] += fmt.Sprintf("  [%s]", c.Key())
+			items[i] += fmt.Sprintf(" [%s]", c.Key())
 		}
 	}
 	return ui.Prompt(func() ([]C, error) {

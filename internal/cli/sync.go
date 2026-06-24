@@ -214,7 +214,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				}
 				newVersion := config.NormalizeVersion(r.release.TagName)
 				pkgName, _, _ := config.ParseVersionSuffix(r.key)
-				ex, err := downloadAndExtract(ctx, cfg, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.key, r.key, newVersion, pkgName, r.chosens)
+				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.key, r.key, newVersion, pkgName, r.chosens)
 				if err != nil {
 					return syncTaskResult{}, err
 				}
@@ -256,7 +256,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				pkgFailed = true
 			default:
 				for _, s := range selected {
-					printInfo(cfg, "%s: bin %s", res.Name, s.Key())
+					print("%s: found bin [%s]", res.Name, s.Key())
 				}
 				base := proposedShimNames(tr.r.key, selected)
 				rawKeys := make([]string, len(selected))

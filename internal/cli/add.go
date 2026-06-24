@@ -229,7 +229,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					return installTaskResult{}, err
 				}
 				ver := config.NormalizeVersion(r.release.TagName)
-				ex, err := downloadAndExtract(ctx, cfg, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.job.name, r.job.key(), ver, r.job.name, r.chosens)
+				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.job.name, r.job.key(), ver, r.job.name, r.chosens)
 				if err != nil {
 					return installTaskResult{}, err
 				}
@@ -281,7 +281,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				rawKeys := make([]string, len(selected))
 				proposed := proposedShimNames(key, selected)
 				for i, s := range selected {
-					printInfo(cfg, "%s: bin %s", r.job.name, s.Key())
+					print("%s: found bin [%s]", r.job.name, s.Key())
 					rawKeys[i] = s.Key()
 				}
 
@@ -333,7 +333,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					}
 					slices.Sort(fontNames)
 					for _, fontName := range fontNames {
-						printInfo(cfg, "%s: font %s", r.job.name, fontName)
+						print("%s: found font [%s]", r.job.name, fontName)
 					}
 				}
 			}

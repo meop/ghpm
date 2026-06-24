@@ -44,8 +44,8 @@ func SetOutput(w io.Writer) {
 // SetInput redirects the prompt reader (tests).
 func SetInput(r io.Reader) { in = bufio.NewReader(r) }
 
-// SetColorResolver installs the function mapping a role ("info", "warn",
-// "fail", "pass") to a colorizer, or nil to disable color for that role.
+// SetColorResolver installs the function mapping a role ("warn", "fail",
+// "pass") to a colorizer, or nil to disable color for that role.
 func SetColorResolver(fn func(role string) func(string) string) { colorResolver = fn }
 
 // Reset clears separator state without changing the output target (tests).
@@ -100,8 +100,7 @@ func decorated(role, prefix, format string, args ...any) {
 	line(msg)
 }
 
-// Info, Warn, Fail, and Pass print a role-prefixed, optionally colored line.
-func Info(format string, args ...any) { decorated("info", "› ", format, args...) }
+// Warn, Fail, and Pass print a role-prefixed, optionally colored line.
 func Warn(format string, args ...any) { decorated("warn", "‼ ", format, args...) }
 func Fail(format string, args ...any) { decorated("fail", "✗ ", format, args...) }
 func Pass(format string, args ...any) { decorated("pass", "✓ ", format, args...) }

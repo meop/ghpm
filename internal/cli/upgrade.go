@@ -280,7 +280,7 @@ func fetchSelected(ctx context.Context, cfg *config.Settings, ghClient gh.Client
 		return gh.Asset{}, "", nil, err
 	}
 	if ac.Chosen.Name != "" {
-		printInfo(cfg, "%s: asset: %s", pkgName, chosen.Name)
+		print("%s: found asset [%s]", pkgName, chosen.Name)
 	}
 
 	if dryRun {

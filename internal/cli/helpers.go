@@ -205,7 +205,6 @@ func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) []
 // identify the extract directory; pkgName is used for binary discovery.
 func downloadAndExtract(
 	ctx context.Context,
-	cfg *config.Settings,
 	ghClient gh.Client,
 	dirs store.Dirs,
 	owner, repo, tagName, cacheDir, displayName, extractKey, ver, pkgName string,
@@ -225,7 +224,7 @@ func downloadAndExtract(
 	for _, chosen := range chosens {
 		assetPath := filepath.Join(cacheDir, chosen.Name)
 		if _, err := os.Stat(assetPath); os.IsNotExist(err) {
-			printInfo(cfg, "%s: downloading %s...", displayName, chosen.Name)
+			print("%s: downloading [%s]...", displayName, chosen.Name)
 			if err := ghClient.DownloadAsset(ctx, owner, repo, tagName, chosen.Name, cacheDir); err != nil {
 				return extractResult{}, err
 			}

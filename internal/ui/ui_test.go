@@ -234,16 +234,16 @@ func TestReadSingle_Empty_SelectsFirst(t *testing.T) {
 	}
 }
 
-func TestInfo_UsesColorResolver(t *testing.T) {
+func TestDecorated_UsesColorResolver(t *testing.T) {
 	buf := capture(t, "")
 	SetColorResolver(func(role string) func(string) string {
-		if role == "info" {
+		if role == "warn" {
 			return func(s string) string { return "<" + s + ">" }
 		}
 		return nil
 	})
-	Info("hello %s", "world")
-	if got := buf.String(); got != "<› hello world>\n" {
+	Warn("hello %s", "world")
+	if got := buf.String(); got != "<‼ hello world>\n" {
 		t.Errorf("got %q", got)
 	}
 }
