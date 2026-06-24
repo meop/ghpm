@@ -161,6 +161,19 @@ func TestConfirm_FlushesPendingBreakBeforePrompt(t *testing.T) {
 	}
 }
 
+// TestConfirm_NoTrailingBlank asserts a confirm nests its follow-on output
+// tight: a leading blank before the prompt, but none between the answer and the
+// next line (the operation the user opted into).
+func TestConfirm_NoTrailingBlank(t *testing.T) {
+	buf := capture(t, "y\n")
+	Out("a")
+	Confirm("proceed")
+	Out("running")
+	if got := buf.String(); got != "a\n\nproceed [y,[n]]: running\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
 func TestConfirm_Answers(t *testing.T) {
 	for _, c := range []struct {
 		in   string

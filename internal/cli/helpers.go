@@ -23,6 +23,8 @@ var skipHashCheck bool
 
 const msgAllUpToDate = "all packages are up to date"
 
+const msgAllComponentsUpToDate = "all components are up to date"
+
 // msgNoMatch is shown when a name filter was given but matched nothing installed,
 // to distinguish it from an empty install set ("no packages installed").
 const msgNoMatch = "no packages matched"

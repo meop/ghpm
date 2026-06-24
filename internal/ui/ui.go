@@ -135,9 +135,10 @@ func ReadSingle(label string) (int, error) {
 // Prompt brackets an interactive prompt so it forms its own block: a blank line
 // before and after. Both are deferred Breaks, so a prompt at the very start or
 // end of output produces no stray blank, and two adjacent prompts collapse to a
-// single blank between them. Every interactive prompt (Confirm and the
-// asset/config menus) runs through here, so blank-line placement around prompts
-// lives in exactly one place. body performs the prompt's prints and reads —
+// single blank between them. The selection menus (asset/config) run through here,
+// so blank-line placement around them lives in exactly one place. Confirm is the
+// deliberate exception — it brackets with a leading Break only (see Confirm).
+// body performs the prompt's prints and reads —
 // including any multi-step reads — so the trailing blank lands after all of them.
 func Prompt[T any](body func() (T, error)) (T, error) {
 	Break()
@@ -159,14 +160,17 @@ func Menu(label, header string, items []string) {
 	}
 }
 
-// Confirm prints "msg [y,[n]]: " as its own block and returns true for empty,
-// "y", or "yes".
+// Confirm prints "msg [y,[n]]: " with a blank line before it but NOT after, and
+// returns true for empty, "y", or "yes". Unlike the selection menus, a confirm
+// is the bail point of a gate: whatever follows (the operation's progress lines,
+// or `add`'s shim creation) is the work the user just opted into, so it nests
+// tight under the confirm with no separating blank. The leading Break still
+// flushes any pending separator before the prompt; it just doesn't request a
+// trailing one, so it does not route through Prompt.
 func Confirm(msg string) bool {
-	v, _ := Prompt(func() (bool, error) {
-		s := strings.ToLower(ReadLine(msg + " [y,[n]]: "))
-		return s == "" || s == "y" || s == "yes", nil
-	})
-	return v
+	Break()
+	s := strings.ToLower(ReadLine(msg + " [y,[n]]: "))
+	return s == "" || s == "y" || s == "yes"
 }
 
 // Table renders a space-aligned table as a single block preceded by a Break.

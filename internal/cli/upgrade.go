@@ -40,8 +40,9 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	ghClient := ci.gh
 
-	// Phase 1: check each component's version (no install). Up-to-date ones print
-	// a plain top-level line; outdated ones are collected for the gate.
+	// Phase 1: check each component's version (no install). Up-to-date ones are
+	// silently dropped; outdated ones are collected for the gate. Like sync, the
+	// no-op outcome is a single summary line (below), not one line per component.
 	hadErrors := false
 	var items []upgradeItem
 	checks := []struct {
@@ -68,6 +69,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		if hadErrors {
 			return errSilent
 		}
+		print(msgAllComponentsUpToDate)
 		return nil
 	}
 
@@ -138,7 +140,6 @@ func checkGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*up
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		print("%s: already upgraded → %s", binGh, currentVer)
 		return nil, nil
 	}
 
@@ -178,7 +179,6 @@ func checkSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if strings.TrimPrefix(rel.TagName, "v") == strings.TrimPrefix(version, "v") {
-		print("%s: already upgraded → %s", binGhpm, version)
 		return nil, nil
 	}
 
@@ -237,7 +237,6 @@ func checkShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*
 	latestVer := config.NormalizeVersion(rel.TagName)
 
 	if currentVer == latestVer {
-		print("%s: already upgraded → %s", binSheesh, currentVer)
 		return nil, nil
 	}
 
