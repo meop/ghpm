@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -151,8 +152,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Phase 2: after the user opts in, fetch each release and resolve its
-	// asset(s), prompting only where the choice is ambiguous. A skipped package
-	// drops out here and simply never reaches the final table.
+	// asset(s). Resolution is all-or-nothing: if every stored asset maps to a
+	// unique, distinct asset in the new release the choices carry over silently;
+	// the moment the mapping breaks down (an asset renamed, split, gone, or now
+	// ambiguous) the prior selection can't be trusted, so we discard it and fall
+	// back to add's fresh multi-select over the whole candidate list. A skipped
+	// package drops out here and simply never reaches the final table.
 	var ready []syncJob
 	for _, o := range outdated {
 		owner, repo, _ := gh.SplitSource(o.source)
@@ -162,34 +167,27 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			continue
 		}
-		pkgName, _, _ := config.ParseVersionSuffix(o.key)
-
-		oldAssetNames := o.pkg.Assets
-
-		var chosens []gh.Asset
-		skippedPkg := false
-		for _, assetName := range oldAssetNames {
-			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, assetName, pkgName)
+		chosens, clean := resolvePriorAssets(rel.Assets, o.pkg.Assets)
+		if !clean {
+			pkgName, _, _ := config.ParseVersionSuffix(o.key)
+			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, "", pkgName)
 			if acErr != nil {
 				printFail(cfg, "%s: %v", o.key, acErr)
 				hadErrors = true
-				skippedPkg = true
-				break
+				continue
 			}
-			chosen, chErr := asset.PromptFromCandidates(ac, o.key)
+			picked, chErr := asset.PromptAssetsMulti(ac, o.key)
 			if errors.Is(chErr, asset.ErrSkip) {
-				skippedPkg = true
-				break
+				continue
 			}
 			if chErr != nil {
 				printFail(cfg, "%s: %v", o.key, chErr)
 				hadErrors = true
-				skippedPkg = true
-				break
+				continue
 			}
-			chosens = append(chosens, chosen)
+			chosens = picked
 		}
-		if skippedPkg || len(chosens) == 0 {
+		if len(chosens) == 0 {
 			continue
 		}
 		ready = append(ready, syncJob{key: o.key, source: o.source, pkg: o.pkg, release: rel, chosens: chosens})
@@ -233,134 +231,97 @@ func runSync(cmd *cobra.Command, args []string) error {
 		newVer := config.NormalizeVersion(tr.r.release.TagName)
 		pkgFailed := false
 		var newBin, newFont map[string]string
+		var newBinDeclined, newFontDeclined []string
 
-		// Bins are discovered across the whole overlay; preserve each previously
-		// chosen shim name where the binary path is unchanged, else derive one.
+		// Decide carry-vs-reprompt by comparing the *full* set of bins discovered
+		// this release against the full set discovered at install time (selected +
+		// declined, from the manifest). Identical → the package's layout is
+		// unchanged, so the prior selection and shim names carry over silently
+		// (nothing the user chose has changed; we only re-point shims at the new
+		// version). Any difference → the layout changed, so the package is
+		// reprompted from scratch via the same fresh flow add uses — including the
+		// rename prompt. No prior shim name is ever reused silently once we reprompt.
 		if len(tr.bins) > 0 {
-			prevBins := tr.r.pkg.Bin
-			oldBinKeyToShim := make(map[string]string, len(prevBins))
-			prevKeys := make([]string, 0, len(prevBins))
-			for shimName, binKey := range prevBins {
-				oldBinKeyToShim[binKey] = shimName
-				prevKeys = append(prevKeys, binKey)
-			}
-
-			selected, discoverErr := asset.SelectBins(tr.bins, prevKeys, res.Name)
-			switch {
-			case errors.Is(discoverErr, asset.ErrSkip):
-				pkgFailed = true
-			case len(selected) == 0:
-				printFail(cfg, "%s: no binary found", res.Name)
-				hadErrors = true
-				pkgFailed = true
-			default:
-				for _, s := range selected {
-					print("%s: found bin [%s]", res.Name, s.Key())
+			pkgBase, _, pinned := config.ParseVersionSuffix(tr.r.key)
+			if prev := tr.r.pkg.DiscoveredBins(); len(prev) > 0 && sameStringSet(binKeys(tr.bins), prev) {
+				newBin = maps.Clone(tr.r.pkg.Bin)
+				newBinDeclined = slices.Clone(tr.r.pkg.BinDeclined)
+				for _, binKey := range sortedValues(newBin) {
+					print("%s: found bin [%s]", res.Name, binKey)
 				}
-				base := proposedShimNames(tr.r.key, selected)
-				rawKeys := make([]string, len(selected))
-				proposed := make([]string, len(selected))
-				for i, s := range selected {
-					rawKeys[i] = s.Key()
-					if oldShim, ok := oldBinKeyToShim[s.Key()]; ok {
-						proposed[i] = oldShim
-					} else {
-						proposed[i] = base[i]
-					}
-				}
-				pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
+			} else {
 				reserved := reservedShimNames(manifest, pkgBase)
-				shimNames := proposed
-				if hasReservedConflict(proposed, reserved) {
-					renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved, res.Name)
-					if errors.Is(promptErr, asset.ErrSkip) {
-						pkgFailed = true
-					} else if renamed != nil {
-						shimNames = renamed
-					}
+				bin, declined, skip, selErr := selectAndNameBins(tr.bins, tr.r.key, res.Name, pinned, reserved)
+				switch {
+				case selErr != nil:
+					printFail(cfg, "%s: %v", res.Name, selErr)
+					hadErrors = true
+					pkgFailed = true
+				case skip:
+					pkgFailed = true
+				default:
+					newBin = bin
+					newBinDeclined = declined
 				}
-				if !pkgFailed {
-					newBin = make(map[string]string, len(selected))
-					for i, s := range selected {
-						newBin[shimNames[i]] = s.Key()
-					}
-					for shimName := range prevBins {
-						_ = shim.Remove(shimName)
-					}
-					for shimName, binKey := range newBin {
-						binDir, binName := parseBinPath(binKey)
-						if err := shim.Create(shimName, binName, tr.pkgDir, binDir); err != nil {
-							printFail(cfg, "%s: %s: could not update shim: %v", res.Name, shimName, err)
-							hadErrors = true
-							pkgFailed = true
-						}
+			}
+			if !pkgFailed && len(newBin) > 0 {
+				for shimName := range tr.r.pkg.Bin {
+					_ = shim.Remove(shimName)
+				}
+				for shimName, binKey := range newBin {
+					binDir, binName := parseBinPath(binKey)
+					if err := shim.Create(shimName, binName, tr.pkgDir, binDir); err != nil {
+						printFail(cfg, "%s: %s: could not update shim: %v", res.Name, shimName, err)
+						hadErrors = true
+						pkgFailed = true
 					}
 				}
 			}
 		}
 
-		// Fonts likewise, preserving prior user-given names by path.
+		// Fonts follow the same carry-vs-reprompt rule against the full discovered
+		// font set.
 		if !pkgFailed && len(tr.fonts) > 0 {
 			prevFonts := tr.r.pkg.Font
-			oldPathToName := make(map[string]string, len(prevFonts))
-			prevPaths := make([]string, 0, len(prevFonts))
-			for fontName, fontPath := range prevFonts {
-				oldPathToName[fontPath] = fontName
-				prevPaths = append(prevPaths, fontPath)
-			}
-
-			selectedFonts, selErr := asset.SelectFonts(tr.fonts, prevPaths, res.Name)
-			if selErr != nil && !errors.Is(selErr, asset.ErrSkip) {
-				printFail(cfg, "%s: %v", res.Name, selErr)
-				hadErrors = true
-				pkgFailed = true
-			} else if len(selectedFonts) > 0 {
-				rawPaths := make([]string, len(selectedFonts))
-				proposed := make([]string, len(selectedFonts))
-				for i, sel := range selectedFonts {
-					rawPaths[i] = sel.Key()
-					if name, ok := oldPathToName[sel.Key()]; ok {
-						proposed[i] = name
-					} else {
-						proposed[i] = asset.DeriveFontName(sel.FontName)
-					}
+			pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
+			if prev := tr.r.pkg.DiscoveredFonts(); len(prev) > 0 && sameStringSet(fontKeys(tr.fonts), prev) {
+				newFont = maps.Clone(prevFonts)
+				newFontDeclined = slices.Clone(tr.r.pkg.FontDeclined)
+				for _, fontName := range sortedKeys(newFont) {
+					print("%s: found font [%s]", res.Name, fontName)
 				}
-				pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
+			} else {
 				fontReserved := reservedFontNames(manifest, pkgBase)
-				names := proposed
-				if hasReservedConflict(proposed, fontReserved) {
-					renamed, promptErr := asset.PromptFontConflicts(rawPaths, proposed, fontReserved, res.Name)
-					if errors.Is(promptErr, asset.ErrSkip) {
-						pkgFailed = true
-					} else if renamed != nil {
-						names = renamed
-					}
+				font, declined, skip, selErr := selectAndNameFonts(tr.fonts, res.Name, fontReserved)
+				switch {
+				case selErr != nil:
+					printFail(cfg, "%s: %v", res.Name, selErr)
+					hadErrors = true
+					pkgFailed = true
+				case skip:
+					pkgFailed = true
+				default:
+					newFont = font
+					newFontDeclined = declined
 				}
-				if !pkgFailed {
-					fontsDir, err := ensureFontDir()
-					if err != nil {
-						printFail(cfg, "%s: font dir: %v", res.Name, err)
-						hadErrors = true
-						pkgFailed = true
-					} else {
-						newFont = make(map[string]string, len(selectedFonts))
-						for i, sel := range selectedFonts {
-							srcPath := filepath.Join(tr.pkgDir, filepath.FromSlash(sel.Key()))
-							if err := installFont(srcPath, fontsDir); err != nil {
-								printFail(cfg, "%s: %s: could not install font: %v", res.Name, names[i], err)
-								hadErrors = true
-								pkgFailed = true
-								continue
-							}
-							newFont[names[i]] = sel.Key()
+			}
+			if !pkgFailed && len(newFont) > 0 {
+				fontsDir, err := ensureFontDir()
+				if err != nil {
+					printFail(cfg, "%s: font dir: %v", res.Name, err)
+					hadErrors = true
+					pkgFailed = true
+				} else {
+					for fontName, fontPath := range newFont {
+						srcPath := filepath.Join(tr.pkgDir, filepath.FromSlash(fontPath))
+						if err := installFont(srcPath, fontsDir); err != nil {
+							printFail(cfg, "%s: %s: could not install font: %v", res.Name, fontName, err)
+							hadErrors = true
+							pkgFailed = true
 						}
-						newPaths := make([]string, 0, len(newFont))
-						for _, fontPath := range newFont {
-							newPaths = append(newPaths, fontPath)
-						}
-						for _, fontPath := range staleFontPaths(prevFonts, newPaths) {
-							uninstallFont(fontPath, fontsDir)
-						}
+					}
+					for _, fontPath := range staleFontPaths(prevFonts, sortedValues(newFont)) {
+						uninstallFont(fontPath, fontsDir)
 					}
 				}
 			}
@@ -380,11 +341,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 		if !pkgFailed && (len(newBin) > 0 || len(newFont) > 0) {
 			manifest.Extracts[tr.r.key] = config.PackageEntry{
-				Pin:     tr.r.pkg.Pin,
-				Version: newVer,
-				Assets:  assetNames(tr.r.chosens),
-				Bin:     newBin,
-				Font:    newFont,
+				Pin:          tr.r.pkg.Pin,
+				Version:      newVer,
+				Assets:       assetNames(tr.r.chosens),
+				Bin:          newBin,
+				Font:         newFont,
+				BinDeclined:  newBinDeclined,
+				FontDeclined: newFontDeclined,
 			}
 		}
 	}
@@ -401,4 +364,28 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 	return nil
+}
+
+// resolvePriorAssets maps a package's previously selected assets onto the new
+// release purely by hint (the stored asset name). It returns (chosens, true)
+// only when every stored asset still resolves to a single, distinct asset,
+// preserving the prior selection's count and identity. Anything else — an asset
+// renamed, gone, now ambiguous, or two stored assets collapsing onto one — yields
+// (nil, false) so the caller re-prompts the whole package from scratch rather
+// than silently carrying over a half-matched (or scoring-guessed) set.
+func resolvePriorAssets(assets []gh.Asset, oldNames []string) ([]gh.Asset, bool) {
+	if len(oldNames) == 0 {
+		return nil, false
+	}
+	chosens := make([]gh.Asset, 0, len(oldNames))
+	seen := make(map[string]bool, len(oldNames))
+	for _, name := range oldNames {
+		match, ok := asset.ResolveByHint(assets, name)
+		if !ok || seen[match.Name] {
+			return nil, false
+		}
+		seen[match.Name] = true
+		chosens = append(chosens, match)
+	}
+	return chosens, true
 }

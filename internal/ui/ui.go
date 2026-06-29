@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -118,14 +119,17 @@ func ReadLine(prompt string) string {
 }
 
 // ReadSingle reads a single-item selection. Empty input selects item 1;
-// entering 0 or invalid input returns ErrSkip.
+// entering 0 or any input that is not a single positive integer returns
+// ErrSkip. The whole line must parse — "2 5" is rejected as garbage, not
+// salvaged to 2 — matching parseMultiSelect's whole-line validation so every
+// prompt swallows unrecognized input to the same safe default.
 func ReadSingle(label string) (int, error) {
 	s := ReadLine(label + " [empty=1] (0=skip): ")
 	if s == "" {
 		return 1, nil
 	}
-	var idx int
-	if _, err := fmt.Sscanf(s, "%d", &idx); err != nil || idx == 0 {
+	idx, err := strconv.Atoi(s)
+	if err != nil || idx <= 0 {
 		return 0, ErrSkip
 	}
 	return idx, nil

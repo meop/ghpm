@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -196,6 +197,153 @@ func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) []
 		rows = append(rows, append(append([]string(nil), prefix...), p.Font[fontName], "font", fontName))
 	}
 	return rows
+}
+
+// sameStringSet reports whether a and b hold the same elements, ignoring order.
+// Used to decide whether a package's discovered bin/font set is unchanged since
+// last install (carry prior choices) or has changed (reprompt from scratch).
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as := slices.Clone(a)
+	bs := slices.Clone(b)
+	slices.Sort(as)
+	slices.Sort(bs)
+	for i := range as {
+		if as[i] != bs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// selectAndNameBins runs a fresh bin selection + naming pass, shared by add and by
+// sync when a package's discovered binary set has changed. It prompts for which
+// bins to shim (unless there is a single candidate), prints each chosen bin,
+// proposes shim names, and prompts for renames exactly as add does — a prior shim
+// name is never reused silently. It returns the shimName→binKey map, the declined
+// bin keys (every discovered key not selected, for the manifest), and skip=true
+// when the user aborted the package.
+func selectAndNameBins(bins []asset.BinCandidate, manifestKey, pkgName string, pinned bool, reserved map[string]string) (bin map[string]string, declined []string, skip bool, err error) {
+	selected, selErr := asset.SelectBins(bins, pkgName)
+	if errors.Is(selErr, asset.ErrSkip) {
+		return nil, nil, true, nil
+	}
+	if selErr != nil {
+		return nil, nil, false, selErr
+	}
+	if len(selected) == 0 {
+		return nil, nil, true, nil
+	}
+	rawKeys := make([]string, len(selected))
+	proposed := proposedShimNames(manifestKey, selected)
+	for i, s := range selected {
+		print("%s: found bin [%s]", pkgName, s.Key())
+		rawKeys[i] = s.Key()
+	}
+	shimNames := proposed
+	if hasReservedConflict(proposed, reserved) || (!pinned && needsShimRenamePrompt(pkgName, selected)) {
+		renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved, pkgName)
+		if errors.Is(promptErr, asset.ErrSkip) {
+			return nil, nil, true, nil
+		}
+		if renamed != nil {
+			shimNames = renamed
+		}
+	}
+	bin = make(map[string]string, len(selected))
+	for i, s := range selected {
+		bin[shimNames[i]] = s.Key()
+	}
+	return bin, declinedKeys(binKeys(bins), bin), false, nil
+}
+
+// selectAndNameFonts runs a fresh font selection + naming pass, shared by add and
+// by sync when a package's discovered font set has changed. Mirrors add's font
+// flow: select, derive names, resolve conflicts. Returns the fontName→fontPath
+// map, the declined font paths, and skip=true only when the user aborted a
+// conflict prompt — an empty selection is not a skip (the package carries no font).
+func selectAndNameFonts(fonts []asset.FontCandidate, pkgName string, reserved map[string]string) (font map[string]string, declined []string, skip bool, err error) {
+	selected, selErr := asset.SelectFonts(fonts, pkgName)
+	if errors.Is(selErr, asset.ErrSkip) {
+		return nil, nil, true, nil
+	}
+	if selErr != nil {
+		return nil, nil, false, selErr
+	}
+	if len(selected) == 0 {
+		return nil, declinedKeys(fontKeys(fonts), nil), false, nil
+	}
+	named, promptErr := asset.PromptFontNames(selected, reserved, pkgName)
+	if errors.Is(promptErr, asset.ErrSkip) {
+		return nil, nil, true, nil
+	}
+	if promptErr != nil {
+		return nil, nil, false, promptErr
+	}
+	names := make([]string, 0, len(named))
+	for name := range named {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		print("%s: found font [%s]", pkgName, name)
+	}
+	return named, declinedKeys(fontKeys(fonts), named), false, nil
+}
+
+// sortedKeys returns m's keys sorted, for stable iteration/output order.
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// sortedValues returns m's values sorted, for stable iteration/output order.
+func sortedValues(m map[string]string) []string {
+	vals := make([]string, 0, len(m))
+	for _, v := range m {
+		vals = append(vals, v)
+	}
+	slices.Sort(vals)
+	return vals
+}
+
+func binKeys(bins []asset.BinCandidate) []string {
+	keys := make([]string, len(bins))
+	for i, b := range bins {
+		keys[i] = b.Key()
+	}
+	return keys
+}
+
+func fontKeys(fonts []asset.FontCandidate) []string {
+	keys := make([]string, len(fonts))
+	for i, f := range fonts {
+		keys[i] = f.Key()
+	}
+	return keys
+}
+
+// declinedKeys returns the discovered keys that are not among the selected map's
+// values (binKey or fontPath), sorted for stable manifest output.
+func declinedKeys(discovered []string, selected map[string]string) []string {
+	chosen := make(map[string]bool, len(selected))
+	for _, k := range selected {
+		chosen[k] = true
+	}
+	var declined []string
+	for _, k := range discovered {
+		if !chosen[k] {
+			declined = append(declined, k)
+		}
+	}
+	slices.Sort(declined)
+	return declined
 }
 
 // downloadAndExtract downloads each chosen asset and overlays them all into a

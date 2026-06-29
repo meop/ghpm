@@ -116,14 +116,8 @@ func PromptBinNames(binKeys, proposed []string, reserved map[string]string, labe
 	return promptNameConflicts(binKeys, proposed, reserved, label, "bin name(s)", "bin conflicts — rename required:")
 }
 
-// PromptFontConflicts resolves name conflicts for an already-computed font name mapping.
-// fontKeys and proposed are parallel slices (font file paths and current user-given names).
-func PromptFontConflicts(fontKeys, proposed []string, reserved map[string]string, label string) ([]string, error) {
-	return promptNameConflicts(fontKeys, proposed, reserved, label, "font name(s)", "font name conflicts — rename required:")
-}
-
-// promptNameConflicts is the shared rename-conflict engine used by both PromptBinNames
-// and PromptFontConflicts. keys are displayed alongside proposed names for identification.
+// promptNameConflicts is the shared rename-conflict engine used by PromptBinNames
+// and PromptFontNames. keys are displayed alongside proposed names for identification.
 // label, when non-empty, prefixes the header with the owning package so the prompt is
 // identifiable when it interrupts a tight progress stream.
 func promptNameConflicts(keys, proposed []string, reserved map[string]string, label, headerOK, headerConflict string) ([]string, error) {
@@ -258,20 +252,17 @@ type selectCandidate interface {
 // preferred/"show more" split):
 //   - 0 candidates → nil, nil
 //   - 1 candidate → auto-select
-//   - Multiple: auto-select if candidate keys exactly match prevKeys;
-//     otherwise prompt with yay-style multi-select
-func selectItems[C selectCandidate](candidates []C, prevKeys []string, label, noun string) ([]C, error) {
+//   - Multiple → prompt with yay-style multi-select
+//
+// It is a *fresh* selection only — the caller decides whether a prior selection
+// can be carried over (sync does this by comparing the full discovered set against
+// what the manifest recorded). When the caller does call this, the user is always
+// asked, so no prior choice is ever reused silently.
+func selectItems[C selectCandidate](candidates []C, label, noun string) ([]C, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
 	if len(candidates) == 1 {
-		return candidates, nil
-	}
-	candidateKeys := make([]string, len(candidates))
-	for i, c := range candidates {
-		candidateKeys[i] = c.Key()
-	}
-	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
 		return candidates, nil
 	}
 	items := make([]string, len(candidates))
@@ -297,20 +288,14 @@ func selectItems[C selectCandidate](candidates []C, prevKeys []string, label, no
 
 // SelectBins picks which discovered bins to shim. Like asset selection, it shows
 // the bins whose name matches the package (rankBins preferred) up front and tucks
-// the rest behind a "show more" entry. 0 → none, 1 → auto-select, and a set that
-// exactly matches the previous install (sync) → auto-select unchanged.
-func SelectBins(candidates []BinCandidate, prevKeys []string, label string) ([]BinCandidate, error) {
+// the rest behind a "show more" entry. 0 → none, 1 → auto-select, multiple →
+// prompt. This is a fresh selection only; carry-over of a prior selection is the
+// caller's decision (see sync), so whenever this prompts the user is truly asked.
+func SelectBins(candidates []BinCandidate, label string) ([]BinCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
 	if len(candidates) == 1 {
-		return candidates, nil
-	}
-	candidateKeys := make([]string, len(candidates))
-	for i, c := range candidates {
-		candidateKeys[i] = c.Key()
-	}
-	if len(prevKeys) > 0 && sameStringSet(candidateKeys, prevKeys) {
 		return candidates, nil
 	}
 	preferred, hidden := rankBins(candidates, label)
@@ -423,22 +408,6 @@ func parseMultiSelect(input string, max int) ([]int, error) {
 
 	slices.Sort(result)
 	return result, nil
-}
-
-func sameStringSet(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	as := slices.Clone(a)
-	bs := slices.Clone(b)
-	slices.Sort(as)
-	slices.Sort(bs)
-	for i := range as {
-		if as[i] != bs[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func isBinaryFile(path string) bool {
@@ -574,8 +543,8 @@ func PromptFontNames(selected []FontCandidate, reserved map[string]string, label
 	return result, nil
 }
 
-func SelectFonts(candidates []FontCandidate, prevKeys []string, label string) ([]FontCandidate, error) {
-	return selectItems(candidates, prevKeys, label, "font(s)")
+func SelectFonts(candidates []FontCandidate, label string) ([]FontCandidate, error) {
+	return selectItems(candidates, label, "font(s)")
 }
 
 func ensureExecutable(path string) {

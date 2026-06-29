@@ -173,6 +173,96 @@ func TestLoadManifestFont(t *testing.T) {
 	}
 }
 
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+	}
+	for _, n := range seen {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// TestDiscoveredBins is the crux of the subset-stability fix: the full set
+// discovered at install time is the selected bins (Bin values) plus the declined
+// ones, so sync can tell "user wanted a subset" apart from "the release grew new
+// binaries". The codex case — one shimmed bin, two declined helpers.
+func TestDiscoveredBins(t *testing.T) {
+	p := PackageEntry{
+		Bin:         map[string]string{"codex": "codex-aarch64-pc-windows-msvc.exe"},
+		BinDeclined: []string{"codex-command-runner.exe", "codex-windows-sandbox-setup.exe"},
+	}
+	want := []string{
+		"codex-aarch64-pc-windows-msvc.exe",
+		"codex-command-runner.exe",
+		"codex-windows-sandbox-setup.exe",
+	}
+	if got := p.DiscoveredBins(); !sameSet(got, want) {
+		t.Errorf("DiscoveredBins() = %v, want set %v", got, want)
+	}
+}
+
+// TestDiscoveredBins_Legacy: an entry written before declines were tracked has no
+// BinDeclined, so only the selected keys are known. Such a package gets reprompted
+// once on the next sync, then records its full set.
+func TestDiscoveredBins_Legacy(t *testing.T) {
+	p := PackageEntry{Bin: map[string]string{"codex": "codex.exe"}}
+	if got := p.DiscoveredBins(); !sameSet(got, []string{"codex.exe"}) {
+		t.Errorf("DiscoveredBins() = %v, want [codex.exe]", got)
+	}
+}
+
+func TestDiscoveredFonts(t *testing.T) {
+	p := PackageEntry{
+		Font:         map[string]string{"hack": "Hack/Hack-Regular.ttf"},
+		FontDeclined: []string{"Hack/Hack-Bold.ttf"},
+	}
+	want := []string{"Hack/Hack-Regular.ttf", "Hack/Hack-Bold.ttf"}
+	if got := p.DiscoveredFonts(); !sameSet(got, want) {
+		t.Errorf("DiscoveredFonts() = %v, want set %v", got, want)
+	}
+}
+
+// TestDeclinedRoundTrip: the declined sets must survive a save/load so the next
+// sync can reconstruct the full discovered set.
+func TestDeclinedRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	m := &Manifest{
+		Repos: map[string]string{"codex": "github.com/openai/codex"},
+		Extracts: map[string]PackageEntry{
+			"codex": {Pin: "latest", Version: "0.5.0",
+				Assets:       []string{"codex-windows.zip"},
+				Bin:          map[string]string{"codex": "codex-aarch64-pc-windows-msvc.exe"},
+				BinDeclined:  []string{"codex-command-runner.exe", "codex-windows-sandbox-setup.exe"},
+				Font:         map[string]string{"hack": "Hack-Regular.ttf"},
+				FontDeclined: []string{"Hack-Bold.ttf"}},
+		},
+	}
+	if err := saveManifestFile(m, path); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadManifestFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := loaded.Extracts["codex"]
+	if !sameSet(entry.BinDeclined, []string{"codex-command-runner.exe", "codex-windows-sandbox-setup.exe"}) {
+		t.Errorf("bin_declined lost: %v", entry.BinDeclined)
+	}
+	if !sameSet(entry.FontDeclined, []string{"Hack-Bold.ttf"}) {
+		t.Errorf("font_declined lost: %v", entry.FontDeclined)
+	}
+}
+
 func TestAtomicSave(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "manifest.json")

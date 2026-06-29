@@ -241,15 +241,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
 
 	type shimPlan struct {
-		key     string
-		jobName string
-		source  string
-		pkgDir  string
-		assets  []string
-		bin     map[string]string
-		font    map[string]string
-		pin     string
-		version string
+		key          string
+		jobName      string
+		source       string
+		pkgDir       string
+		assets       []string
+		bin          map[string]string
+		font         map[string]string
+		binDeclined  []string
+		fontDeclined []string
+		pin          string
+		version      string
 	}
 	var shimPlans []shimPlan
 
@@ -269,49 +271,35 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		var bin map[string]string
+		var binDeclined []string
 		if len(tr.bins) > 0 {
 			key := r.job.key()
 			_, _, pinned := config.ParseVersionSuffix(key)
 
-			selected, discoverErr := asset.SelectBins(tr.bins, nil, r.job.name)
-			if errors.Is(discoverErr, asset.ErrSkip) {
+			reserved := reservedShimNames(manifest, r.job.name)
+			for _, prev := range shimPlans {
+				if prev.jobName == r.job.name {
+					continue
+				}
+				for shimName := range prev.bin {
+					reserved[shimName] = prev.jobName
+				}
+			}
+			selectedBin, declined, skip, err := selectAndNameBins(tr.bins, key, r.job.name, pinned, reserved)
+			if err != nil {
+				printFail(cfg, "%s: %v", r.job.name, err)
+				hadErrors = true
 				continue
 			}
-			if len(selected) > 0 {
-				rawKeys := make([]string, len(selected))
-				proposed := proposedShimNames(key, selected)
-				for i, s := range selected {
-					print("%s: found bin [%s]", r.job.name, s.Key())
-					rawKeys[i] = s.Key()
-				}
-
-				reserved := reservedShimNames(manifest, r.job.name)
-				for _, prev := range shimPlans {
-					if prev.jobName == r.job.name {
-						continue
-					}
-					for shimName := range prev.bin {
-						reserved[shimName] = prev.jobName
-					}
-				}
-				shimNames := proposed
-				if hasReservedConflict(proposed, reserved) || (!pinned && needsShimRenamePrompt(r.job.name, selected)) {
-					renamed, promptErr := asset.PromptBinNames(rawKeys, proposed, reserved, r.job.name)
-					if errors.Is(promptErr, asset.ErrSkip) {
-						continue
-					}
-					if renamed != nil {
-						shimNames = renamed
-					}
-				}
-				bin = make(map[string]string, len(selected))
-				for i, s := range selected {
-					bin[shimNames[i]] = s.Key()
-				}
+			if skip {
+				continue
 			}
+			bin = selectedBin
+			binDeclined = declined
 		}
 
 		var font map[string]string
+		var fontDeclined []string
 		if len(tr.fonts) > 0 {
 			fontReserved := reservedFontNames(manifest, r.job.name)
 			for _, prev := range shimPlans {
@@ -322,21 +310,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					fontReserved[fontName] = prev.jobName
 				}
 			}
-			selectedFonts, selErr := asset.SelectFonts(tr.fonts, nil, r.job.name)
-			if selErr == nil && len(selectedFonts) > 0 {
-				namedFonts, promptErr := asset.PromptFontNames(selectedFonts, fontReserved, r.job.name)
-				if !errors.Is(promptErr, asset.ErrSkip) && len(namedFonts) > 0 {
-					font = namedFonts
-					fontNames := make([]string, 0, len(namedFonts))
-					for k := range namedFonts {
-						fontNames = append(fontNames, k)
-					}
-					slices.Sort(fontNames)
-					for _, fontName := range fontNames {
-						print("%s: found font [%s]", r.job.name, fontName)
-					}
-				}
+			selectedFont, declined, skip, err := selectAndNameFonts(tr.fonts, r.job.name, fontReserved)
+			if err != nil {
+				printFail(cfg, "%s: %v", r.job.name, err)
+				hadErrors = true
+				continue
 			}
+			if skip {
+				continue
+			}
+			font = selectedFont
+			fontDeclined = declined
 		}
 
 		if len(bin) == 0 && len(font) == 0 {
@@ -344,15 +328,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		shimPlans = append(shimPlans, shimPlan{
-			key:     r.job.key(),
-			jobName: r.job.name,
-			source:  r.job.source,
-			pkgDir:  tr.pkgDir,
-			assets:  assetNames(r.chosens),
-			bin:     bin,
-			font:    font,
-			pin:     r.job.pin(),
-			version: config.NormalizeVersion(r.release.TagName),
+			key:          r.job.key(),
+			jobName:      r.job.name,
+			source:       r.job.source,
+			pkgDir:       tr.pkgDir,
+			assets:       assetNames(r.chosens),
+			bin:          bin,
+			font:         font,
+			binDeclined:  binDeclined,
+			fontDeclined: fontDeclined,
+			pin:          r.job.pin(),
+			version:      config.NormalizeVersion(r.release.TagName),
 		})
 	}
 
@@ -427,11 +413,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		manifest.Repos[p.jobName] = p.source
 		manifest.Extracts[p.key] = config.PackageEntry{
-			Pin:     p.pin,
-			Version: p.version,
-			Assets:  p.assets,
-			Bin:     p.bin,
-			Font:    p.font,
+			Pin:          p.pin,
+			Version:      p.version,
+			Assets:       p.assets,
+			Bin:          p.bin,
+			Font:         p.font,
+			BinDeclined:  p.binDeclined,
+			FontDeclined: p.fontDeclined,
 		}
 		shimFailed := false
 		for shimName, binsKey := range p.bin {

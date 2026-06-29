@@ -226,6 +226,22 @@ func TestReadSingle_Invalid(t *testing.T) {
 	}
 }
 
+func TestReadSingle_MultipleNumbers_Skips(t *testing.T) {
+	// "2 5" is multi-select syntax in a single-select prompt: reject the whole
+	// line rather than silently salvaging the leading 2.
+	capture(t, "2 5\n")
+	if _, err := ReadSingle("pick one"); !errors.Is(err, ErrSkip) {
+		t.Errorf("expected ErrSkip for multi-number input, got %v", err)
+	}
+}
+
+func TestReadSingle_TrailingGarbage_Skips(t *testing.T) {
+	capture(t, "2x\n")
+	if _, err := ReadSingle("pick one"); !errors.Is(err, ErrSkip) {
+		t.Errorf("expected ErrSkip for trailing garbage, got %v", err)
+	}
+}
+
 func TestReadSingle_Empty_SelectsFirst(t *testing.T) {
 	capture(t, "\n")
 	idx, err := ReadSingle("pick one")

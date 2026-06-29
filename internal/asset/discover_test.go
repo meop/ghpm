@@ -141,7 +141,7 @@ func TestFindBins_ExcludesSharedLibrary(t *testing.T) {
 }
 
 func TestSelectBins_None(t *testing.T) {
-	got, err := SelectBins(nil, nil, "")
+	got, err := SelectBins(nil, "")
 	if got != nil || err != nil {
 		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
@@ -149,24 +149,16 @@ func TestSelectBins_None(t *testing.T) {
 
 func TestSelectBins_One(t *testing.T) {
 	c := []BinCandidate{{BinDir: "", BinName: "tool"}}
-	got, err := SelectBins(c, nil, "")
+	got, err := SelectBins(c, "")
 	if err != nil || len(got) != 1 || got[0].BinName != "tool" {
 		t.Errorf("got %v,%v", got, err)
-	}
-}
-
-func TestSelectBins_SamePrevNames(t *testing.T) {
-	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBins(c, []string{"uv", "uvx"}, "")
-	if err != nil || len(got) != 2 {
-		t.Errorf("expected auto-select all; got %v,%v", got, err)
 	}
 }
 
 func TestSelectBins_PromptAll(t *testing.T) {
 	fakeStdin(t, "\n")
 	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBins(c, nil, "")
+	got, err := SelectBins(c, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected 2; got %v,%v", got, err)
 	}
@@ -175,7 +167,7 @@ func TestSelectBins_PromptAll(t *testing.T) {
 func TestSelectBins_PromptSkip(t *testing.T) {
 	fakeStdin(t, "0\n")
 	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	_, err := SelectBins(c, nil, "")
+	_, err := SelectBins(c, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -184,7 +176,7 @@ func TestSelectBins_PromptSkip(t *testing.T) {
 func TestSelectBins_PromptSubset(t *testing.T) {
 	fakeStdin(t, "1\n")
 	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}
-	got, err := SelectBins(c, nil, "")
+	got, err := SelectBins(c, "")
 	if err != nil || len(got) != 1 || got[0].BinName != "uv" {
 		t.Errorf("expected [uv]; got %v,%v", got, err)
 	}
@@ -212,7 +204,7 @@ func TestSelectBins_PreferredShortList(t *testing.T) {
 	// "llama.cpp" → stem "llama": llama-* are preferred, rpc-server hidden.
 	fakeStdin(t, "\n") // empty selects all preferred, not the hidden rpc-server
 	c := []BinCandidate{{BinName: "llama-cli"}, {BinName: "llama-server"}, {BinName: "rpc-server"}}
-	got, err := SelectBins(c, nil, "llama.cpp")
+	got, err := SelectBins(c, "llama.cpp")
 	if err != nil || len(got) != 2 {
 		t.Fatalf("expected 2 preferred bins; got %v,%v", got, err)
 	}
@@ -227,7 +219,7 @@ func TestSelectBins_ShowMoreRevealsHidden(t *testing.T) {
 	// Pick "show more" (index 3 = after the two preferred), then rpc-server (3) from the full list.
 	fakeStdin(t, "3\n3\n")
 	c := []BinCandidate{{BinName: "llama-cli"}, {BinName: "llama-server"}, {BinName: "rpc-server"}}
-	got, err := SelectBins(c, nil, "llama.cpp")
+	got, err := SelectBins(c, "llama.cpp")
 	if err != nil || len(got) != 1 || got[0].BinName != "rpc-server" {
 		t.Errorf("expected [rpc-server] via show more; got %v,%v", got, err)
 	}
@@ -244,7 +236,7 @@ func TestSelectBins_PromptLabelAndBlank(t *testing.T) {
 	// Prior progress output so the deferred Break is not a no-op.
 	ui.Out("caddy: found bin [caddy.exe]")
 	c := []BinCandidate{{BinName: "codex-command-runner"}, {BinName: "codex-windows-sandbox-setup"}, {BinName: "codex"}}
-	if _, err := SelectBins(c, nil, "codex"); err != nil {
+	if _, err := SelectBins(c, "codex"); err != nil {
 		t.Fatal(err)
 	}
 	// Resumed progress output flushes the prompt's trailing Break as a blank.
@@ -375,7 +367,7 @@ func TestFindFonts_Empty(t *testing.T) {
 }
 
 func TestSelectFonts_None(t *testing.T) {
-	got, err := SelectFonts(nil, nil, "")
+	got, err := SelectFonts(nil, "")
 	if got != nil || err != nil {
 		t.Errorf("expected nil,nil; got %v,%v", got, err)
 	}
@@ -383,24 +375,16 @@ func TestSelectFonts_None(t *testing.T) {
 
 func TestSelectFonts_One(t *testing.T) {
 	c := []FontCandidate{{FontDir: "", FontName: "Hack-Regular.ttf"}}
-	got, err := SelectFonts(c, nil, "")
+	got, err := SelectFonts(c, "")
 	if err != nil || len(got) != 1 || got[0].FontName != "Hack-Regular.ttf" {
 		t.Errorf("got %v,%v", got, err)
-	}
-}
-
-func TestSelectFonts_SamePrevKeys(t *testing.T) {
-	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	got, err := SelectFonts(c, []string{"Hack-Regular.ttf", "Hack-Bold.ttf"}, "")
-	if err != nil || len(got) != 2 {
-		t.Errorf("expected auto-select all; got %v,%v", got, err)
 	}
 }
 
 func TestSelectFonts_PromptAll(t *testing.T) {
 	fakeStdin(t, "\n")
 	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	got, err := SelectFonts(c, nil, "")
+	got, err := SelectFonts(c, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("expected 2; got %v,%v", got, err)
 	}
@@ -409,7 +393,7 @@ func TestSelectFonts_PromptAll(t *testing.T) {
 func TestSelectFonts_PromptSkip(t *testing.T) {
 	fakeStdin(t, "0\n")
 	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	_, err := SelectFonts(c, nil, "")
+	_, err := SelectFonts(c, "")
 	if err != ErrSkip {
 		t.Errorf("expected ErrSkip, got %v", err)
 	}
@@ -418,7 +402,7 @@ func TestSelectFonts_PromptSkip(t *testing.T) {
 func TestSelectFonts_PromptSubset(t *testing.T) {
 	fakeStdin(t, "1\n")
 	c := []FontCandidate{{FontName: "Hack-Regular.ttf"}, {FontName: "Hack-Bold.ttf"}}
-	got, err := SelectFonts(c, nil, "")
+	got, err := SelectFonts(c, "")
 	if err != nil || len(got) != 1 || got[0].FontName != "Hack-Regular.ttf" {
 		t.Errorf("expected [Hack-Regular.ttf]; got %v,%v", got, err)
 	}

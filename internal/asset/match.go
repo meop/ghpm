@@ -365,6 +365,22 @@ func promptMultiAll(all []gh.Asset, label string) ([]gh.Asset, error) {
 	return selected, nil
 }
 
+// ResolveByHint reports the asset that uniquely matches hint (a previously
+// selected asset name), ignoring skipped assets. Unlike SelectAssetAuto it never
+// falls back to platform scoring: a hit means the same asset was found in the new
+// release, so callers re-resolving a prior selection can distinguish "carried
+// over unchanged" from "had to guess". Returns ok=false when the hint matches
+// zero or multiple assets.
+func ResolveByHint(assets []gh.Asset, hint string) (gh.Asset, bool) {
+	candidates := make([]gh.Asset, 0, len(assets))
+	for _, a := range assets {
+		if !isSkipped(a.Name) {
+			candidates = append(candidates, a)
+		}
+	}
+	return matchByHint(candidates, hint)
+}
+
 func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
 	hintTokens := stripVersionTokens(Tokenize(hint))
 	if len(hintTokens) == 0 {
