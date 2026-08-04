@@ -218,24 +218,50 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	installTasks := make([]parallel.Task[installTaskResult], len(ready))
+	// Flatten every package's chosen assets into one list so all of them compete
+	// for a single numParallel-wide pool, rather than nesting a pool per package
+	// inside the per-package pool below.
+	var downloads []assetDownload
+	cacheDirs := make([]string, len(ready))
 	for i, r := range ready {
-		installTasks[i] = parallel.Task[installTaskResult]{
+		owner, repo, _ := gh.SplitSource(r.job.source)
+		cacheDir, err := dirs.ReleaseDir(r.job.source, r.release.TagName)
+		if err != nil {
+			printFail(cfg, "%s: %v", r.job.name, err)
+			hadErrors = true
+			continue
+		}
+		cacheDirs[i] = cacheDir
+		for _, a := range r.chosens {
+			downloads = append(downloads, assetDownload{
+				pkgIdx: i, owner: owner, repo: repo, tagName: r.release.TagName,
+				cacheDir: cacheDir, displayName: r.job.name, asset: a,
+			})
+		}
+	}
+	downloadErrs := downloadAllAssets(ctx, ghClient, downloads, cfg.NumParallel)
+
+	installTasks := make([]parallel.Task[installTaskResult], 0, len(ready))
+	for i, r := range ready {
+		if cacheDirs[i] == "" {
+			continue
+		}
+		if err, failed := downloadErrs[i]; failed {
+			printFail(cfg, "%s: %v", r.job.name, err)
+			hadErrors = true
+			continue
+		}
+		installTasks = append(installTasks, parallel.Task[installTaskResult]{
 			Name: r.job.name,
 			Run: func() (installTaskResult, error) {
-				owner, repo, _ := gh.SplitSource(r.job.source)
-				cacheDir, err := dirs.ReleaseDir(r.job.source, r.release.TagName)
-				if err != nil {
-					return installTaskResult{}, err
-				}
 				ver := config.NormalizeVersion(r.release.TagName)
-				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.job.name, r.job.key(), ver, r.chosens)
+				ex, err := extractOverlay(dirs, r.job.key(), ver, cacheDirs[i], r.job.name, r.chosens)
 				if err != nil {
 					return installTaskResult{}, err
 				}
 				return installTaskResult{r: r, extractResult: ex}, nil
 			},
-		}
+		})
 	}
 
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)

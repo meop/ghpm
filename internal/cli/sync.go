@@ -200,24 +200,50 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	syncTasks := make([]parallel.Task[syncTaskResult], len(ready))
+	// Flatten every package's chosen assets into one list so all of them compete
+	// for a single numParallel-wide pool, rather than nesting a pool per package
+	// inside the per-package pool below.
+	var downloads []assetDownload
+	cacheDirs := make([]string, len(ready))
 	for i, r := range ready {
-		syncTasks[i] = parallel.Task[syncTaskResult]{
+		owner, repo, _ := gh.SplitSource(r.source)
+		cacheDir, err := dirs.ReleaseDir(r.source, r.release.TagName)
+		if err != nil {
+			printFail(cfg, "%s: %v", r.key, err)
+			hadErrors = true
+			continue
+		}
+		cacheDirs[i] = cacheDir
+		for _, a := range r.chosens {
+			downloads = append(downloads, assetDownload{
+				pkgIdx: i, owner: owner, repo: repo, tagName: r.release.TagName,
+				cacheDir: cacheDir, displayName: r.key, asset: a,
+			})
+		}
+	}
+	downloadErrs := downloadAllAssets(ctx, ghClient, downloads, cfg.NumParallel)
+
+	syncTasks := make([]parallel.Task[syncTaskResult], 0, len(ready))
+	for i, r := range ready {
+		if cacheDirs[i] == "" {
+			continue
+		}
+		if err, failed := downloadErrs[i]; failed {
+			printFail(cfg, "%s: %v", r.key, err)
+			hadErrors = true
+			continue
+		}
+		syncTasks = append(syncTasks, parallel.Task[syncTaskResult]{
 			Name: r.key,
 			Run: func() (syncTaskResult, error) {
-				owner, repo, _ := gh.SplitSource(r.source)
-				cacheDir, err := dirs.ReleaseDir(r.source, r.release.TagName)
-				if err != nil {
-					return syncTaskResult{}, err
-				}
 				newVersion := config.NormalizeVersion(r.release.TagName)
-				ex, err := downloadAndExtract(ctx, ghClient, dirs, owner, repo, r.release.TagName, cacheDir, r.key, r.key, newVersion, r.chosens)
+				ex, err := extractOverlay(dirs, r.key, newVersion, cacheDirs[i], r.key, r.chosens)
 				if err != nil {
 					return syncTaskResult{}, err
 				}
 				return syncTaskResult{r: r, extractResult: ex}, nil
 			},
-		}
+		})
 	}
 
 	updated := 0

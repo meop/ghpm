@@ -16,6 +16,7 @@ import (
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
+	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/ui"
 )
@@ -346,18 +347,68 @@ func declinedKeys(discovered []string, selected map[string]string) []string {
 	return declined
 }
 
-// downloadAndExtract downloads each chosen asset and overlays them all into a
-// single extract dir, in the order given (a later asset overwrites a colliding
-// path, so "last wins"). Bins and fonts are then discovered once across the
-// combined tree. displayName is used in progress messages; extractKey and version
-// identify the extract directory; pkgName is used for binary discovery.
-func downloadAndExtract(
-	ctx context.Context,
-	ghClient gh.Client,
-	dirs store.Dirs,
-	owner, repo, tagName, cacheDir, displayName, extractKey, ver string,
-	chosens []gh.Asset,
-) (extractResult, error) {
+// assetDownload is one (package, asset) pair to fetch, flattened out of
+// whatever per-package chosen-asset lists the caller has, so that every asset
+// across every package competes for the same bounded worker pool instead of
+// each package getting its own nested pool.
+type assetDownload struct {
+	pkgIdx                int
+	owner, repo, tagName  string
+	cacheDir, displayName string
+	asset                 gh.Asset
+}
+
+// downloadAsset prints the one "starting a download" line and performs the
+// download. It is the single place that pairing is defined, reused by every
+// DownloadAsset call site (this file's downloadAllAssets, download.go,
+// upgrade.go) so the message can't drift out of sync between them or end up
+// duplicated across two independently-maintained copies.
+func downloadAsset(ctx context.Context, ghClient gh.Client, owner, repo, tagName, assetName, dest, displayName string) error {
+	print("%s: downloading [%s]...", displayName, assetName)
+	return ghClient.DownloadAsset(ctx, owner, repo, tagName, assetName, dest)
+}
+
+// downloadAllAssets downloads every not-yet-cached asset across all given
+// downloads through one flat pool bounded by numParallel. Concurrency
+// therefore stays close to numParallel regardless of how many packages are
+// involved or how many assets any single package selected — a pool-per-package
+// nested inside a pool-per-package would instead compound those bounds (e.g.
+// 5 packages x 3 assets each briefly running 15-wide). Results are keyed by
+// pkgIdx; a package with any failed asset gets one representative error (the
+// first, by the input order downloads was built in — parallel.Run preserves
+// input order in its results).
+func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []assetDownload, numParallel int) map[int]error {
+	tasks := make([]parallel.Task[int], 0, len(downloads))
+	for _, d := range downloads {
+		if _, err := os.Stat(filepath.Join(d.cacheDir, d.asset.Name)); !os.IsNotExist(err) {
+			continue
+		}
+		d := d
+		tasks = append(tasks, parallel.Task[int]{
+			Name: d.displayName + "/" + d.asset.Name,
+			Run: func() (int, error) {
+				return d.pkgIdx, downloadAsset(ctx, ghClient, d.owner, d.repo, d.tagName, d.asset.Name, d.cacheDir, d.displayName)
+			},
+		})
+	}
+	errs := make(map[int]error)
+	for _, res := range parallel.Run(ctx, tasks, numParallel) {
+		if res.Err != nil {
+			if _, ok := errs[res.Value]; !ok {
+				errs[res.Value] = res.Err
+			}
+		}
+	}
+	return errs
+}
+
+// extractOverlay extracts the given assets — already downloaded into cacheDir
+// by downloadAllAssets — and overlays them all into a single extract dir, in
+// the order given (a later asset overwrites a colliding path, so "last wins").
+// Bins and fonts are then discovered once across the combined tree.
+// displayName is used in progress/error messages; extractKey and version
+// identify the extract directory.
+func extractOverlay(dirs store.Dirs, extractKey, ver, cacheDir, displayName string, chosens []gh.Asset) (extractResult, error) {
 	pkgDir, err := dirs.ExtractDir(extractKey, ver)
 	if err != nil {
 		return extractResult{}, err
@@ -371,12 +422,6 @@ func downloadAndExtract(
 
 	for _, chosen := range chosens {
 		assetPath := filepath.Join(cacheDir, chosen.Name)
-		if _, err := os.Stat(assetPath); os.IsNotExist(err) {
-			print("%s: downloading [%s]...", displayName, chosen.Name)
-			if err := ghClient.DownloadAsset(ctx, owner, repo, tagName, chosen.Name, cacheDir); err != nil {
-				return extractResult{}, err
-			}
-		}
 		if !skipHashCheck && chosen.Digest != "" {
 			if err := verifyDigest(chosen.Digest, assetPath); err != nil {
 				return extractResult{}, fmt.Errorf("%s: %s: %w", displayName, chosen.Name, err)

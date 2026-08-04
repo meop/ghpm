@@ -164,7 +164,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 						return struct{}{}, err
 					}
 				}
-				return struct{}{}, ghClient.DownloadAsset(ctx, owner, repo, r.release.TagName, r.chosen.Name, dest)
+				return struct{}{}, downloadAsset(ctx, ghClient, owner, repo, r.release.TagName, r.chosen.Name, dest, r.name)
 			},
 		}
 	}
