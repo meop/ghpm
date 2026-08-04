@@ -54,13 +54,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if dryRun {
-		for _, t := range targets {
-			print("%s: remove %s (extract dir: %s)", t.key, t.pkg.Version, filepath.Join(pkgsDir, t.key, t.pkg.Version))
-		}
-		return nil
-	}
-
 	var rows [][]string
 	for _, t := range targets {
 		baseName, _, _ := config.ParseVersionSuffix(t.key)
@@ -68,12 +61,12 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		rows = append(rows, []string{t.key, t.pkg.Version, t.pkg.Pin, repo, strings.Join(t.pkg.Assets, ", ")})
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
-	printTable([]string{"name", "version", "pin", "repo", "assets"}, rows, colors)
-	if !promptConfirm(fmt.Sprintf("uninstall %d package(s)", len(targets))) {
+	if !gate([]string{"name", "version", "pin", "repo", "assets"}, rows, colors, fmt.Sprintf("uninstall %d package(s)", len(targets))) {
 		return nil
 	}
 
 	var hadErrors bool
+	successCount := 0
 	for _, t := range targets {
 		pkgPath := filepath.Join(pkgsDir, t.key, t.pkg.Version)
 		if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
@@ -96,7 +89,11 @@ func runRemove(cmd *cobra.Command, args []string) error {
 				uninstallFont(fontPath, fontsDir)
 			}
 		}
-		printPass(cfg, "%s: uninstalled", t.key)
+		successCount++
+	}
+
+	if successCount > 0 {
+		printPass(cfg, "uninstalled %d package(s)", successCount)
 	}
 
 	if err := saveManifest(cfg, manifest); err != nil {

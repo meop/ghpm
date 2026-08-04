@@ -16,6 +16,7 @@ import (
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
+	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -82,18 +83,50 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Phase 2: install each, prompting for assets only where ambiguous.
-	for _, it := range items {
-		if err := it.install(); err != nil {
-			printFail(cfg, "%s: %v", it.name, err)
-			hadErrors = true
-		}
+	// Phase 2: install each, prompting for assets only where ambiguous. Mirrors
+	// add/sync: a bounded parallel pool and one aggregate ✓ N line, not a ✓ per
+	// component.
+	if installUpgradeItems(ctx, cfg, items) {
+		hadErrors = true
 	}
 
 	if hadErrors {
 		return errSilent
 	}
 	return nil
+}
+
+// installUpgradeItems runs every item's install through a pool bounded by
+// cfg.NumParallel (mirroring add/sync's parallel install phase) and prints one
+// aggregate ✓ N line, not a ✓ per component. Returns true if any item failed.
+// Extracted from runUpgrade so the orchestration (parallel + one summary line)
+// is testable with fake install closures, independent of the real installs
+// (one of which replaces the running ghpm binary itself).
+func installUpgradeItems(ctx context.Context, cfg *config.Settings, items []upgradeItem) bool {
+	installTasks := make([]parallel.Task[struct{}], len(items))
+	for i, it := range items {
+		installTasks[i] = parallel.Task[struct{}]{
+			Name: it.name,
+			Run: func() (struct{}, error) {
+				return struct{}{}, it.install()
+			},
+		}
+	}
+
+	var hadErrors bool
+	successCount := 0
+	for _, res := range parallel.Run(ctx, installTasks, cfg.NumParallel) {
+		if res.Err != nil {
+			printFail(cfg, "%s: %v", res.Name, res.Err)
+			hadErrors = true
+		} else {
+			successCount++
+		}
+	}
+	if successCount > 0 {
+		printPass(cfg, "upgraded %d component(s)", successCount)
+	}
+	return hadErrors
 }
 
 // upgradeItem is one outdated self-managed component (gh, ghpm, sheesh): its
@@ -165,7 +198,6 @@ func checkGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*up
 			return err
 		}
 
-		printPass(cfg, "%s: upgraded %s → %s", binGh, currentVer, latestVer)
 		return nil
 	}
 	return &upgradeItem{name: binGh, current: currentVer, latest: latestVer, install: install}, nil
@@ -212,7 +244,6 @@ func checkSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*
 			return err
 		}
 
-		printPass(cfg, "%s: upgraded %s → %s", binGhpm, version, latestVer)
 		return nil
 	}
 	return &upgradeItem{name: binGhpm, current: version, latest: latestVer, install: install}, nil
@@ -254,11 +285,6 @@ func checkShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*
 			return err
 		}
 
-		if currentVer == "" {
-			printPass(cfg, "%s: installed %s", binSheesh, latestVer)
-		} else {
-			printPass(cfg, "%s: upgraded %s → %s", binSheesh, currentVer, latestVer)
-		}
 		return nil
 	}
 	return &upgradeItem{name: binSheesh, current: currentVer, latest: latestVer, install: install}, nil

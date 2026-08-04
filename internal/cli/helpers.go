@@ -383,7 +383,6 @@ func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []asse
 		if _, err := os.Stat(filepath.Join(d.cacheDir, d.asset.Name)); !os.IsNotExist(err) {
 			continue
 		}
-		d := d
 		tasks = append(tasks, parallel.Task[int]{
 			Name: d.displayName + "/" + d.asset.Name,
 			Run: func() (int, error) {

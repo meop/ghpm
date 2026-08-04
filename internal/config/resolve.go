@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/meop/ghpm/internal/ghbin"
+	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/ui"
 )
@@ -81,13 +83,28 @@ func RefreshRepos() ([]SyncResult, error) {
 	if len(sources) == 0 {
 		sources = defaultSettings().RepoSources
 	}
-	results := make([]SyncResult, 0, len(sources))
+
+	// One source per task, run through the same bounded pool the rest of the
+	// app uses for independent network fetches, rather than fetching sources
+	// one at a time.
+	tasks := make([]parallel.Task[SyncResult], len(sources))
+	for i, source := range sources {
+		tasks[i] = parallel.Task[SyncResult]{
+			Name: source,
+			Run: func() (SyncResult, error) {
+				count, err := fetchAndCacheRepos(source)
+				return SyncResult{Source: source, Count: count, Err: err}, nil
+			},
+		}
+	}
+
+	parResults := parallel.Run(context.Background(), tasks, cfg.NumParallel)
+	results := make([]SyncResult, len(parResults))
 	var fetchErrs []string
-	for _, source := range sources {
-		count, err := fetchAndCacheRepos(source)
-		results = append(results, SyncResult{Source: source, Count: count, Err: err})
-		if err != nil {
-			fetchErrs = append(fetchErrs, fmt.Sprintf("%s: %v", source, err))
+	for i, res := range parResults {
+		results[i] = res.Value
+		if res.Value.Err != nil {
+			fetchErrs = append(fetchErrs, fmt.Sprintf("%s: %v", res.Value.Source, res.Value.Err))
 		}
 	}
 	if len(fetchErrs) > 0 {
