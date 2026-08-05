@@ -145,6 +145,16 @@ If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a rep
 - On `sync`, a package carries its prior choices (which binaries to shim, what to name them) silently as long as the release offers the same set of binaries and fonts. If that set changes — a new helper binary appears, one is dropped — the package is re-prompted from scratch, including any renames; nothing is reused silently once you're asked again
 - SHA256 of each downloaded asset is verified against the digest returned by the GitHub API; mismatch is a hard error (bypass with `--skip-hash-check`)
 
+## Verifying releases
+
+Release archives contain `LICENSE`. Verify the signed checksum manifest
+with the public release key before checking downloaded artifacts:
+
+```sh
+gpg --verify SHASUMS256.txt.sig SHASUMS256.txt
+sha256sum --ignore-missing --check SHASUMS256.txt
+```
+
 ## License
 
 [MIT](LICENSE)
