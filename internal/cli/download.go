@@ -58,17 +58,20 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 	tasks := make([]parallel.Task[resolved], 0, len(args))
 	var hadErrors bool
+	var failedItems []failedItem
 	for _, arg := range args {
 		name, ver, pinned := config.ParseVersionSuffix(arg)
 		if err := config.ValidateName(name); err != nil {
 			printFail(cfg, "%s: %v", name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: name, reason: err.Error()})
 			continue
 		}
 		source, err := config.ResolveSource(name, ver, manifest, repos)
 		if err != nil {
 			printFail(cfg, "%s: %v", name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: name, reason: err.Error()})
 			continue
 		}
 		tasks = append(tasks, parallel.Task[resolved]{
@@ -104,12 +107,14 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: res.Err.Error()})
 			continue
 		}
 		pending = append(pending, res.Value)
 	}
 	if len(pending) == 0 {
 		if hadErrors {
+			printFailedTable(cfg, "asset", failedItems)
 			return errSilent
 		}
 		return nil
@@ -137,6 +142,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", p.job.name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: p.job.name, reason: err.Error()})
 			continue
 		}
 		job := p.job
@@ -145,6 +151,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 	if len(ready) == 0 {
 		if hadErrors {
+			printFailedTable(cfg, "asset", failedItems)
 			return errSilent
 		}
 		return nil
@@ -174,6 +181,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: res.Err.Error()})
 		} else {
 			successCount++
 		}
@@ -182,6 +190,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	if successCount > 0 {
 		printPass(cfg, "downloaded %d asset(s)", successCount)
 	}
+	printFailedTable(cfg, "asset", failedItems)
 
 	if hadErrors {
 		return errSilent

@@ -14,6 +14,10 @@ var errSilent = errors.New("")
 // sep requests a deferred blank line before the next output. See internal/ui.
 func sep() { ui.Break() }
 
+// -q ("quiet") suppresses status chatter (print, printWarn, printPass) but
+// never the substantive content: printFail (errors), and printTable (which
+// backs both gate previews and the actual result of read-only commands like
+// list/find/outdated — quiet-ing those would make the command return nothing).
 func print(format string, args ...any) {
 	if quiet {
 		return
@@ -30,7 +34,12 @@ func printWarn(_ *config.Settings, format string, args ...any) {
 
 func printFail(_ *config.Settings, format string, args ...any) { ui.Fail(format, args...) }
 
-func printPass(_ *config.Settings, format string, args ...any) { ui.Pass(format, args...) }
+func printPass(_ *config.Settings, format string, args ...any) {
+	if quiet {
+		return
+	}
+	ui.Pass(format, args...)
+}
 
 func printTable(headers []string, rows [][]string, colColors []func(string) string) {
 	ui.Table(headers, rows, colColors)

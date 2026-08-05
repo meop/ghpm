@@ -105,6 +105,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	checked := 0
 	skipped := 0
 	var hadErrors bool
+	var failedItems []failedItem
 
 	for _, res := range batchResults {
 		if res.Err != nil {
@@ -115,6 +116,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 			printFail(cfg, "%s: %v", res.Key, res.Err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Key, reason: res.Err.Error()})
 			continue
 		}
 		checked++
@@ -135,6 +137,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			print(msgAllUpToDate)
 		}
 		if hadErrors {
+			printFailedTable(cfg, "package", failedItems)
 			return errSilent
 		}
 		return nil
@@ -165,6 +168,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", o.key, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: o.key, reason: err.Error()})
 			continue
 		}
 		chosens, clean := resolvePriorAssets(rel.Assets, o.pkg.Assets)
@@ -174,6 +178,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			if acErr != nil {
 				printFail(cfg, "%s: %v", o.key, acErr)
 				hadErrors = true
+				failedItems = append(failedItems, failedItem{name: o.key, reason: acErr.Error()})
 				continue
 			}
 			picked, chErr := asset.PromptAssetsMulti(ac, o.key)
@@ -183,6 +188,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			if chErr != nil {
 				printFail(cfg, "%s: %v", o.key, chErr)
 				hadErrors = true
+				failedItems = append(failedItems, failedItem{name: o.key, reason: chErr.Error()})
 				continue
 			}
 			chosens = picked
@@ -195,6 +201,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	if len(ready) == 0 {
 		if hadErrors {
+			printFailedTable(cfg, "package", failedItems)
 			return errSilent
 		}
 		return nil
@@ -211,6 +218,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", r.key, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.key, reason: err.Error()})
 			continue
 		}
 		cacheDirs[i] = cacheDir
@@ -231,6 +239,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if err, failed := downloadErrs[i]; failed {
 			printFail(cfg, "%s: %v", r.key, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.key, reason: err.Error()})
 			continue
 		}
 		syncTasks = append(syncTasks, parallel.Task[syncTaskResult]{
@@ -251,11 +260,22 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: res.Err.Error()})
 			continue
 		}
 		tr := res.Value
 		newVer := config.NormalizeVersion(tr.r.release.TagName)
+
+		if len(tr.bins) == 0 && len(tr.fonts) == 0 {
+			reason := fmt.Sprintf("no binaries or fonts found in %s", strings.Join(assetNames(tr.r.chosens), ", "))
+			printFail(cfg, "%s: %s", res.Name, reason)
+			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: reason})
+			continue
+		}
+
 		pkgFailed := false
+		var failReason string
 		var newBin, newFont map[string]string
 		var newBinDeclined, newFontDeclined []string
 
@@ -273,7 +293,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				newBin = maps.Clone(tr.r.pkg.Bin)
 				newBinDeclined = slices.Clone(tr.r.pkg.BinDeclined)
 				for _, binKey := range sortedValues(newBin) {
-					print("%s: found bin [%s]", res.Name, binKey)
+					print("%s: bin found [%s]", res.Name, binKey)
 				}
 			} else {
 				reserved := reservedShimNames(manifest, pkgBase)
@@ -283,6 +303,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					printFail(cfg, "%s: %v", res.Name, selErr)
 					hadErrors = true
 					pkgFailed = true
+					failReason = selErr.Error()
 				case skip:
 					pkgFailed = true
 				default:
@@ -300,6 +321,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 						printFail(cfg, "%s: %s: could not update shim: %v", res.Name, shimName, err)
 						hadErrors = true
 						pkgFailed = true
+						if failReason == "" {
+							failReason = fmt.Sprintf("%s: could not update shim: %v", shimName, err)
+						}
 					}
 				}
 			}
@@ -314,7 +338,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				newFont = maps.Clone(prevFonts)
 				newFontDeclined = slices.Clone(tr.r.pkg.FontDeclined)
 				for _, fontName := range sortedKeys(newFont) {
-					print("%s: found font [%s]", res.Name, fontName)
+					print("%s: font found [%s]", res.Name, fontName)
 				}
 			} else {
 				fontReserved := reservedFontNames(manifest, pkgBase)
@@ -324,6 +348,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 					printFail(cfg, "%s: %v", res.Name, selErr)
 					hadErrors = true
 					pkgFailed = true
+					if failReason == "" {
+						failReason = selErr.Error()
+					}
 				case skip:
 					pkgFailed = true
 				default:
@@ -337,6 +364,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 					printFail(cfg, "%s: font dir: %v", res.Name, err)
 					hadErrors = true
 					pkgFailed = true
+					if failReason == "" {
+						failReason = fmt.Sprintf("font dir: %v", err)
+					}
 				} else {
 					for fontName, fontPath := range newFont {
 						srcPath := filepath.Join(tr.pkgDir, filepath.FromSlash(fontPath))
@@ -344,6 +374,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 							printFail(cfg, "%s: %s: could not install font: %v", res.Name, fontName, err)
 							hadErrors = true
 							pkgFailed = true
+							if failReason == "" {
+								failReason = fmt.Sprintf("%s: could not install font: %v", fontName, err)
+							}
 						}
 					}
 					for _, fontPath := range staleFontPaths(prevFonts, sortedValues(newFont)) {
@@ -355,6 +388,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 		if !pkgFailed && (len(tr.bins) > 0 || len(tr.fonts) > 0) {
 			updated++
+		} else if failReason != "" {
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: failReason})
 		}
 
 		if !pkgFailed && tr.r.pkg.Version != newVer {
@@ -381,6 +416,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if updated > 0 {
 		printPass(cfg, "updated %d package(s)", updated)
 	}
+	printFailedTable(cfg, "package", failedItems)
 
 	if err := saveManifest(cfg, manifest); err != nil {
 		return err

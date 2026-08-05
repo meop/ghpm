@@ -45,6 +45,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// silently dropped; outdated ones are collected for the gate. Like sync, the
 	// no-op outcome is a single summary line (below), not one line per component.
 	hadErrors := false
+	var failedItems []failedItem
 	var items []upgradeItem
 	checks := []struct {
 		name string
@@ -59,12 +60,14 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", c.name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: c.name, reason: err.Error()})
 			continue
 		}
 		if item != nil {
 			items = append(items, *item)
 		}
 	}
+	printFailedTable(cfg, "component", failedItems)
 
 	if len(items) == 0 {
 		if hadErrors {
@@ -114,11 +117,13 @@ func installUpgradeItems(ctx context.Context, cfg *config.Settings, items []upgr
 	}
 
 	var hadErrors bool
+	var failedItems []failedItem
 	successCount := 0
 	for _, res := range parallel.Run(ctx, installTasks, cfg.NumParallel) {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: res.Err.Error()})
 		} else {
 			successCount++
 		}
@@ -127,6 +132,7 @@ func installUpgradeItems(ctx context.Context, cfg *config.Settings, items []upgr
 		printPass(cfg, "upgraded %d component(s)", successCount)
 	}
 	sep()
+	printFailedTable(cfg, "component", failedItems)
 	return hadErrors
 }
 

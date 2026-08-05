@@ -91,7 +91,7 @@ func TestDownloadAllAssets_SkipsAlreadyCached(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "pkg: found [cached.tar.gz]") {
+	if !strings.Contains(out, "pkg: asset found [cached.tar.gz]") {
 		t.Errorf("expected a cached-asset report line, got output:\n%s", out)
 	}
 	if strings.Contains(out, "downloading") {
@@ -101,7 +101,7 @@ func TestDownloadAllAssets_SkipsAlreadyCached(t *testing.T) {
 
 // TestDownloadAllAssets_TrailingSepBeforeNextOutput is the regression test for
 // the reported spacing bug: the download block ran tight into whatever the
-// caller printed next (e.g. "found bin" report lines or a summary line), with
+// caller printed next (e.g. "bin found" report lines or a summary line), with
 // no blank line between the two sections. downloadAllAssets must request a
 // blank line (via sep/ui.Break) after it finishes, so the next real print gets
 // separated — but only when something actually follows, never as a trailing
@@ -121,7 +121,7 @@ func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 		}
 		print("next section")
 
-		want := "pkg: downloading [a1]...\n\nnext section\n"
+		want := "pkg: asset downloading [a1]...\n\nnext section\n"
 		if got := buf.String(); got != want {
 			t.Errorf("got %q, want %q (blank line between the download block and the next section)", got, want)
 		}
@@ -145,7 +145,7 @@ func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 		}
 		print("next section")
 
-		want := "pkg: found [cached.tar.gz]\n\nnext section\n"
+		want := "pkg: asset found [cached.tar.gz]\n\nnext section\n"
 		if got := buf.String(); got != want {
 			t.Errorf("got %q, want %q (blank line between the cached report and the next section)", got, want)
 		}
@@ -164,7 +164,7 @@ func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 			t.Fatalf("expected no errors, got %v", errs)
 		}
 
-		want := "pkg: downloading [a1]...\n"
+		want := "pkg: asset downloading [a1]...\n"
 		if got := buf.String(); got != want {
 			t.Errorf("got %q, want %q (no trailing blank when the download block is the last output)", got, want)
 		}

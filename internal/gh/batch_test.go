@@ -1,6 +1,7 @@
 package gh
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -185,5 +186,33 @@ func TestExtractTag_NoLatestRelease(t *testing.T) {
 	_, err := extractTag(rf, config.Constraint{})
 	if err == nil {
 		t.Error("expected error when no latest release")
+	}
+}
+
+// TestBatchLatestVersions_SurfacesGraphQLError is the regression test for a
+// real gap: the response's top-level "errors" array was decoded into
+// graphQLResponse.Errors but never read, so an item whose alias was missing
+// from "data" (a per-query GraphQL failure — bad repo name, missing scope,
+// server-side rate limit — while the overall gh CLI call still exits 0) fell
+// through to a generic "no data for %s" message. That not only threw away the
+// real reason but could hide a rate limit from gh.IsRateLimited's substring
+// check downstream, since the generic message never contains "rate limit".
+func TestBatchLatestVersions_SurfacesGraphQLError(t *testing.T) {
+	fakeGH(t, `echo '{"data":{},"errors":[{"message":"Could not resolve to a Repository with the name owner/repo."}]}'`)
+
+	items := []BatchItem{{Key: "fzf", Source: "github.com/owner/repo"}}
+	results := BatchLatestVersions(context.Background(), items, "")
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(results[0].Err.Error(), "Could not resolve to a Repository") {
+		t.Errorf("expected the real GraphQL error message surfaced, got: %v", results[0].Err)
+	}
+	if strings.Contains(results[0].Err.Error(), "no data for") {
+		t.Errorf("expected the real error, not the generic fallback, got: %v", results[0].Err)
 	}
 }

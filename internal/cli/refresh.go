@@ -24,7 +24,17 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 	defer ci.close()
 	cfg := ci.cfg
 
-	syncResults, _ := config.RefreshRepos()
+	syncResults, err := config.RefreshRepos()
+	if syncResults == nil && err != nil {
+		// RefreshRepos returns (nil, err) only when it can't even load settings
+		// to find the configured sources — nothing to range over below, so
+		// without this check the command would silently exit 0 with no output.
+		// In every other case each source's own result carries its own error,
+		// which the loop below already surfaces per-source; this top-level err
+		// is otherwise redundant with those.
+		printFail(cfg, "%v", err)
+		return errSilent
+	}
 	var hadErrors bool
 	for _, r := range syncResults {
 		if r.Err != nil {

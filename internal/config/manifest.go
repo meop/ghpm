@@ -65,18 +65,6 @@ type Manifest struct {
 	Extracts map[string]PackageEntry `json:"extract"`
 }
 
-func (m *Manifest) AddExtract(key string, entry PackageEntry, source string) {
-	baseName, _, _ := ParseVersionSuffix(key)
-	if m.Repos == nil {
-		m.Repos = map[string]string{}
-	}
-	if m.Extracts == nil {
-		m.Extracts = map[string]PackageEntry{}
-	}
-	m.Repos[baseName] = source
-	m.Extracts[key] = entry
-}
-
 func (m *Manifest) RemoveExtract(key string) {
 	delete(m.Extracts, key)
 	baseName, _, _ := ParseVersionSuffix(key)

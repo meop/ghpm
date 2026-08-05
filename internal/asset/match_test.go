@@ -42,6 +42,11 @@ func TestIsSkipped(t *testing.T) {
 		{"fzf.msi", true},
 		{"fzf.pkg", true},
 		{"checksums.txt", true},
+		// "resources" contains "source" as a substring but is not a source
+		// archive — a plain strings.Contains used to flag it incorrectly and
+		// could drop the only compatible asset in a release.
+		{"myapp-resources-linux-amd64.tar.gz", false},
+		{"myapp-abstraction-linux-amd64.tar.gz", false},
 	}
 	for _, c := range cases {
 		got := isSkipped(c.name)

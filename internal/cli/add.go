@@ -81,6 +81,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	var resolved []jobWithRelease
 	var hadErrors bool
+	var failedItems []failedItem
 
 	for _, arg := range args {
 		pkgName, ver, pinned := config.ParseVersionSuffix(arg)
@@ -89,6 +90,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if src, repoName, err := parseSourceArg(pkgName); err != nil {
 			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: pkgName, reason: err.Error()})
 			continue
 		} else if src != "" {
 			explicitSource = src
@@ -103,6 +105,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			if err := config.ValidateName(pkgName); err != nil {
 				printFail(cfg, "%s: %v", pkgName, err)
 				hadErrors = true
+				failedItems = append(failedItems, failedItem{name: pkgName, reason: err.Error()})
 				continue
 			}
 		}
@@ -119,6 +122,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					printFail(cfg, "%s: %v", pkgName, err)
 					hadErrors = true
+					failedItems = append(failedItems, failedItem{name: pkgName, reason: err.Error()})
 					continue
 				}
 			}
@@ -140,6 +144,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: pkgName, reason: err.Error()})
 			continue
 		}
 		var rel gh.Release
@@ -150,6 +155,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			if perr != nil {
 				printFail(cfg, "%s: %v", pkgName, perr)
 				hadErrors = true
+				failedItems = append(failedItems, failedItem{name: pkgName, reason: perr.Error()})
 				continue
 			}
 			if c.Level == config.PinExact {
@@ -161,6 +167,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: pkgName, reason: err.Error()})
 			continue
 		}
 
@@ -172,6 +179,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if len(resolved) == 0 {
 		if hadErrors {
+			printFailedTable(cfg, "package", failedItems)
 			return errSilent
 		}
 		return nil
@@ -196,6 +204,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", r.job.name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.job.name, reason: err.Error()})
 			continue
 		}
 		chosens, err := asset.PromptAssetsMulti(ac, r.job.name)
@@ -205,6 +214,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", r.job.name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.job.name, reason: err.Error()})
 			continue
 		}
 		r.chosens = chosens
@@ -213,6 +223,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if len(ready) == 0 {
 		if hadErrors {
+			printFailedTable(cfg, "package", failedItems)
 			return errSilent
 		}
 		return nil
@@ -229,6 +240,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printFail(cfg, "%s: %v", r.job.name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.job.name, reason: err.Error()})
 			continue
 		}
 		cacheDirs[i] = cacheDir
@@ -249,6 +261,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err, failed := downloadErrs[i]; failed {
 			printFail(cfg, "%s: %v", r.job.name, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.job.name, reason: err.Error()})
 			continue
 		}
 		installTasks = append(installTasks, parallel.Task[installTaskResult]{
@@ -285,14 +298,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if res.Err != nil {
 			printFail(cfg, "%s: %v", res.Name, res.Err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: res.Err.Error()})
 			continue
 		}
 		tr := res.Value
 		r := tr.r
 
 		if len(tr.bins) == 0 && len(tr.fonts) == 0 {
-			printFail(cfg, "%s: no binaries or fonts found in %s", r.job.name, strings.Join(assetNames(r.chosens), ", "))
+			reason := fmt.Sprintf("no binaries or fonts found in %s", strings.Join(assetNames(r.chosens), ", "))
+			printFail(cfg, "%s: %s", r.job.name, reason)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.job.name, reason: reason})
 			continue
 		}
 
@@ -315,6 +331,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				printFail(cfg, "%s: %v", r.job.name, err)
 				hadErrors = true
+				failedItems = append(failedItems, failedItem{name: r.job.name, reason: err.Error()})
 				continue
 			}
 			if skip {
@@ -340,6 +357,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				printFail(cfg, "%s: %v", r.job.name, err)
 				hadErrors = true
+				failedItems = append(failedItems, failedItem{name: r.job.name, reason: err.Error()})
 				continue
 			}
 			if skip {
@@ -370,6 +388,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if len(shimPlans) == 0 {
 		if hadErrors {
+			printFailedTable(cfg, "package", failedItems)
 			return errSilent
 		}
 		return nil
@@ -448,12 +467,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			FontDeclined: p.fontDeclined,
 		}
 		shimFailed := false
+		var failReason string
 		for shimName, binsKey := range p.bin {
 			binDir, binName := parseBinPath(binsKey)
 			if err := shim.Create(shimName, binName, p.pkgDir, binDir); err != nil {
 				printFail(cfg, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
 				shimFailed = true
 				hadErrors = true
+				if failReason == "" {
+					failReason = fmt.Sprintf("%s: could not create shim: %v", shimName, err)
+				}
 			}
 		}
 		fontFailed := false
@@ -463,6 +486,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				printFail(cfg, "%s: font dir: %v", p.jobName, err)
 				fontFailed = true
 				hadErrors = true
+				if failReason == "" {
+					failReason = fmt.Sprintf("font dir: %v", err)
+				}
 			}
 			if !fontFailed {
 				fontNames := make([]string, 0, len(p.font))
@@ -475,17 +501,23 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					if err := installFont(srcPath, fontsDir); err != nil {
 						printFail(cfg, "%s: %s: could not install font: %v", p.jobName, fontName, err)
 						hadErrors = true
+						if failReason == "" {
+							failReason = fmt.Sprintf("%s: could not install font: %v", fontName, err)
+						}
 					}
 				}
 			}
 		}
 		if !shimFailed && !fontFailed {
 			successCount++
+		} else {
+			failedItems = append(failedItems, failedItem{name: p.jobName, reason: failReason})
 		}
 	}
 	if successCount > 0 {
 		printPass(cfg, "installed %d package(s)", successCount)
 	}
+	printFailedTable(cfg, "package", failedItems)
 
 	if err := saveManifest(cfg, manifest); err != nil {
 		return err

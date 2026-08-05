@@ -293,6 +293,54 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 	}
 }
 
+// TestCleanOrphanedBinShims_ReportsActualRemovedCount is the regression test
+// for a real gap: the closing "removed N orphaned bin(s)" line always reported
+// the attempted count, even when some individual os.Remove calls failed and
+// were silently discarded — the tally was optimistic, not actual. Here
+// "orphan-stuck" is a non-empty directory, so os.Remove on it fails with
+// ENOTEMPTY; this simulates a removal failure without relying on filesystem
+// permissions, which behave inconsistently when tests run as root.
+func TestCleanOrphanedBinShims_ReportsActualRemovedCount(t *testing.T) {
+	withHome(t)
+	yes = true
+	defer func() { yes = false }()
+
+	binDir := makeBinDir(t, "orphan-removable")
+	stuckDir := filepath.Join(binDir, "orphan-stuck")
+	if err := os.MkdirAll(stuckDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stuckDir, "child"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{},
+		Extracts: map[string]config.PackageEntry{},
+	}
+
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+	cleanOrphanedBinShims(nil, manifest)
+
+	if _, err := os.Lstat(filepath.Join(binDir, "orphan-removable")); !os.IsNotExist(err) {
+		t.Error("orphan-removable should have been removed")
+	}
+	if _, err := os.Lstat(stuckDir); err != nil {
+		t.Error("orphan-stuck should still exist — its removal was expected to fail")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "removed 1 orphaned bin(s)") {
+		t.Errorf("expected the count to reflect the 1 actual success, not the 2 attempted, got:\n%s", out)
+	}
+	if strings.Contains(out, "removed 2 orphaned bin(s)") {
+		t.Errorf("count should not include the failed removal, got:\n%s", out)
+	}
+}
+
 func TestCleanOrphanedFonts_AllMissing(t *testing.T) {
 	withHome(t)
 	t.Setenv("XDG_DATA_HOME", "")

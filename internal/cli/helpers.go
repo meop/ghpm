@@ -36,6 +36,45 @@ const msgDryRun = "dry run, no changes made"
 // to distinguish it from an empty install set ("no packages installed").
 const msgNoMatch = "no packages matched"
 
+// failedItem is one item that didn't make it into a mutating command's
+// success count, paired with why. Go's errors already carry a full reason
+// (wrapped context, %v-formatted) at the moment of failure; collecting it
+// here instead of only printing it inline means the reason survives to the
+// closing report even after the inline moment has scrolled out of view —
+// the user never has to scroll up to find out why something failed.
+type failedItem struct {
+	name   string
+	reason string
+}
+
+// printFailedTable closes out a mutating multi-item command with a table of
+// what failed and why — not just a count, and not something the user has to
+// scroll up to find, since the reason is right there. This is *instead of*
+// an inline printFail at each failure site, not in addition to it: printing
+// the same reason twice (once when it happens, once in this table) is the
+// kind of close-proximity duplication that's worse than just picking the one
+// place — the table — that's guaranteed to still be on screen when the run
+// ends. noun is singular ("package", "component", "asset"). Bracketed by
+// sep() like any other section — a leading blank unless nothing has printed
+// yet, a trailing blank unless this is the last thing printed — so it never
+// runs tight into whatever the caller prints next, and never leaves a
+// dangling blank when it's the final output.
+func printFailedTable(cfg *config.Settings, noun string, items []failedItem) {
+	if len(items) == 0 {
+		return
+	}
+	sorted := slices.Clone(items)
+	slices.SortFunc(sorted, func(a, b failedItem) int { return strings.Compare(a.name, b.name) })
+	sep()
+	printFail(cfg, "%d %s(s) failed", len(sorted), noun)
+	rows := make([][]string, len(sorted))
+	for i, it := range sorted {
+		rows[i] = []string{it.name, it.reason}
+	}
+	printTable([]string{"name", "reason"}, rows, nil)
+	sep()
+}
+
 type cmdInit struct {
 	cfg      *config.Settings
 	manifest *config.Manifest
@@ -245,7 +284,7 @@ func selectAndNameBins(bins []asset.BinCandidate, manifestKey, pkgName string, p
 	rawKeys := make([]string, len(selected))
 	proposed := proposedShimNames(manifestKey, selected)
 	for i, s := range selected {
-		print("%s: found bin [%s]", pkgName, s.Key())
+		print("%s: bin found [%s]", pkgName, s.Key())
 		rawKeys[i] = s.Key()
 	}
 	shimNames := proposed
@@ -294,7 +333,7 @@ func selectAndNameFonts(fonts []asset.FontCandidate, pkgName string, reserved ma
 	}
 	slices.Sort(names)
 	for _, name := range names {
-		print("%s: found font [%s]", pkgName, name)
+		print("%s: font found [%s]", pkgName, name)
 	}
 	return named, declinedKeys(fontKeys(fonts), named), false, nil
 }
@@ -369,7 +408,7 @@ type assetDownload struct {
 // upgrade.go) so the message can't drift out of sync between them or end up
 // duplicated across two independently-maintained copies.
 func downloadAsset(ctx context.Context, ghClient gh.Client, owner, repo, tagName, assetName, dest, displayName string) error {
-	print("%s: downloading [%s]...", displayName, assetName)
+	print("%s: asset downloading [%s]...", displayName, assetName)
 	return ghClient.DownloadAsset(ctx, owner, repo, tagName, assetName, dest)
 }
 
@@ -389,7 +428,7 @@ func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []asse
 	tasks := make([]parallel.Task[int], 0, len(downloads))
 	for _, d := range downloads {
 		if _, err := os.Stat(filepath.Join(d.cacheDir, d.asset.Name)); !os.IsNotExist(err) {
-			print("%s: found [%s]", d.displayName, d.asset.Name)
+			print("%s: asset found [%s]", d.displayName, d.asset.Name)
 			continue
 		}
 		tasks = append(tasks, parallel.Task[int]{

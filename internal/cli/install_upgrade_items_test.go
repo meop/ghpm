@@ -91,6 +91,12 @@ func TestInstallUpgradeItems_PartialFailure(t *testing.T) {
 	if !strings.Contains(out, "upgraded 1 component(s)") {
 		t.Errorf("expected the one successful component still counted in the aggregate line:\n%s", out)
 	}
+	if !strings.Contains(out, "✗ 1 component(s) failed") {
+		t.Errorf("expected a closing failed-items table, not just the inline error, got:\n%s", out)
+	}
+	if !strings.Contains(out, "name") || !strings.Contains(out, "reason") {
+		t.Errorf("expected the closing table to have name/reason columns, got:\n%s", out)
+	}
 }
 
 // TestInstallUpgradeItems_TrailingSep locks in the same blank-line rule as

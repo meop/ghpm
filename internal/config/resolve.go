@@ -73,7 +73,7 @@ type SyncResult struct {
 	Err    error
 }
 
-// Called during ghpm update.
+// Called by ghpm refresh.
 func RefreshRepos() ([]SyncResult, error) {
 	cfg, err := LoadSettings()
 	if err != nil {

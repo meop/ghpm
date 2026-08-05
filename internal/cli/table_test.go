@@ -54,3 +54,35 @@ func TestGate_Confirmed_NoTrailingBlank(t *testing.T) {
 		t.Errorf("real run must not print the dry-run message, got:\n%s", out)
 	}
 }
+
+// TestQuiet_SuppressesChatterNotContent locks in the -q design: print/
+// printWarn/printPass are status chatter and get suppressed, but printFail
+// (errors) and printTable (the actual content of gate previews and read-only
+// commands like list/find/outdated) never do — quiet-ing those would make a
+// read-only command return nothing at all.
+func TestQuiet_SuppressesChatterNotContent(t *testing.T) {
+	quiet = true
+	defer func() { quiet = false }()
+
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+	print("info line")
+	printWarn(nil, "warn line")
+	printPass(nil, "pass line")
+	printFail(nil, "fail line")
+	printTable([]string{"name"}, [][]string{{"fzf"}}, nil)
+
+	out := buf.String()
+	for _, suppressed := range []string{"info line", "warn line", "pass line"} {
+		if strings.Contains(out, suppressed) {
+			t.Errorf("expected %q to be suppressed under quiet, got:\n%s", suppressed, out)
+		}
+	}
+	for _, kept := range []string{"fail line", "fzf"} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("expected %q to survive quiet, got:\n%s", kept, out)
+		}
+	}
+}

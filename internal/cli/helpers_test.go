@@ -1,16 +1,19 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 func writeSettings(t *testing.T, s *config.Settings) {
@@ -222,6 +225,114 @@ func TestInitCommand_SkipHashCheck_PropagatesFromSettings(t *testing.T) {
 	if !skipHashCheck {
 		t.Error("skipHashCheck should be true when settings say SkipHashCheck")
 	}
+}
+
+// TestPrintFailedTable is the regression test for a real report: a run that
+// hit errors on two packages (pwsh and deno, both busy/locked at the time)
+// still ended with just "✓ installed N package(s)" and nothing else — the
+// earlier inline ✗ lines naming why had scrolled out of view by then, so the
+// summary alone looked like a clean success and finding the reason meant
+// scrolling back up. printFailedTable is the shared closing block every
+// mutating command now calls: a table of name + reason, right next to the
+// success tally, so the reason is still on screen when the run ends — no
+// scrolling required. It runs *alongside* the inline per-failure printFail
+// (a typical build-tool pattern: report as it happens, then summarize at the
+// end), not instead of it — the two aren't the close-proximity duplication
+// this app avoids elsewhere, since they're usually screens apart.
+func TestPrintFailedTable(t *testing.T) {
+	t.Run("no items, no output at all", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		printFailedTable(nil, "package", nil)
+
+		if got := buf.String(); got != "" {
+			t.Errorf("got %q, want empty output", got)
+		}
+	})
+
+	t.Run("renders a name/reason table, sorted by name", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		printFailedTable(nil, "package", []failedItem{
+			{name: "pwsh", reason: "resource busy"},
+			{name: "deno", reason: "file locked"},
+		})
+
+		out := buf.String()
+		if !strings.Contains(out, "✗ 2 package(s) failed") {
+			t.Errorf("expected a failed-count header, got:\n%s", out)
+		}
+		if !strings.Contains(out, "name") || !strings.Contains(out, "reason") {
+			t.Errorf("expected a name/reason table, got:\n%s", out)
+		}
+		if !strings.Contains(out, "deno") || !strings.Contains(out, "file locked") {
+			t.Errorf("expected deno's reason in the table, got:\n%s", out)
+		}
+		if !strings.Contains(out, "pwsh") || !strings.Contains(out, "resource busy") {
+			t.Errorf("expected pwsh's reason in the table, got:\n%s", out)
+		}
+		if strings.Index(out, "deno") > strings.Index(out, "pwsh") {
+			t.Errorf("expected rows sorted by name (deno before pwsh), got:\n%s", out)
+		}
+	})
+
+	t.Run("blank line before when something already printed", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		printPass(nil, "installed 1 package(s)")
+		printFailedTable(nil, "package", []failedItem{{name: "deno", reason: "file locked"}})
+
+		out := buf.String()
+		if !strings.Contains(out, "package(s)\n\n✗ 1 package(s) failed") {
+			t.Errorf("expected a blank line separating the two sections, got:\n%s", out)
+		}
+	})
+
+	t.Run("no leading blank when it's the first thing printed", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		printFailedTable(nil, "package", []failedItem{{name: "deno", reason: "file locked"}})
+
+		out := buf.String()
+		if strings.HasPrefix(out, "\n") {
+			t.Errorf("got %q, unexpected leading blank line on the very first output", out)
+		}
+	})
+
+	t.Run("blank line after when more output follows", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		printFailedTable(nil, "package", []failedItem{{name: "deno", reason: "file locked"}})
+		print("next section")
+
+		out := buf.String()
+		if !strings.HasSuffix(out, "\n\nnext section\n") {
+			t.Errorf("got %q, expected a blank line before the next section", out)
+		}
+	})
+
+	t.Run("no trailing blank when it's the last thing printed", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		printFailedTable(nil, "package", []failedItem{{name: "deno", reason: "file locked"}})
+
+		out := buf.String()
+		if strings.HasSuffix(out, "\n\n") {
+			t.Errorf("got %q, unexpected trailing blank line", out)
+		}
+	})
 }
 
 func TestInitCommand_WithDirs(t *testing.T) {

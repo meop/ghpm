@@ -66,12 +66,14 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	var hadErrors bool
+	var failedItems []failedItem
 	successCount := 0
 	for _, t := range targets {
 		pkgPath := filepath.Join(pkgsDir, t.key, t.pkg.Version)
 		if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
 			printFail(cfg, "%s: could not remove extract dir: %v", t.key, err)
 			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: t.key, reason: fmt.Sprintf("could not remove extract dir: %v", err)})
 			continue
 		}
 		baseDir := filepath.Join(pkgsDir, t.key)
@@ -95,6 +97,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	if successCount > 0 {
 		printPass(cfg, "uninstalled %d package(s)", successCount)
 	}
+	printFailedTable(cfg, "package", failedItems)
 
 	if err := saveManifest(cfg, manifest); err != nil {
 		return err

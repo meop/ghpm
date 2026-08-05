@@ -30,17 +30,49 @@ func ExtractPackage(srcDir, assetName, destDir string) error {
 	case strings.HasSuffix(lower, ".zip"):
 		return extractZipPackage(src, destDir)
 	default:
-		return copyRawPackage(src, destDir, assetName)
+		// Unreachable via the normal selection flow: isSkipped requires one of
+		// the extensions above to consider an asset a candidate at all, so
+		// nothing without one ever reaches here as a chosen asset. Kept as an
+		// explicit error rather than a silent raw-file copy (the previous
+		// behavior) since that fallback was dead code with no caller, no test,
+		// and no documented feature it was meant to support.
+		return fmt.Errorf("unsupported asset type: %s", assetName)
 	}
 }
 
 func safeJoin(destDir, name string) (string, error) {
 	target := filepath.Join(destDir, name)
 	clean := filepath.Clean(target)
-	if !strings.HasPrefix(clean, filepath.Clean(destDir)+string(os.PathSeparator)) && clean != filepath.Clean(destDir) {
+	if !withinDir(clean, destDir) {
 		return "", fmt.Errorf("path traversal in archive: %s", name)
 	}
 	return target, nil
+}
+
+// withinDir reports whether clean (an already-cleaned path) is destDir itself
+// or lives under it.
+func withinDir(clean, destDir string) bool {
+	cleanDest := filepath.Clean(destDir)
+	return clean == cleanDest || strings.HasPrefix(clean, cleanDest+string(os.PathSeparator))
+}
+
+// safeSymlinkTarget validates that a tar entry's symlink target can't be used
+// to write outside destDir. safeJoin only checks the symlink's own path
+// (hdr.Name); nothing constrains hdr.Linkname otherwise, so a crafted archive
+// could point a symlink at an arbitrary absolute path, or a relative path that
+// escapes destDir via "..", and a later entry (or the extracted content itself)
+// that writes through that symlink would land outside the extract dir entirely.
+// A relative symlink target is resolved against the symlink's own directory,
+// matching normal symlink semantics, not against destDir.
+func safeSymlinkTarget(destDir, target, linkname string) error {
+	if filepath.IsAbs(linkname) {
+		return fmt.Errorf("symlink target is absolute: %s", linkname)
+	}
+	resolved := filepath.Clean(filepath.Join(filepath.Dir(target), linkname))
+	if !withinDir(resolved, destDir) {
+		return fmt.Errorf("symlink target escapes extract dir: %s", linkname)
+	}
+	return nil
 }
 
 func extractTarFromReader(r io.Reader, destDir string) error {
@@ -70,6 +102,9 @@ func extractTarFromReader(r io.Reader, destDir string) error {
 				return err
 			}
 		case tar.TypeSymlink:
+			if err := safeSymlinkTarget(destDir, target, hdr.Linkname); err != nil {
+				return err
+			}
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
 			}
@@ -153,24 +188,6 @@ func extractZipPackage(src, destDir string) error {
 		}
 	}
 	return nil
-}
-
-func copyRawPackage(src, destDir, name string) error {
-	dest := filepath.Join(destDir, filepath.Base(name))
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = out.Close() }()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Sync()
 }
 
 func streamFile(r io.Reader, path string, mode os.FileMode) error {

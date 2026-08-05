@@ -69,14 +69,46 @@ func runTidy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func pruneExtract(path, pkgsDir string) {
-	_ = os.RemoveAll(path)
+// pruneExtract removes path (an extract dir, or one version subdir of it) and,
+// if that leaves its parent empty, removes the parent too. Returns the error
+// from removing path itself, so callers whose count of "removed" is meant to
+// reflect actual filesystem state (not just items attempted) can track it.
+func pruneExtract(path, pkgsDir string) error {
+	err := os.RemoveAll(path)
 	parent := filepath.Dir(path)
 	if parent != pkgsDir {
-		if es, err := os.ReadDir(parent); err == nil && len(es) == 0 {
+		if es, rerr := os.ReadDir(parent); rerr == nil && len(es) == 0 {
 			_ = os.Remove(parent)
 		}
 	}
+	return err
+}
+
+// pruneDownloadVersion removes the cached download for one package version
+// (releaseDir/<source>/<version>) and walks back up removing any now-empty
+// parent directories, stopping at releaseDir. Shared by cleanBrokenInstalls
+// and cleanOrphanedFonts, which both drop a manifest entry's cached download
+// once its last bin/font is gone.
+func pruneDownloadVersion(releaseDir, src, version string) {
+	versionDir := filepath.Join(releaseDir, store.SourceToRelPath(src), version)
+	_ = os.RemoveAll(versionDir)
+	parent := filepath.Join(releaseDir, store.SourceToRelPath(src))
+	for parent != releaseDir {
+		es, err := os.ReadDir(parent)
+		if err != nil || len(es) > 0 {
+			break
+		}
+		_ = os.Remove(parent)
+		parent = filepath.Dir(parent)
+	}
+}
+
+// dryRunBail prints the shared dry-run closing message and returns true (the
+// "there was something to report" signal every tidy clean* function returns).
+func dryRunBail() bool {
+	sep()
+	print(msgDryRun)
+	return true
 }
 
 // cleanBrokenInstalls removes manifest entries whose shim or extract is missing,
@@ -164,9 +196,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	printTable([]string{"name", "issue"}, rows, nil)
 
 	if dryRun {
-		sep()
-		print(msgDryRun)
-		return true
+		return dryRunBail()
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d broken install(s)", len(items))) {
@@ -179,7 +209,7 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 			_ = os.Remove(sp)
 		}
 		if it.extractPath != "" {
-			pruneExtract(it.extractPath, pkgsDir)
+			_ = pruneExtract(it.extractPath, pkgsDir)
 		}
 		if it.manifestKey != "" {
 			if len(it.trimShimNames) > 0 {
@@ -190,23 +220,13 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 				manifest.Extracts[it.manifestKey] = entry
 				if len(entry.AllBins()) == 0 && len(entry.AllFonts()) == 0 {
 					manifest.RemoveExtract(it.manifestKey)
-					pruneExtract(filepath.Join(pkgsDir, it.manifestKey, entry.Version), pkgsDir)
+					_ = pruneExtract(filepath.Join(pkgsDir, it.manifestKey, entry.Version), pkgsDir)
 				}
 			} else {
 				baseName, _, _ := config.ParseVersionSuffix(it.manifestKey)
 				pkg := manifest.Extracts[it.manifestKey]
 				if src, ok := manifest.Repos[baseName]; ok {
-					downloadVersionDir := filepath.Join(releaseDir, store.SourceToRelPath(src), pkg.Version)
-					_ = os.RemoveAll(downloadVersionDir)
-					parent := filepath.Join(releaseDir, store.SourceToRelPath(src))
-					for parent != releaseDir {
-						es, err := os.ReadDir(parent)
-						if err != nil || len(es) > 0 {
-							break
-						}
-						_ = os.Remove(parent)
-						parent = filepath.Dir(parent)
-					}
+					pruneDownloadVersion(releaseDir, src, pkg.Version)
 				}
 				manifest.RemoveExtract(it.manifestKey)
 			}
@@ -274,9 +294,7 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 	printTable([]string{"package", "font"}, fontRows, nil)
 
 	if dryRun {
-		sep()
-		print(msgDryRun)
-		return true
+		return dryRunBail()
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned font(s)", len(items))) {
@@ -297,20 +315,10 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 		if len(entry.AllBins()) == 0 && len(entry.AllFonts()) == 0 {
 			baseName, _, _ := config.ParseVersionSuffix(it.manifestKey)
 			if src, ok := manifest.Repos[baseName]; ok {
-				downloadVersionDir := filepath.Join(releaseDir, store.SourceToRelPath(src), entry.Version)
-				_ = os.RemoveAll(downloadVersionDir)
-				parent := filepath.Join(releaseDir, store.SourceToRelPath(src))
-				for parent != releaseDir {
-					es, err := os.ReadDir(parent)
-					if err != nil || len(es) > 0 {
-						break
-					}
-					_ = os.Remove(parent)
-					parent = filepath.Dir(parent)
-				}
+				pruneDownloadVersion(releaseDir, src, entry.Version)
 			}
 			manifest.RemoveExtract(it.manifestKey)
-			pruneExtract(filepath.Join(pkgsDir, it.manifestKey, entry.Version), pkgsDir)
+			_ = pruneExtract(filepath.Join(pkgsDir, it.manifestKey, entry.Version), pkgsDir)
 		}
 		manifestTouched = true
 	}
@@ -356,19 +364,24 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	printTable([]string{"name"}, binRows, nil)
 
 	if dryRun {
-		sep()
-		print(msgDryRun)
-		return true
+		return dryRunBail()
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned bin(s)", len(paths))) {
 		return true
 	}
 
+	removed := 0
 	for _, p := range paths {
-		_ = os.Remove(p)
+		if err := os.Remove(p); err != nil {
+			printFail(cfg, "%s: %v", p, err)
+			continue
+		}
+		removed++
 	}
-	printPass(cfg, "removed %d orphaned bin(s)", len(paths))
+	if removed > 0 {
+		printPass(cfg, "removed %d orphaned bin(s)", removed)
+	}
 	return true
 }
 
@@ -414,19 +427,24 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 	printTable([]string{"name", "version"}, extRows, nil)
 
 	if dryRun {
-		sep()
-		print(msgDryRun)
-		return true
+		return dryRunBail()
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned extract(s)", len(paths))) {
 		return true
 	}
 
+	removed := 0
 	for _, p := range paths {
-		pruneExtract(p, pkgsDir)
+		if err := pruneExtract(p, pkgsDir); err != nil {
+			printFail(cfg, "%s: %v", p, err)
+			continue
+		}
+		removed++
 	}
-	printPass(cfg, "removed %d orphaned extract(s)", len(paths))
+	if removed > 0 {
+		printPass(cfg, "removed %d orphaned extract(s)", removed)
+	}
 	return true
 }
 
@@ -472,19 +490,20 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	printTable([]string{"package", "version", "file"}, dlRows, nil)
 
 	if dryRun {
-		sep()
-		print(msgDryRun)
-		return true
+		return dryRunBail()
 	}
 
 	if !promptConfirm(fmt.Sprintf("remove %d orphaned download(s)", len(toRemove))) {
 		return true
 	}
 
+	removed := 0
 	for _, p := range toRemove {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 			printFail(cfg, "%s: %v", p, err)
+			continue
 		}
+		removed++
 	}
 	var dirs []string
 	_ = filepath.WalkDir(releaseDir, func(path string, d os.DirEntry, err error) error {
@@ -500,6 +519,8 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 			_ = os.Remove(dir)
 		}
 	}
-	printPass(cfg, "removed %d orphaned download(s)", len(toRemove))
+	if removed > 0 {
+		printPass(cfg, "removed %d orphaned download(s)", removed)
+	}
 	return true
 }

@@ -30,6 +30,22 @@ type graphQLResponse struct {
 	} `json:"errors"`
 }
 
+// errorMessages joins the response's top-level GraphQL errors, if any. `gh api
+// graphql` exits 0 for a request that reached the server successfully even
+// when individual aliased queries in the batch failed (e.g. a renamed/deleted
+// repo, a scope issue, or a rate-limit message from the API itself) — those
+// failures show up here, not as a runCmd error, and are otherwise silently
+// available-but-unread on the parsed response.
+func (resp graphQLResponse) errorMessages() string {
+	msgs := make([]string, 0, len(resp.Errors))
+	for _, e := range resp.Errors {
+		if e.Message != "" {
+			msgs = append(msgs, e.Message)
+		}
+	}
+	return strings.Join(msgs, "; ")
+}
+
 type releaseField struct {
 	LatestRelease *struct {
 		TagName string `json:"tagName"`
@@ -113,7 +129,11 @@ func executeBatch(ctx context.Context, items []BatchItem, cacheTTL string) []Bat
 		alias := aliases[i]
 		raw, ok := resp.Data[alias]
 		if !ok {
-			results[i] = BatchResult{Key: item.Key, Err: fmt.Errorf("no data for %s in batch response", item.Key)}
+			if msg := resp.errorMessages(); msg != "" {
+				results[i] = BatchResult{Key: item.Key, Err: fmt.Errorf("%s", msg)}
+			} else {
+				results[i] = BatchResult{Key: item.Key, Err: fmt.Errorf("no data for %s in batch response", item.Key)}
+			}
 			continue
 		}
 		var rf releaseField

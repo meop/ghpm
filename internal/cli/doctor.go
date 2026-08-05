@@ -14,6 +14,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 func newDoctorCmd() *cobra.Command {
@@ -49,6 +50,10 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		warnLabel = fn("WARN")
 	}
 
+	// pass respects -q (it's just a confirmation nothing's wrong); fail and
+	// warn always print, since -q's job is to suppress chatter, not the
+	// problems a diagnostic command exists to surface. Both route through
+	// ui.Out directly rather than print() so they're unaffected by quiet.
 	line := func(status, label, detail string) {
 		if detail != "" {
 			print("  [%s] %s — %s", status, label, detail)
@@ -56,12 +61,19 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 			print("  [%s] %s", status, label)
 		}
 	}
+	alwaysLine := func(status, label, detail string) {
+		if detail != "" {
+			ui.Out("  [%s] %s — %s", status, label, detail)
+		} else {
+			ui.Out("  [%s] %s", status, label)
+		}
+	}
 	pass := func(label, detail string) { line(passLabel, label, detail) }
-	fail := func(label, detail string) { line(failLabel, label, detail) }
-	warn := func(label, detail string) { line(warnLabel, label, detail) }
+	fail := func(label, detail string) { alwaysLine(failLabel, label, detail) }
+	warn := func(label, detail string) { alwaysLine(warnLabel, label, detail) }
 
-	fmt.Println("ghpm doctor")
-	fmt.Println(strings.Repeat("─", 50))
+	print("ghpm doctor")
+	print("%s", strings.Repeat("─", 50))
 
 	if err := config.CheckLock(); err != nil {
 		warn("lock", err.Error())

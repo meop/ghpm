@@ -3,6 +3,7 @@ package asset
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -43,9 +44,16 @@ var extPrefs = map[string][]string{
 	"windows": append(extValues[len(extValues)-1:], extValues[:len(extValues)-1]...),
 }
 
+// srcArchivePattern matches "src"/"source" as a whole word, not a substring —
+// a plain strings.Contains would also flag "resources" (which contains
+// "source") and drop the only compatible asset in a release that happens to
+// ship one. \b treats [0-9A-Za-z_] as word characters, so "-src.", "_source_",
+// and ".src." all match while "resources" and "abstraction" do not.
+var srcArchivePattern = regexp.MustCompile(`\b(src|source)\b`)
+
 func isSkipped(name string) bool {
 	lower := strings.ToLower(name)
-	if strings.Contains(lower, "src") || strings.Contains(lower, "source") {
+	if srcArchivePattern.MatchString(lower) {
 		return true
 	}
 	for _, suf := range extValues {

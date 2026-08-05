@@ -66,8 +66,6 @@ type Release struct {
 	Assets       []Asset `json:"assets"`
 }
 
-func BinPath() (string, error) { return ghbin.Find() }
-
 func CheckInstalled() error {
 	_, err := ghbin.Find()
 	return err

@@ -172,3 +172,72 @@ func TestExtractPackage_ZipSlipRejected(t *testing.T) {
 		t.Fatal("expected path traversal error")
 	}
 }
+
+// writeTarGzSymlink creates srcDir/name as a .tar.gz holding a single symlink
+// entry named linkName pointing at target.
+func writeTarGzSymlink(t *testing.T, srcDir, name, linkName, target string) {
+	t.Helper()
+	f, err := os.Create(filepath.Join(srcDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+	if err := tw.WriteHeader(&tar.Header{Name: linkName, Typeflag: tar.TypeSymlink, Linkname: target, Mode: 0777}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []io.Closer{tw, gw, f} {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestExtractPackage_TarSymlinkAbsoluteTargetRejected is the regression test
+// for a real gap: safeJoin only validated a symlink entry's own path, never
+// where it points. An absolute Linkname let a crafted tarball plant a symlink
+// pointing anywhere on disk (e.g. the user's ~/.bashrc); anything that later
+// wrote through that symlink name would land outside the extract dir entirely.
+func TestExtractPackage_TarSymlinkAbsoluteTargetRejected(t *testing.T) {
+	dest := t.TempDir()
+	writeTarGzSymlink(t, dest, "evil.tar.gz", "evil-link", filepath.Join(dest, "outside-target"))
+
+	err := ExtractPackage(dest, "evil.tar.gz", filepath.Join(dest, "out"))
+	if err == nil {
+		t.Fatal("expected symlink target to be rejected as absolute")
+	}
+}
+
+// TestExtractPackage_TarSymlinkRelativeEscapeRejected covers the relative-path
+// variant: a Linkname using ".." to climb out of the extract dir even though
+// the symlink's own name is safely inside it.
+func TestExtractPackage_TarSymlinkRelativeEscapeRejected(t *testing.T) {
+	dest := t.TempDir()
+	writeTarGzSymlink(t, dest, "evil.tar.gz", "sub/evil-link", "../../../escaped")
+
+	err := ExtractPackage(dest, "evil.tar.gz", filepath.Join(dest, "out"))
+	if err == nil {
+		t.Fatal("expected symlink target to be rejected as an escape")
+	}
+}
+
+// TestExtractPackage_TarSymlinkWithinDirAllowed confirms the fix isn't
+// over-broad: a normal relative symlink that stays inside the extract dir
+// (e.g. "libfoo.so -> libfoo.so.1", a common pattern in release tarballs)
+// still extracts successfully.
+func TestExtractPackage_TarSymlinkWithinDirAllowed(t *testing.T) {
+	dest := t.TempDir()
+	out := filepath.Join(dest, "out")
+	writeTarGzSymlink(t, dest, "ok.tar.gz", "lib/libfoo.so", "libfoo.so.1")
+
+	if err := ExtractPackage(dest, "ok.tar.gz", out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, err := os.Readlink(filepath.Join(out, "lib", "libfoo.so"))
+	if err != nil {
+		t.Fatalf("readlink: %v", err)
+	}
+	if got != "libfoo.so.1" {
+		t.Errorf("symlink target = %q, want %q", got, "libfoo.so.1")
+	}
+}
