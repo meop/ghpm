@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## After every code change
 

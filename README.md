@@ -147,4 +147,4 @@ If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a rep
 
 ## License
 
-[MIT](LICENSE.txt)
+[MIT](LICENSE)
