@@ -44,6 +44,8 @@ func printTable(headers []string, rows [][]string, colColors []func(string) stri
 func gate(headers []string, rows [][]string, colColors []func(string) string, confirmMsg string) bool {
 	printTable(headers, rows, colColors)
 	if dryRun {
+		sep()
+		print(msgDryRun)
 		return false
 	}
 	return promptConfirm(confirmMsg)

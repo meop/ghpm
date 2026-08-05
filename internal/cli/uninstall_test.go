@@ -144,6 +144,9 @@ func TestRunRemove_DryRunShowsGateTable(t *testing.T) {
 	if strings.Contains(out, "uninstalled") {
 		t.Errorf("dry-run should bail before doing or reporting any work:\n%s", out)
 	}
+	if !strings.Contains(out, msgDryRun) {
+		t.Errorf("expected the dry-run closing message so a bare table isn't mistaken for a hang, got:\n%s", out)
+	}
 
 	m, err := config.LoadManifest()
 	if err != nil {

@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 func withHome(t *testing.T) string {
@@ -157,6 +160,51 @@ func TestCleanBrokenInstalls_PartialShim_TrimsOne(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(pkgsDir, "uv", "0.7.0")); err != nil {
 		t.Error("extract dir was removed but should have been kept")
+	}
+}
+
+// TestCleanBrokenInstalls_DryRun_PrintsMessage locks in the fix for a dry run
+// that showed a preview table and then went silent, with no way to tell that
+// apart from a hang. Every tidy dry-run bail now prints msgDryRun.
+func TestCleanBrokenInstalls_DryRun_PrintsMessage(t *testing.T) {
+	withHome(t)
+	dryRun = true
+	defer func() { dryRun = false }()
+
+	pkgsDir, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir, err := store.ReleaseBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := &config.Manifest{
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0", Assets: []string{"fzf.tar.gz"}, Bin: map[string]string{"fzf": "fzf"}}},
+	}
+
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+	if cleaned := cleanBrokenInstalls(nil, manifest, downloadDir); !cleaned {
+		t.Fatal("expected the broken install to be reported")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, msgDryRun) {
+		t.Errorf("expected the dry-run closing message, got:\n%s", out)
+	}
+	if _, ok := manifest.Extracts["fzf"]; !ok {
+		t.Error("dry-run should not actually remove the manifest entry")
+	}
+	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.58.0")); err != nil {
+		t.Error("dry-run should not actually remove the extract dir")
 	}
 }
 

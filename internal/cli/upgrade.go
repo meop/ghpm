@@ -126,6 +126,7 @@ func installUpgradeItems(ctx context.Context, cfg *config.Settings, items []upgr
 	if successCount > 0 {
 		printPass(cfg, "upgraded %d component(s)", successCount)
 	}
+	sep()
 	return hadErrors
 }
 

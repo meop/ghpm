@@ -178,6 +178,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 			successCount++
 		}
 	}
+	sep()
 	if successCount > 0 {
 		printPass(cfg, "downloaded %d asset(s)", successCount)
 	}

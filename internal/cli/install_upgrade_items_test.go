@@ -93,6 +93,45 @@ func TestInstallUpgradeItems_PartialFailure(t *testing.T) {
 	}
 }
 
+// TestInstallUpgradeItems_TrailingSep locks in the same blank-line rule as
+// downloadAllAssets: a block of per-item install output must not run tight
+// into whatever the caller prints next, but must also not leave a trailing
+// blank when it is genuinely the last output.
+func TestInstallUpgradeItems_TrailingSep(t *testing.T) {
+	t.Run("more output follows", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		items := []upgradeItem{{name: "a", install: func() error { return nil }}}
+		if hadErrors := installUpgradeItems(context.Background(), &config.Settings{NumParallel: 5}, items); hadErrors {
+			t.Fatal("expected no errors")
+		}
+		print("next section")
+
+		want := "✓ upgraded 1 component(s)\n\nnext section\n"
+		if got := buf.String(); got != want {
+			t.Errorf("got %q, want %q (blank line before the next section)", got, want)
+		}
+	})
+
+	t.Run("nothing follows, no trailing blank", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		items := []upgradeItem{{name: "a", install: func() error { return nil }}}
+		if hadErrors := installUpgradeItems(context.Background(), &config.Settings{NumParallel: 5}, items); hadErrors {
+			t.Fatal("expected no errors")
+		}
+
+		want := "✓ upgraded 1 component(s)\n"
+		if got := buf.String(); got != want {
+			t.Errorf("got %q, want %q (no trailing blank)", got, want)
+		}
+	})
+}
+
 func TestInstallUpgradeItems_AllFail_NoSummaryLine(t *testing.T) {
 	var buf bytes.Buffer
 	ui.SetOutput(&buf)

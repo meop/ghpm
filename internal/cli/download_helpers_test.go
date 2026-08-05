@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 // fakeGHClient implements gh.Client in-process, so downloadAllAssets can be
@@ -75,8 +77,10 @@ func TestDownloadAllAssets_SkipsAlreadyCached(t *testing.T) {
 	downloads := []assetDownload{
 		{pkgIdx: 0, owner: "o", repo: "r", tagName: "v1", cacheDir: dir, displayName: "pkg", asset: gh.Asset{Name: "cached.tar.gz"}},
 	}
-	quiet = true
-	defer func() { quiet = false }()
+
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
 
 	errs := downloadAllAssets(context.Background(), client, downloads, 5)
 	if len(errs) != 0 {
@@ -85,6 +89,86 @@ func TestDownloadAllAssets_SkipsAlreadyCached(t *testing.T) {
 	if len(client.downloaded) != 0 {
 		t.Errorf("expected the already-cached asset to be skipped, but DownloadAsset was called: %v", client.downloaded)
 	}
+
+	out := buf.String()
+	if !strings.Contains(out, "pkg: found [cached.tar.gz]") {
+		t.Errorf("expected a cached-asset report line, got output:\n%s", out)
+	}
+	if strings.Contains(out, "downloading") {
+		t.Errorf("a cached asset must not also print a downloading line, got:\n%s", out)
+	}
+}
+
+// TestDownloadAllAssets_TrailingSepBeforeNextOutput is the regression test for
+// the reported spacing bug: the download block ran tight into whatever the
+// caller printed next (e.g. "found bin" report lines or a summary line), with
+// no blank line between the two sections. downloadAllAssets must request a
+// blank line (via sep/ui.Break) after it finishes, so the next real print gets
+// separated — but only when something actually follows, never as a trailing
+// blank if the download block turns out to be the last output.
+func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
+	t.Run("real download, then more output", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		client := &fakeGHClient{}
+		downloads := []assetDownload{
+			{pkgIdx: 0, owner: "o", repo: "r", tagName: "v1", cacheDir: t.TempDir(), displayName: "pkg", asset: gh.Asset{Name: "a1"}},
+		}
+		if errs := downloadAllAssets(context.Background(), client, downloads, 5); len(errs) != 0 {
+			t.Fatalf("expected no errors, got %v", errs)
+		}
+		print("next section")
+
+		want := "pkg: downloading [a1]...\n\nnext section\n"
+		if got := buf.String(); got != want {
+			t.Errorf("got %q, want %q (blank line between the download block and the next section)", got, want)
+		}
+	})
+
+	t.Run("cached-only, then more output", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "cached.tar.gz"), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		client := &fakeGHClient{}
+		downloads := []assetDownload{
+			{pkgIdx: 0, owner: "o", repo: "r", tagName: "v1", cacheDir: dir, displayName: "pkg", asset: gh.Asset{Name: "cached.tar.gz"}},
+		}
+		if errs := downloadAllAssets(context.Background(), client, downloads, 5); len(errs) != 0 {
+			t.Fatalf("expected no errors, got %v", errs)
+		}
+		print("next section")
+
+		want := "pkg: found [cached.tar.gz]\n\nnext section\n"
+		if got := buf.String(); got != want {
+			t.Errorf("got %q, want %q (blank line between the cached report and the next section)", got, want)
+		}
+	})
+
+	t.Run("nothing follows, no trailing blank", func(t *testing.T) {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		client := &fakeGHClient{}
+		downloads := []assetDownload{
+			{pkgIdx: 0, owner: "o", repo: "r", tagName: "v1", cacheDir: t.TempDir(), displayName: "pkg", asset: gh.Asset{Name: "a1"}},
+		}
+		if errs := downloadAllAssets(context.Background(), client, downloads, 5); len(errs) != 0 {
+			t.Fatalf("expected no errors, got %v", errs)
+		}
+
+		want := "pkg: downloading [a1]...\n"
+		if got := buf.String(); got != want {
+			t.Errorf("got %q, want %q (no trailing blank when the download block is the last output)", got, want)
+		}
+	})
 }
 
 func TestDownloadAllAssets_ErrorsMapToOwningPackage(t *testing.T) {

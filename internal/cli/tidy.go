@@ -164,6 +164,8 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 	printTable([]string{"name", "issue"}, rows, nil)
 
 	if dryRun {
+		sep()
+		print(msgDryRun)
 		return true
 	}
 
@@ -272,6 +274,8 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 	printTable([]string{"package", "font"}, fontRows, nil)
 
 	if dryRun {
+		sep()
+		print(msgDryRun)
 		return true
 	}
 
@@ -352,6 +356,8 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	printTable([]string{"name"}, binRows, nil)
 
 	if dryRun {
+		sep()
+		print(msgDryRun)
 		return true
 	}
 
@@ -408,6 +414,8 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 	printTable([]string{"name", "version"}, extRows, nil)
 
 	if dryRun {
+		sep()
+		print(msgDryRun)
 		return true
 	}
 
@@ -464,6 +472,8 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	printTable([]string{"package", "version", "file"}, dlRows, nil)
 
 	if dryRun {
+		sep()
+		print(msgDryRun)
 		return true
 	}
 

@@ -27,6 +27,11 @@ const msgAllUpToDate = "all packages are up to date"
 
 const msgAllComponentsUpToDate = "all components are up to date"
 
+// msgDryRun is printed at every dry-run bail point (gate's preview table, and
+// tidy's per-category previews) so the run doesn't just show a table and then
+// go quiet — nothing distinguished that from a hang or an already-current state.
+const msgDryRun = "dry run, no changes made"
+
 // msgNoMatch is shown when a name filter was given but matched nothing installed,
 // to distinguish it from an empty install set ("no packages installed").
 const msgNoMatch = "no packages matched"
@@ -376,11 +381,15 @@ func downloadAsset(ctx context.Context, ghClient gh.Client, owner, repo, tagName
 // 5 packages x 3 assets each briefly running 15-wide). Results are keyed by
 // pkgIdx; a package with any failed asset gets one representative error (the
 // first, by the input order downloads was built in — parallel.Run preserves
-// input order in its results).
+// input order in its results). Already-cached assets print a "found" line
+// instead of being silently skipped. A trailing sep() requests a blank line
+// before whatever the caller prints next, so the download block reads as its
+// own section rather than running into the next one.
 func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []assetDownload, numParallel int) map[int]error {
 	tasks := make([]parallel.Task[int], 0, len(downloads))
 	for _, d := range downloads {
 		if _, err := os.Stat(filepath.Join(d.cacheDir, d.asset.Name)); !os.IsNotExist(err) {
+			print("%s: found [%s]", d.displayName, d.asset.Name)
 			continue
 		}
 		tasks = append(tasks, parallel.Task[int]{
@@ -398,6 +407,7 @@ func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []asse
 			}
 		}
 	}
+	sep()
 	return errs
 }
 
