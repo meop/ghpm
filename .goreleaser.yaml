@@ -31,7 +31,7 @@ archives:
       - LICENSE
 
 checksum:
-  name_template: 'SHASUMS256.txt'
+  name_template: 'sha256sums.txt'
 
 signs:
   - artifacts: checksum
