@@ -11,6 +11,13 @@ gofmt -w .
 golangci-lint run ./...
 ```
 
+Tests that access ghpm state must call the package's `withHome(t)` helper.
+That helper sets `GHPM_TEST_HOME` and the platform home variables to a fresh
+temporary directory. The store package deliberately refuses to resolve the
+real user home from a Go test binary when `GHPM_TEST_HOME` is absent. Never
+weaken or bypass this guard; filesystem and tidy tests can delete installed
+tools, manifests, cached assets, or user fonts if they reach a real profile.
+
 ## Keeping this file current
 
 Update this file whenever you make changes in these categories — do not wait to be asked:

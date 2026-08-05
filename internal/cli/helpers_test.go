@@ -41,7 +41,7 @@ func fakeGHBin(t *testing.T, script string) {
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	t.Setenv("PATH", dir)
 }
 
 func TestReservedShimNames_ExcludesOwner(t *testing.T) {

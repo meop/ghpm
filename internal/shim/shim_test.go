@@ -11,7 +11,10 @@ import (
 func withHome(t *testing.T) string {
 	t.Helper()
 	tmp := t.TempDir()
+	t.Setenv("GHPM_TEST_HOME", tmp)
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("LOCALAPPDATA", filepath.Join(tmp, "AppData", "Local"))
 	return tmp
 }
 
