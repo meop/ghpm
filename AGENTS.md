@@ -46,7 +46,7 @@ GOOS=windows GOARCH=amd64 go build -o ghpm-windows-amd64.exe ./cmd/ghpm
 
 To cut a release: bump the version in `VERSION` and push to `main`.
 
-The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips the rest if `v<VERSION>` already exists) → Validate (fmt + lint + test) → Release, which creates a GPG-signed tag `v<VERSION>` and runs `goreleaser release --clean` to build and publish cross-platform binaries (linux/darwin/windows, amd64/arm64) to a public GitHub release. Requires `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` repository secrets. Never create the tag by hand — CI owns tagging, and pushing a `VERSION` bump is by itself enough to publish a real public release within about a minute.
+The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips the rest if `v<VERSION>` already exists) → Validate (fmt + lint + test) → Release, which creates a GPG-signed tag `v<VERSION>` and runs `goreleaser release --clean` to build and publish cross-platform binaries (linux/darwin/windows, amd64/arm64) to a public GitHub release. Each archive includes `LICENSE`; GoReleaser publishes `SHA256SUMS` and its detached GPG signature. Requires `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` repository secrets. Never create the tag by hand — CI owns tagging, and pushing a `VERSION` bump is by itself enough to publish a real public release within about a minute.
 
 ## Project structure
 
