@@ -62,9 +62,22 @@ jobs:
       - name: Test
         run: go test ./...
 
+  test-windows-safety:
+    name: Test Windows home isolation
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: Test store safety boundary
+        run: go test ./internal/store
+
   release:
     name: Release
-    needs: [ version, validate ]
+    needs: [ version, validate, test-windows-safety ]
     if: github.ref == 'refs/heads/main' && needs.version.outputs.changed == 'true'
     permissions:
       contents: write

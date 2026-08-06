@@ -16,7 +16,11 @@ func fakeGH(t *testing.T, script string) string {
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	path := dir
+	if filepath.Separator != '\\' {
+		path += string(os.PathListSeparator) + os.Getenv("PATH")
+	}
+	t.Setenv("PATH", path)
 	return dir
 }
 
@@ -89,6 +93,7 @@ func TestCheckInstalled_NotFound(t *testing.T) {
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
 	t.Setenv("HOME", empty)
+	t.Setenv("USERPROFILE", empty)
 
 	if err := CheckInstalled(); err == nil {
 		t.Error("expected error when gh not found")

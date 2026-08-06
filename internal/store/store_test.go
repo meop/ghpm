@@ -10,8 +10,18 @@ import (
 func withHome(t *testing.T) string {
 	t.Helper()
 	tmp := t.TempDir()
+	t.Setenv("GHPM_TEST_HOME", tmp)
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("LOCALAPPDATA", filepath.Join(tmp, "AppData", "Local"))
 	return tmp
+}
+
+func TestUserHomeDir_RefusesUnisolatedTestProcess(t *testing.T) {
+	t.Setenv("GHPM_TEST_HOME", "")
+	if _, err := UserHomeDir(); err == nil {
+		t.Fatal("expected test process without GHPM_TEST_HOME to be rejected")
+	}
 }
 
 func TestExtractsDir(t *testing.T) {

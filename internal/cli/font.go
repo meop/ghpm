@@ -4,33 +4,28 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/meop/ghpm/internal/store"
 )
 
 func userFontDir() (string, error) {
+	home, err := store.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
 		return filepath.Join(home, "Library", "Fonts"), nil
 	case "windows":
 		localAppData := os.Getenv("LOCALAPPDATA")
-		if localAppData == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
+		if localAppData == "" || store.UsingTestHome() {
 			localAppData = filepath.Join(home, "AppData", "Local")
 		}
 		return filepath.Join(localAppData, "Microsoft", "Windows", "Fonts"), nil
 	default:
 		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
 			return filepath.Join(xdg, "fonts"), nil
-		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
 		}
 		return filepath.Join(home, ".local", "share", "fonts"), nil
 	}
