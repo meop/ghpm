@@ -97,7 +97,7 @@ func rankBins(bins []BinCandidate, name string) (preferred, hidden []BinCandidat
 	stem := nameStem(name)
 	for _, b := range bins {
 		base := strings.ToLower(strings.TrimSuffix(b.BinName, ".exe"))
-		if stem != "" && strings.Contains(base, stem) {
+		if stem != "" && hasDelimitedSubstring(base, stem) {
 			preferred = append(preferred, b)
 		} else {
 			hidden = append(hidden, b)

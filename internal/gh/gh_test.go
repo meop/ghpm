@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/meop/ghpm/internal/config"
 )
 
 // fakeGH writes a fake `gh` script that prints JSON to stdout.
@@ -71,6 +73,122 @@ func TestGetLatestRelease_MockGH(t *testing.T) {
 	}
 	if rel.Assets[0].Name != "tool-linux-amd64.tar.gz" {
 		t.Errorf("unexpected asset name: %s", rel.Assets[0].Name)
+	}
+}
+
+func TestAlternateVTag(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"v1.2.3", "1.2.3"},
+		{"1.2.3", "v1.2.3"},
+		{"v", ""},
+		{"", "v"},
+	}
+	for _, c := range cases {
+		if got := alternateVTag(c.in); got != c.want {
+			t.Errorf("alternateVTag(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestGetReleaseByTag_FallsBackToAlternateVTag covers the retry: a tag
+// lookup that fails is retried once with the v-prefix toggled (bun tags
+// releases "v1.3.13"; some repos tag "1.3.13" instead, or vice versa).
+func TestGetReleaseByTag_FallsBackToAlternateVTag(t *testing.T) {
+	fakeGH(t, `
+		for a in "$@"; do
+			if [ "$a" = "v1.2.3" ]; then
+				echo '{"tagName":"v1.2.3","assets":[]}'
+				exit 0
+			fi
+		done
+		exit 1
+	`)
+
+	rel, err := GetReleaseByTag(context.Background(), "owner", "repo", "1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "v1.2.3" {
+		t.Errorf("expected tag v1.2.3, got %s", rel.TagName)
+	}
+}
+
+// TestGetReleaseByTag_BothAttemptsFail confirms both errors are surfaced
+// (not just the second attempt's) when neither tag spelling resolves.
+func TestGetReleaseByTag_BothAttemptsFail(t *testing.T) {
+	fakeGH(t, `echo "release not found" >&2 && exit 1`)
+
+	_, err := GetReleaseByTag(context.Background(), "owner", "repo", "1.2.3")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+// TestFindLatestMatching covers the version-selection logic: given several
+// releases, pick the highest one matching the constraint, then fetch that
+// release's full details.
+func TestFindLatestMatching(t *testing.T) {
+	fakeGH(t, `
+		case "$1 $2" in
+			"release list") echo '[{"tagName":"v2.1.0","isPrerelease":false},{"tagName":"v2.2.0","isPrerelease":true},{"tagName":"v1.9.0","isPrerelease":false}]' ;;
+			"release view") echo '{"tagName":"v2.1.0","assets":[]}' ;;
+		esac
+	`)
+
+	c, err := config.ParseConstraint("2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := FindLatestMatching(context.Background(), "owner", "repo", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "v2.1.0" {
+		t.Errorf("expected v2.1.0 (highest non-prerelease major-2 release), got %s", rel.TagName)
+	}
+}
+
+func TestFindLatestMatching_NoMatch(t *testing.T) {
+	fakeGH(t, `echo '[{"tagName":"v1.9.0","isPrerelease":false}]'`)
+
+	c, err := config.ParseConstraint("2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := FindLatestMatching(context.Background(), "owner", "repo", c); err == nil {
+		t.Fatal("expected no-match error")
+	}
+}
+
+func TestValidAssetName(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"tool-linux-amd64.tar.gz", true},
+		{"", false},
+		{".", false},
+		{"..", false},
+		{"../evil", false},
+		{"sub/evil", false},
+		{"/etc/passwd", false},
+	}
+	for _, c := range cases {
+		if got := validAssetName(c.name); got != c.want {
+			t.Errorf("validAssetName(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestGetLatestRelease_RejectsUnsafeAssetName guards the actual boundary:
+// every downstream filepath.Join using an asset name (cache path, extract
+// path) relies on this rejecting a crafted name before it ever gets that far.
+func TestGetLatestRelease_RejectsUnsafeAssetName(t *testing.T) {
+	fakeGH(t, `echo '{"tagName":"v1.2.3","assets":[{"name":"../evil","size":1,"url":"https://x.com/a"}]}'`)
+
+	_, err := GetLatestRelease(context.Background(), "owner", "repo")
+	if err == nil {
+		t.Fatal("expected error for unsafe asset name")
 	}
 }
 

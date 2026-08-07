@@ -197,6 +197,88 @@ func TestExtractTag_NoLatestRelease(t *testing.T) {
 // through to a generic "no data for %s" message. That not only threw away the
 // real reason but could hide a rate limit from gh.IsRateLimited's substring
 // check downstream, since the generic message never contains "rate limit".
+// TestExecuteBatch_InvalidSourceSkipped confirms one item with a malformed
+// Source doesn't take the whole batch down — it fails on its own, and other
+// items are still queried and resolved normally.
+func TestExecuteBatch_InvalidSourceSkipped(t *testing.T) {
+	fakeGH(t, `echo '{"data":{"r1":{"latestRelease":{"tagName":"v1.0.0"}}}}'`)
+
+	items := []BatchItem{
+		{Key: "bad", Source: "not-a-valid-source"},
+		{Key: "good", Source: "github.com/owner/repo"},
+	}
+	results := BatchLatestVersions(context.Background(), items, "")
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Err == nil {
+		t.Error("expected error for invalid source")
+	}
+	if results[1].Err != nil {
+		t.Errorf("expected no error for valid item, got %v", results[1].Err)
+	}
+	if results[1].LatestTag != "v1.0.0" {
+		t.Errorf("got tag %q, want v1.0.0", results[1].LatestTag)
+	}
+}
+
+// TestExecuteBatch_CommandFailure confirms a failure to run `gh` at all
+// (network error, gh not authenticated, ...) surfaces as every item's error,
+// not just a subset or a panic.
+func TestExecuteBatch_CommandFailure(t *testing.T) {
+	fakeGH(t, `echo "boom" >&2 && exit 1`)
+
+	items := []BatchItem{
+		{Key: "one", Source: "github.com/owner/repo1"},
+		{Key: "two", Source: "github.com/owner/repo2"},
+	}
+	results := BatchLatestVersions(context.Background(), items, "")
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	for i, r := range results {
+		if r.Err == nil {
+			t.Errorf("result[%d]: expected error, got nil", i)
+		}
+	}
+}
+
+// TestExecuteBatch_MalformedResponse confirms invalid JSON from `gh api
+// graphql` is reported per-item rather than panicking.
+func TestExecuteBatch_MalformedResponse(t *testing.T) {
+	fakeGH(t, `echo 'not json'`)
+
+	items := []BatchItem{{Key: "fzf", Source: "github.com/owner/repo"}}
+	results := BatchLatestVersions(context.Background(), items, "")
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err == nil {
+		t.Fatal("expected a parse error")
+	}
+}
+
+// TestExecuteBatch_MissingDataNoErrors covers the "no data for %s" fallback
+// specifically when the response has neither the expected alias nor any
+// top-level GraphQL errors to explain why (distinct from
+// TestBatchLatestVersions_SurfacesGraphQLError, which has errors to surface).
+func TestExecuteBatch_MissingDataNoErrors(t *testing.T) {
+	fakeGH(t, `echo '{"data":{}}'`)
+
+	items := []BatchItem{{Key: "fzf", Source: "github.com/owner/repo"}}
+	results := BatchLatestVersions(context.Background(), items, "")
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "no data for") {
+		t.Errorf("expected generic 'no data for' fallback, got: %v", results[0].Err)
+	}
+}
+
 func TestBatchLatestVersions_SurfacesGraphQLError(t *testing.T) {
 	fakeGH(t, `echo '{"data":{},"errors":[{"message":"Could not resolve to a Repository with the name owner/repo."}]}'`)
 

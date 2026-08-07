@@ -196,28 +196,23 @@ func extractTag(rf releaseField, pin config.Constraint) (string, error) {
 		return rf.LatestRelease.TagName, nil
 	}
 
-	var tags []string
+	bestTag := ""
+	consider := func(tag string) {
+		if isPrereleaseName(tag) || !pin.Matches(tag) {
+			return
+		}
+		if bestTag == "" || config.CompareVersions(tag, bestTag) > 0 {
+			bestTag = tag
+		}
+	}
 	if rf.VRefs != nil {
 		for _, n := range rf.VRefs.Nodes {
-			tags = append(tags, n.Name)
+			consider(n.Name)
 		}
 	}
 	if rf.NvRefs != nil {
 		for _, n := range rf.NvRefs.Nodes {
-			tags = append(tags, n.Name)
-		}
-	}
-
-	bestTag := ""
-	for _, tag := range tags {
-		if isPrereleaseName(tag) {
-			continue
-		}
-		if !pin.Matches(tag) {
-			continue
-		}
-		if bestTag == "" || config.CompareVersions(tag, bestTag) > 0 {
-			bestTag = tag
+			consider(n.Name)
 		}
 	}
 	if bestTag == "" {

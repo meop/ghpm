@@ -215,6 +215,18 @@ func TestSelectBins_PreferredShortList(t *testing.T) {
 	}
 }
 
+func TestRankBins_StemBoundary(t *testing.T) {
+	// stem "ast" (ast-grep) must not match "toast" — a plain strings.Contains
+	// would, since "toast" contains "ast" as a substring.
+	preferred, hidden := rankBins([]BinCandidate{{BinName: "ast"}, {BinName: "toast"}}, "ast-grep")
+	if len(preferred) != 1 || preferred[0].BinName != "ast" {
+		t.Errorf("expected [ast] preferred, got %v", preferred)
+	}
+	if len(hidden) != 1 || hidden[0].BinName != "toast" {
+		t.Errorf("expected [toast] hidden, got %v", hidden)
+	}
+}
+
 func TestSelectBins_ShowMoreRevealsHidden(t *testing.T) {
 	// Pick "show more" (index 3 = after the two preferred), then rpc-server (3) from the full list.
 	fakeStdin(t, "3\n3\n")

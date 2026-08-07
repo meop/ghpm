@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/meop/ghpm/internal/config"
@@ -66,6 +67,26 @@ type Release struct {
 	Assets       []Asset `json:"assets"`
 }
 
+// validAssetName reports whether name is a plain filename: no path
+// separators, not "." or "..". GitHub's API gives no such guarantee.
+func validAssetName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	return filepath.Base(name) == name
+}
+
+// sanitizeRelease rejects rel if any asset name is unsafe, rather than
+// silently dropping just that one asset.
+func sanitizeRelease(rel Release) (Release, error) {
+	for _, a := range rel.Assets {
+		if !validAssetName(a.Name) {
+			return Release{}, fmt.Errorf("release %s: unsafe asset name %q", rel.TagName, a.Name)
+		}
+	}
+	return rel, nil
+}
+
 func CheckInstalled() error {
 	_, err := ghbin.Find()
 	return err
@@ -107,7 +128,7 @@ func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) 
 	if err := json.Unmarshal(out, &rel); err != nil {
 		return Release{}, fmt.Errorf("parsing release: %w", err)
 	}
-	return rel, nil
+	return sanitizeRelease(rel)
 }
 
 func GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, error) {
@@ -172,7 +193,7 @@ func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, erro
 	if err := json.Unmarshal(out, &rel); err != nil {
 		return Release{}, fmt.Errorf("parsing release: %w", err)
 	}
-	return rel, nil
+	return sanitizeRelease(rel)
 }
 
 func alternateVTag(tag string) string {

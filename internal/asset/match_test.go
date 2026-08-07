@@ -19,40 +19,62 @@ func testCfg() *config.Settings {
 	}
 }
 
-func TestIsSkipped(t *testing.T) {
+func TestHasRecognizedExt(t *testing.T) {
 	cases := []struct {
-		name    string
-		skipped bool
+		name string
+		want bool
 	}{
-		{"fzf-0.56.0-linux_amd64.tar.gz", false},
-		{"tool-0.1.0-darwin-arm64.tgz", false},
-		{"tool-0.1.0-windows-amd64.zip", false},
-		{"tool-0.1.0-linux-amd64.tar.bz2", false},
-		{"tool-0.1.0-linux-amd64.tar.xz", false},
-		{"ghpm", true},
-		{"bun", true},
-		{"fzf-0.56.0-linux_amd64.tar.gz.sha256", true},
-		{"fzf-0.56.0-linux_amd64.tar.gz.sha256sum", true},
-		{"fzf-0.56.0-linux_amd64.tar.gz.sig", true},
-		{"fzf-0.56.0.deb", true},
-		{"fzf-source.tar.gz", true},
-		{"fzf-src.tar.gz", true},
-		{"fzf.rpm", true},
-		{"fzf.apk", true},
-		{"fzf.msi", true},
-		{"fzf.pkg", true},
-		{"checksums.txt", true},
-		// "resources" contains "source" as a substring but is not a source
-		// archive — a plain strings.Contains used to flag it incorrectly and
-		// could drop the only compatible asset in a release.
-		{"myapp-resources-linux-amd64.tar.gz", false},
-		{"myapp-abstraction-linux-amd64.tar.gz", false},
+		{"fzf-0.56.0-linux_amd64.tar.gz", true},
+		{"tool-0.1.0-darwin-arm64.tgz", true},
+		{"tool-0.1.0-windows-amd64.zip", true},
+		{"tool-0.1.0-linux-amd64.tar.bz2", true},
+		{"tool-linux-amd64.gz", true}, // bare compression, no tar
+		{"shfmt_v3.13.1_windows_amd64.exe", true},
+		// bare names with no extension at all — real shfmt/jq release shape
+		{"shfmt_v3.13.1_linux_amd64", false},
+		{"jq-linux-amd64", false},
+		// nothing ghpm knows how to unpack or run directly
+		{"tool-linux-amd64.tar.Z", false},  // legacy Unix compress: not decoded
+		{"tool-linux-amd64.tar.lz", false}, // lzip: not decoded
+		{"fzf-0.56.0-linux_amd64.tar.gz.sha256", false},
+		{"fzf-0.56.0.deb", false},
+		{"checksums.txt", false},
+		{"LICENSE", false},
+		{"README.md", false},
 	}
 	for _, c := range cases {
-		got := isSkipped(c.name)
-		if got != c.skipped {
-			t.Errorf("isSkipped(%q) = %v, want %v", c.name, got, c.skipped)
+		got := hasRecognizedExt(strings.ToLower(c.name))
+		if got != c.want {
+			t.Errorf("hasRecognizedExt(%q) = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// TestSelectAssetAuto_JunkLosesOnScoreAlone confirms nothing needs to
+// pre-filter checksums/docs/source-tarballs by name: a real binary already
+// out-scores them (pkgName + OS/arch + recognized-extension match), so they
+// never make it into the auto-selected or compatible/best set. A checksum
+// sidecar in particular would otherwise *tie* the real binary's score (same
+// pkgName, same OS/arch tokens) if hasRecognizedExt didn't exist — sidecars
+// don't end in a recognized extension, so they lose that point.
+func TestSelectAssetAuto_JunkLosesOnScoreAlone(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "fzf-0.56.0-linux_amd64.tar.gz", Size: 1_000_000},
+		{Name: "fzf-0.56.0-linux_amd64.tar.gz.sha256", Size: 89},
+		{Name: "fzf-0.56.0-darwin_amd64.tar.gz", Size: 1_000_000},
+		{Name: "fzf-source.tar.gz", Size: 500_000},
+		{Name: "checksums.txt", Size: 200},
+		{Name: "LICENSE", Size: 1_100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "fzf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "fzf-0.56.0-linux_amd64.tar.gz" {
+		t.Errorf("expected auto-select of the real binary, got Chosen=%q Compatible=%v", ac.Chosen.Name, ac.Compatible)
 	}
 }
 
@@ -89,6 +111,31 @@ func TestSelectAsset_PlatformMatch(t *testing.T) {
 	}
 }
 
+// An unrecognized-OS build (no distro alias) is still offered, just never
+// auto-picked, while a "win"-tagged one is excluded outright.
+func TestSelectAsset_ExcludesAbbreviatedOtherOS(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "tool-bin-win-cuda-x64.zip", Size: 100},
+		{Name: "tool-bin-someunlisteddistro-x64.tar.gz", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "" {
+		t.Fatalf("expected a prompt (no distro alias to auto-pick from), got silent choice %q", ac.Chosen.Name)
+	}
+	if len(ac.Compatible) != 1 || ac.Compatible[0].Name != "tool-bin-someunlisteddistro-x64.tar.gz" {
+		t.Errorf("expected only the non-Windows build offered, got compatible=%v", ac.Compatible)
+	}
+	if len(ac.Hidden) != 1 || ac.Hidden[0].Name != "tool-bin-win-cuda-x64.zip" {
+		t.Errorf("expected the win-tagged build hidden as Windows-only, got hidden=%v", ac.Hidden)
+	}
+}
+
 func TestTokenize(t *testing.T) {
 	cases := []struct {
 		input string
@@ -119,11 +166,32 @@ func TestContainsAnyOf(t *testing.T) {
 		{"golangci-lint-1.0-darwin-amd64.tar.gz", []string{"linux"}, false},
 		{"tool-macos-arm64.tar.gz", []string{"darwin", "macos"}, true},
 		{"tool-osx-arm64.tar.gz", []string{"darwin", "macos", "osx"}, true},
+		{"tool-mac-arm64.tar.gz", []string{"mac"}, true},
+		{"cmake-tool-linux-amd64.tar.gz", []string{"mac"}, false}, // "mac" must not match inside "cmake"
 		{"claude-win32_x64.zip", []string{"windows"}, false},
 		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"x86_64", "x64", "amd64"}, true},
 		{"tool-linux-aarch64.tar.gz", []string{"arm64", "aarch64"}, true},
 		{"bottom_x86_64-pc-windows-msvc.zip", []string{"x86_64", "x64", "amd64"}, true},
 		{"bottom_i686-pc-windows-msvc.zip", []string{"x86_64", "x64", "amd64"}, false},
+		// "win" must not match inside "darwin" — a plain strings.Contains would
+		// flag a macOS asset as Windows-compatible.
+		{"tool-darwin-arm64.tar.gz", []string{"win"}, false},
+		// llama.cpp names its Windows builds "win", not "windows".
+		{"llama-b1-bin-win-cuda-12.4-x64.zip", []string{"win"}, true},
+		// A digit ends the match segment just like '-'/'_'/'.' do, so "win"
+		// matches inside "win32"/"win64" too — claude-code's Windows assets are
+		// literally named "win32" (both x64 and arm64; it's Node/Electron's
+		// platform label, not a 32-bit marker) and there's no need to list every
+		// numbered variant as its own alias.
+		{"claude-win32_x64.zip", []string{"win"}, true},
+		{"tool-bin-win64-cuda.zip", []string{"win"}, true},
+		// "lin" must not match inside "kotlin"/"berlin" — only a delimiter or
+		// digit ends the run of letters, so a longer word containing "lin" is
+		// safe by the same rule that protects "darwin" from "win".
+		{"tool-kotlin-plugin-amd64.tar.gz", []string{"lin"}, false},
+		// llama.cpp names its Linux builds "ubuntu", which ghpm has no alias
+		// for — osNames intentionally doesn't enumerate distros.
+		{"llama-b1-bin-ubuntu-x64.tar.gz", []string{"linux", "lin"}, false},
 	}
 	for _, c := range cases {
 		got := containsAnyOf(strings.ToLower(c.name), c.prefixes)
@@ -248,6 +316,29 @@ func TestMatchByHint_BunVPrefix(t *testing.T) {
 	}
 }
 
+func TestWeightedMatchScore(t *testing.T) {
+	prefixes := []string{"darwin", "macos", "mac", "osx"} // index 0 worth 4, ... index 3 worth 1
+	cases := []struct {
+		name string
+		want int
+	}{
+		{"tool-darwin-arm64.tar.gz", 4},
+		{"tool-macos-arm64.tar.gz", 3},
+		{"tool-osx-arm64.tar.gz", 1},
+		{"tool-generic-arm64.tar.gz", 0},
+		// redundant aliases each add their own weight, rewarding a name that
+		// signals the platform more than once over one with a single hint
+		{"tool-darwin-macos-arm64.tar.gz", 7}, // darwin(4) + macos(3)
+		{"tool-mac-mac-arm64.tar.gz", 4},      // two "mac" hits, 2 * weight(2)
+	}
+	for _, c := range cases {
+		got := weightedMatchScore(strings.ToLower(c.name), prefixes)
+		if got != c.want {
+			t.Errorf("weightedMatchScore(%q, %v) = %d, want %d", c.name, prefixes, got, c.want)
+		}
+	}
+}
+
 func TestScoreAsset_HasNegative(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("platform-specific test")
@@ -271,6 +362,29 @@ func TestScoreAsset_HasNegative(t *testing.T) {
 	}
 }
 
+// covers hosts osNames/archNames has no entry for (e.g. freebsd, 386)
+func TestMatchPlatformSignal_UnlistedHost(t *testing.T) {
+	cases := []struct {
+		name      string
+		hostKey   string
+		names     map[string][]string
+		wantScore int
+		wantNeg   bool
+	}{
+		{"tool-freebsd-amd64.tar.gz", "freebsd", osNames, 1, false}, // no known-OS token: match by elimination
+		{"tool-linux-amd64.tar.gz", "freebsd", osNames, 0, true},    // claims a different known OS: excluded
+		{"tool-386.tar.gz", "386", archNames, 1, false},
+		{"tool-arm64.tar.gz", "386", archNames, 0, true},
+	}
+	for _, c := range cases {
+		score, neg := matchPlatformSignal(strings.ToLower(c.name), c.hostKey, c.names)
+		if score != c.wantScore || neg != c.wantNeg {
+			t.Errorf("matchPlatformSignal(%q, %q) = (%v, %v), want (%v, %v)",
+				c.name, c.hostKey, score, neg, c.wantScore, c.wantNeg)
+		}
+	}
+}
+
 func TestSelectAssetAuto_SingleCompatible(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("platform-specific test")
@@ -289,13 +403,63 @@ func TestSelectAssetAuto_SingleCompatible(t *testing.T) {
 	}
 }
 
-func TestSelectAssetAuto_MultipleCompatible(t *testing.T) {
+// TestSelectAssetAuto_BareBinaries covers shfmt's real release shape: no
+// archives at all, just a bare per-platform binary (with .exe on Windows).
+func TestSelectAssetAuto_BareBinaries(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "shfmt_v3.13.1_darwin_amd64", Size: 100},
+		{Name: "shfmt_v3.13.1_darwin_arm64", Size: 100},
+		{Name: "shfmt_v3.13.1_linux_386", Size: 100},
+		{Name: "shfmt_v3.13.1_linux_amd64", Size: 100},
+		{Name: "shfmt_v3.13.1_linux_arm", Size: 100},
+		{Name: "shfmt_v3.13.1_linux_arm64", Size: 100},
+		{Name: "shfmt_v3.13.1_windows_386.exe", Size: 100},
+		{Name: "shfmt_v3.13.1_windows_amd64.exe", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "shfmt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "shfmt_v3.13.1_linux_amd64" {
+		t.Errorf("expected auto-select, got Chosen=%q Compatible=%v", ac.Chosen.Name, ac.Compatible)
+	}
+}
+
+// TestSelectAssetAuto_PrefersCanonicalAlias covers osNames/archNames'
+// positional weighting: "amd64" (index 0 of archNames["amd64"]) outscores
+// the "x64" alias (index 2), so what used to be a forced tie between two
+// equally-valid spellings of the same arch now auto-selects the canonical
+// one instead of asking the user to pick between indistinguishable options.
+func TestSelectAssetAuto_PrefersCanonicalAlias(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("platform-specific test")
 	}
 	assets := []gh.Asset{
 		{Name: "tool-linux-x64.tar.gz", Size: 100},
 		{Name: "tool-linux-amd64.tar.gz", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "tool-linux-amd64.tar.gz" {
+		t.Errorf("expected auto-select of the canonical alias, got Chosen=%q Compatible=%v", ac.Chosen.Name, ac.Compatible)
+	}
+}
+
+func TestSelectAssetAuto_MultipleCompatible(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	// "-a"/"-b" are genuinely arbitrary — nothing in scoreAsset or
+	// secondaryScore weighs them, so these two truly tie and must prompt,
+	// unlike a canonical-vs-alias pair (see PrefersCanonicalAlias above).
+	assets := []gh.Asset{
+		{Name: "tool-linux-amd64-a.tar.gz", Size: 100},
+		{Name: "tool-linux-amd64-b.tar.gz", Size: 100},
 		{Name: "tool-darwin-amd64.tar.gz", Size: 100},
 	}
 	ac, err := SelectAssetAuto(assets, testCfg(), "", "tool")
@@ -600,14 +764,18 @@ func TestSecondaryScore_Linux(t *testing.T) {
 		name string
 		want int
 	}{
-		{"tool-linux-gnu-amd64.tar.gz", 7},  // gnu(+2) + tar.gz(+5)
-		{"tool-linux-musl-amd64.tar.gz", 6}, // musl(+1) + tar.gz(+5)
-		{"tool-linux-amd64.tar.gz", 5},      // tar.gz(+5)
-		{"tool-linux-amd64.tgz", 4},         // tgz(+4)
-		{"tool-linux-amd64.tar.bz2", 3},     // tar.bz2(+3)
-		{"tool-linux-amd64.tar.xz", 2},      // tar.xz(+2)
-		{"tool-linux-gnu-amd64.zip", 3},     // gnu(+2) + zip(+1)
-		{"tool-linux-amd64.zip", 1},         // zip(+1)
+		{"tool-linux-gnu-amd64.tar.gz", 17},  // gnu(+2) + tar.gz(+15)
+		{"tool-linux-musl-amd64.tar.gz", 16}, // musl(+1) + tar.gz(+15)
+		{"tool-linux-amd64.tar.gz", 15},      // tar.gz(+15)
+		{"tool-linux-amd64.tgz", 14},         // tgz(+14)
+		{"tool-linux-amd64.tar.bz2", 6},      // tar.bz2(+6) — grouped with the bz2 family, near the end
+		{"tool-linux-amd64.tar.xz", 12},      // tar.xz(+12)
+		{"tool-linux-amd64.gz", 13},          // bare gz(+13) — grouped right after tar.gz/tgz
+		{"tool-linux-gnu-amd64.zip", 3},      // gnu(+2) + zip(+1)
+		{"tool-linux-amd64.zip", 1},          // zip(+1)
+		// "magnum" contains "gnu" as a substring but not as a delimited segment
+		// ('a' before, 'm' after both block it) — must not earn the gnu bonus.
+		{"tool-magnum-amd64.tar.gz", 15}, // tar.gz(+15) only
 	}
 	for _, c := range cases {
 		if got := secondaryScore(c.name); got != c.want {
@@ -624,13 +792,18 @@ func TestSecondaryScore_Windows(t *testing.T) {
 		name string
 		want int
 	}{
-		{"bottom_x86_64-pc-windows-msvc.zip", 7}, // msvc(+2) + zip(+5)
-		{"bottom_x86_64-pc-windows-gnu.zip", 6},  // gnu(+1) + zip(+5)
-		{"bottom_i686-pc-windows-msvc.zip", 7},   // msvc(+2) + zip(+5)
-		{"tool-windows-msvc.tar.gz", 6},          // msvc(+2) + tar.gz(+4)
-		{"tool-windows-gnu.tar.gz", 5},           // gnu(+1) + tar.gz(+4)
-		{"tool-windows-msvc.tar.xz", 3},          // msvc(+2) + tar.xz(+1)
-		{"tool-windows-amd64.zip", 5},            // zip(+5)
+		{"bottom_x86_64-pc-windows-msvc.zip", 17}, // msvc(+2) + zip(+15)
+		{"bottom_x86_64-pc-windows-gnu.zip", 16},  // gnu(+1) + zip(+15)
+		{"bottom_i686-pc-windows-msvc.zip", 17},   // msvc(+2) + zip(+15)
+		// windows' preference is unix's reversed, so tar.gz (unix's most
+		// preferred) is windows' *least* preferred — zip/7z are native there.
+		// secondaryScore picks by longest matching suffix, not list
+		// position, so this still correctly lands on "tar.gz" (+1) rather
+		// than the bare "gz" entry that reversal puts earlier in the list.
+		{"tool-windows-msvc.tar.gz", 3}, // msvc(+2) + tar.gz(+1)
+		{"tool-windows-gnu.tar.gz", 2},  // gnu(+1) + tar.gz(+1)
+		{"tool-windows-msvc.tar.xz", 8}, // msvc(+2) + tar.xz(+6)
+		{"tool-windows-amd64.zip", 15},  // zip(+15)
 	}
 	for _, c := range cases {
 		if got := secondaryScore(c.name); got != c.want {
