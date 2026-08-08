@@ -63,6 +63,35 @@ func TestRunList_NameFilter(t *testing.T) {
 	}
 }
 
+// TestRunList_ShowsAssetColumn guards the asset column landing between
+// repo and artifact: it's the release asset a package's bins/fonts came
+// from (config.PackageEntry.Assets), distinct from "artifact" (the bin/font's
+// own path within the extracted tree).
+func TestRunList_ShowsAssetColumn(t *testing.T) {
+	withHome(t)
+	writeSettings(t, &config.Settings{})
+	writeManifest(t, &config.Manifest{
+		Repos: map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{
+			"fzf": {Version: "0.58.0", Pin: "latest", Assets: []string{"fzf-0.58.0-linux_amd64.tar.gz"}, Bin: map[string]string{"fzf": "bin/fzf"}},
+		},
+	})
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+	if err := runList(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "asset") {
+		t.Errorf("expected an \"asset\" column header:\n%s", out)
+	}
+	if !strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") {
+		t.Errorf("expected the package's asset name in the table:\n%s", out)
+	}
+}
+
 func TestRunList_NoMatchVsEmpty(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})

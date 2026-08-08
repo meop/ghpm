@@ -3,6 +3,7 @@ package cli
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -118,11 +119,11 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 
 	var tableRows [][]string
 	for _, o := range outdated {
-		prefix := []string{o.key, o.installed, o.latest, o.pkg.Pin, o.source}
+		prefix := []string{o.key, o.installed, o.latest, o.pkg.Pin, o.source, strings.Join(o.pkg.Assets, ", ")}
 		tableRows = appendEntryRows(tableRows, prefix, o.pkg)
 	}
-	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil, nil}
-	printTable([]string{"name", "version", "update", "pin", "repo", "type", "artifact", "target"}, tableRows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil, nil, nil}
+	printTable([]string{"name", "version", "update", "pin", "repo", "asset", "artifact", "type", "target"}, tableRows, colors)
 
 	if hadErrors {
 		return errSilent
