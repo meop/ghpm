@@ -311,20 +311,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 					newBinDeclined = declined
 				}
 			}
-			if !pkgFailed && len(newBin) > 0 {
-				for shimName := range tr.r.pkg.Bin {
-					_ = shim.Remove(shimName)
-				}
-				for shimName, binKey := range newBin {
-					binDir, binName := parseBinPath(binKey)
-					if err := shim.Create(shimName, binName, tr.pkgDir, binDir); err != nil {
-						printFail(cfg, "%s: %s: could not update shim: %v", res.Name, shimName, err)
-						hadErrors = true
-						pkgFailed = true
-						if failReason == "" {
-							failReason = fmt.Sprintf("%s: could not update shim: %v", shimName, err)
-						}
-					}
+		}
+		// Sync shims to newBin whenever the package had or gains any bins — not
+		// just when len(tr.bins) > 0 above, since a release can drop every bin a
+		// package used to have (newBin then stays empty) and the old shims still
+		// need removing.
+		if !pkgFailed && (len(tr.r.pkg.Bin) > 0 || len(newBin) > 0) {
+			for _, e := range syncBinShims(tr.pkgDir, tr.r.pkg.Bin, newBin) {
+				printFail(cfg, "%s: %s: could not update shim: %v", res.Name, e.name, e.err)
+				hadErrors = true
+				pkgFailed = true
+				if failReason == "" {
+					failReason = fmt.Sprintf("%s: could not update shim: %v", e.name, e.err)
 				}
 			}
 		}
@@ -332,10 +330,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// Fonts follow the same carry-vs-reprompt rule against the full discovered
 		// font set.
 		if !pkgFailed && len(tr.fonts) > 0 {
-			prevFonts := tr.r.pkg.Font
 			pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
 			if prev := tr.r.pkg.DiscoveredFonts(); len(prev) > 0 && sameStringSet(fontKeys(tr.fonts), prev) {
-				newFont = maps.Clone(prevFonts)
+				newFont = maps.Clone(tr.r.pkg.Font)
 				newFontDeclined = slices.Clone(tr.r.pkg.FontDeclined)
 				for _, fontName := range sortedKeys(newFont) {
 					print("%s: font found [%s]", res.Name, fontName)
@@ -358,30 +355,26 @@ func runSync(cmd *cobra.Command, args []string) error {
 					newFontDeclined = declined
 				}
 			}
-			if !pkgFailed && len(newFont) > 0 {
-				fontsDir, err := ensureFontDir()
-				if err != nil {
-					printFail(cfg, "%s: font dir: %v", res.Name, err)
-					hadErrors = true
-					pkgFailed = true
-					if failReason == "" {
-						failReason = fmt.Sprintf("font dir: %v", err)
-					}
-				} else {
-					for fontName, fontPath := range newFont {
-						srcPath := filepath.Join(tr.pkgDir, filepath.FromSlash(fontPath))
-						if err := installFont(srcPath, fontsDir); err != nil {
-							printFail(cfg, "%s: %s: could not install font: %v", res.Name, fontName, err)
-							hadErrors = true
-							pkgFailed = true
-							if failReason == "" {
-								failReason = fmt.Sprintf("%s: could not install font: %v", fontName, err)
-							}
-						}
-					}
-					for _, fontPath := range staleFontPaths(prevFonts, sortedValues(newFont)) {
-						uninstallFont(fontPath, fontsDir)
-					}
+		}
+		// Sync installed fonts to newFont whenever the package had or gains any
+		// fonts — mirrors the bin handling above: a release can drop every font a
+		// package used to have, and the old ones still need uninstalling.
+		if !pkgFailed && (len(tr.r.pkg.Font) > 0 || len(newFont) > 0) {
+			fontErrs, err := syncPkgFonts(tr.pkgDir, tr.r.pkg.Font, newFont)
+			if err != nil {
+				printFail(cfg, "%s: font dir: %v", res.Name, err)
+				hadErrors = true
+				pkgFailed = true
+				if failReason == "" {
+					failReason = fmt.Sprintf("font dir: %v", err)
+				}
+			}
+			for _, e := range fontErrs {
+				printFail(cfg, "%s: %s: could not install font: %v", res.Name, e.name, e.err)
+				hadErrors = true
+				pkgFailed = true
+				if failReason == "" {
+					failReason = fmt.Sprintf("%s: could not install font: %v", e.name, e.err)
 				}
 			}
 		}
@@ -426,6 +419,62 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 	return nil
+}
+
+// shimSyncErr is one shim-create failure from syncBinShims, naming the shim
+// that failed.
+type shimSyncErr struct {
+	name string
+	err  error
+}
+
+// syncBinShims removes every shim named in oldBin, then creates a shim for
+// every entry in newBin. Both maps may be empty — ranging over an empty map
+// is a no-op — so a package whose bins vanish entirely (newBin empty) still
+// gets its stale shims removed.
+func syncBinShims(pkgDir string, oldBin, newBin map[string]string) []shimSyncErr {
+	for shimName := range oldBin {
+		_ = shim.Remove(shimName)
+	}
+	var errs []shimSyncErr
+	for shimName, binKey := range newBin {
+		binDir, binName := parseBinPath(binKey)
+		if err := shim.Create(shimName, binName, pkgDir, binDir); err != nil {
+			errs = append(errs, shimSyncErr{shimName, err})
+		}
+	}
+	return errs
+}
+
+// fontSyncErr is one font-install failure from syncPkgFonts, naming the font
+// that failed.
+type fontSyncErr struct {
+	name string
+	err  error
+}
+
+// syncPkgFonts installs every entry in newFont, then removes any previously
+// installed font whose file is no longer among newFont's paths. If both maps
+// are empty there's nothing to do, so fontsDir isn't even created.
+func syncPkgFonts(pkgDir string, oldFont, newFont map[string]string) ([]fontSyncErr, error) {
+	if len(oldFont) == 0 && len(newFont) == 0 {
+		return nil, nil
+	}
+	fontsDir, err := ensureFontDir()
+	if err != nil {
+		return nil, err
+	}
+	var errs []fontSyncErr
+	for fontName, fontPath := range newFont {
+		srcPath := filepath.Join(pkgDir, filepath.FromSlash(fontPath))
+		if err := installFont(srcPath, fontsDir); err != nil {
+			errs = append(errs, fontSyncErr{fontName, err})
+		}
+	}
+	for _, fontPath := range staleFontPaths(oldFont, sortedValues(newFont)) {
+		uninstallFont(fontPath, fontsDir)
+	}
+	return errs, nil
 }
 
 // resolvePriorAssets maps a package's previously selected assets onto the new

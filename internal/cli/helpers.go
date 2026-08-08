@@ -221,9 +221,8 @@ func printRateLimitSummary(cfg *config.Settings, checked, total, skipped int) {
 }
 
 // appendEntryRows appends one row per bin or font in the package entry. prefix
-// provides the leading columns; type, artifact, and target are appended for each
-// entry. artifact is the source file path within the extract; target is the shim
-// name (for bins) or user-given font name (for fonts).
+// provides the leading columns; type and target are appended for each entry.
+// target is the shim name (for bins) or user-given font name (for fonts).
 func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) [][]string {
 	shimNames := make([]string, 0, len(p.Bin))
 	for s := range p.Bin {
@@ -231,7 +230,7 @@ func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) []
 	}
 	slices.Sort(shimNames)
 	for _, shimName := range shimNames {
-		rows = append(rows, append(append([]string(nil), prefix...), p.Bin[shimName], "bin", shimName))
+		rows = append(rows, append(append([]string(nil), prefix...), "bin", shimName))
 	}
 	fontNames := make([]string, 0, len(p.Font))
 	for f := range p.Font {
@@ -239,7 +238,7 @@ func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) []
 	}
 	slices.Sort(fontNames)
 	for _, fontName := range fontNames {
-		rows = append(rows, append(append([]string(nil), prefix...), p.Font[fontName], "font", fontName))
+		rows = append(rows, append(append([]string(nil), prefix...), "font", fontName))
 	}
 	return rows
 }

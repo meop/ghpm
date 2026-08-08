@@ -63,11 +63,14 @@ func TestRunList_NameFilter(t *testing.T) {
 	}
 }
 
-// TestRunList_ShowsAssetColumn guards the asset column landing between
-// repo and artifact: it's the release asset a package's bins/fonts came
-// from (config.PackageEntry.Assets), distinct from "artifact" (the bin/font's
-// own path within the extracted tree).
-func TestRunList_ShowsAssetColumn(t *testing.T) {
+// TestRunList_ShowsTypeAndTarget guards list's table columns: repo, asset,
+// and artifact were all tried and dropped (repo/asset are only ever
+// redundant with the manifest a curious user can already read directly, and
+// asset in particular can't be shown correctly per-row for a multi-asset
+// package — bins/fonts are discovered from the combined overlay tree with no
+// per-asset attribution kept). type/target are what's left: what kind of
+// thing this is, and the name the user actually invokes it by.
+func TestRunList_ShowsTypeAndTarget(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 	writeManifest(t, &config.Manifest{
@@ -84,11 +87,14 @@ func TestRunList_ShowsAssetColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "asset") {
-		t.Errorf("expected an \"asset\" column header:\n%s", out)
+	if !strings.Contains(out, "type") || !strings.Contains(out, "target") {
+		t.Errorf("expected \"type\"/\"target\" column headers:\n%s", out)
 	}
-	if !strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") {
-		t.Errorf("expected the package's asset name in the table:\n%s", out)
+	if !strings.Contains(out, "bin") || !strings.Contains(out, "fzf") {
+		t.Errorf("expected the bin's type and shim name in the table:\n%s", out)
+	}
+	if strings.Contains(out, "junegunn") || strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") || strings.Contains(out, "bin/fzf") {
+		t.Errorf("repo/asset/artifact should no longer appear in the table:\n%s", out)
 	}
 }
 

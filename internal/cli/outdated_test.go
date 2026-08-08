@@ -10,11 +10,11 @@ import (
 	"github.com/meop/ghpm/internal/ui"
 )
 
-// TestRunOutdated_ShowsAssetColumn guards the asset column landing between
-// repo and artifact (and, since they share appendEntryRows, that the
-// type/artifact header order — previously swapped relative to the data —
-// actually matches what's appended: artifact value, then type, then target).
-func TestRunOutdated_ShowsAssetColumn(t *testing.T) {
+// TestRunOutdated_ShowsTypeAndTarget guards outdated's table columns after
+// repo/asset/artifact were all tried and dropped (see list_test.go's
+// TestRunList_ShowsTypeAndTarget for why) — just name/version/update/pin/
+// type/target should remain.
+func TestRunOutdated_ShowsTypeAndTarget(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 	writeManifest(t, &config.Manifest{
@@ -33,13 +33,13 @@ func TestRunOutdated_ShowsAssetColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "asset") {
-		t.Errorf("expected an \"asset\" column header:\n%s", out)
+	if !strings.Contains(out, "type") || !strings.Contains(out, "target") {
+		t.Errorf("expected \"type\"/\"target\" column headers:\n%s", out)
 	}
-	if !strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") {
-		t.Errorf("expected the package's asset name in the table:\n%s", out)
+	if !strings.Contains(out, "bin") {
+		t.Errorf("expected the bin's type in the table:\n%s", out)
 	}
-	if !strings.Contains(out, "bin/fzf") {
-		t.Errorf("expected the artifact path in the table:\n%s", out)
+	if strings.Contains(out, "junegunn") || strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") || strings.Contains(out, "bin/fzf") {
+		t.Errorf("repo/asset/artifact should no longer appear in the table:\n%s", out)
 	}
 }
