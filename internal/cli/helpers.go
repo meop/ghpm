@@ -402,13 +402,13 @@ type assetDownload struct {
 	asset                 gh.Asset
 }
 
-// downloadAsset prints the one "starting a download" line and performs the
+// downloadAsset prints the one "starting a fetch" line and performs the
 // download. It is the single place that pairing is defined, reused by every
 // DownloadAsset call site (this file's downloadAllAssets, download.go,
 // upgrade.go) so the message can't drift out of sync between them or end up
 // duplicated across two independently-maintained copies.
 func downloadAsset(ctx context.Context, ghClient gh.Client, owner, repo, tagName, assetName, dest, displayName string) error {
-	print("%s: asset downloading [%s]...", displayName, assetName)
+	print("%s: asset fetching [%s]...", displayName, assetName)
 	return ghClient.DownloadAsset(ctx, owner, repo, tagName, assetName, dest)
 }
 
@@ -420,15 +420,16 @@ func downloadAsset(ctx context.Context, ghClient gh.Client, owner, repo, tagName
 // 5 packages x 3 assets each briefly running 15-wide). Results are keyed by
 // pkgIdx; a package with any failed asset gets one representative error (the
 // first, by the input order downloads was built in — parallel.Run preserves
-// input order in its results). Already-cached assets print a "found" line
-// instead of being silently skipped. A trailing sep() requests a blank line
-// before whatever the caller prints next, so the download block reads as its
-// own section rather than running into the next one.
+// input order in its results). An already-cached asset is silently skipped —
+// no "downloading" line for it is itself the signal nothing needed fetching,
+// and printing one anyway just buries the lines that do matter once most of
+// what's requested is already cached (the common case). A trailing sep()
+// requests a blank line before whatever the caller prints next, so the
+// download block reads as its own section rather than running into the next one.
 func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []assetDownload, numParallel int) map[int]error {
 	tasks := make([]parallel.Task[int], 0, len(downloads))
 	for _, d := range downloads {
 		if _, err := os.Stat(filepath.Join(d.cacheDir, d.asset.Name)); !os.IsNotExist(err) {
-			print("%s: asset found [%s]", d.displayName, d.asset.Name)
 			continue
 		}
 		tasks = append(tasks, parallel.Task[int]{

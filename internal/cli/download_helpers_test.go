@@ -90,12 +90,8 @@ func TestDownloadAllAssets_SkipsAlreadyCached(t *testing.T) {
 		t.Errorf("expected the already-cached asset to be skipped, but DownloadAsset was called: %v", client.downloaded)
 	}
 
-	out := buf.String()
-	if !strings.Contains(out, "pkg: asset found [cached.tar.gz]") {
-		t.Errorf("expected a cached-asset report line, got output:\n%s", out)
-	}
-	if strings.Contains(out, "downloading") {
-		t.Errorf("a cached asset must not also print a downloading line, got:\n%s", out)
+	if out := buf.String(); out != "" {
+		t.Errorf("expected no output for an already-cached asset (no report line, no fetch line), got:\n%s", out)
 	}
 }
 
@@ -104,8 +100,10 @@ func TestDownloadAllAssets_SkipsAlreadyCached(t *testing.T) {
 // caller printed next (e.g. "bin found" report lines or a summary line), with
 // no blank line between the two sections. downloadAllAssets must request a
 // blank line (via sep/ui.Break) after it finishes, so the next real print gets
-// separated — but only when something actually follows, never as a trailing
-// blank if the download block turns out to be the last output.
+// separated — but only when something actually follows, and only when the
+// download block actually printed something itself (ui.Break is a no-op
+// unless output has already started, so an all-cached, silent batch doesn't
+// manufacture a separator for a section that did nothing).
 func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 	t.Run("real download, then more output", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -121,7 +119,7 @@ func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 		}
 		print("next section")
 
-		want := "pkg: asset downloading [a1]...\n\nnext section\n"
+		want := "pkg: asset fetching [a1]...\n\nnext section\n"
 		if got := buf.String(); got != want {
 			t.Errorf("got %q, want %q (blank line between the download block and the next section)", got, want)
 		}
@@ -145,9 +143,9 @@ func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 		}
 		print("next section")
 
-		want := "pkg: asset found [cached.tar.gz]\n\nnext section\n"
+		want := "next section\n"
 		if got := buf.String(); got != want {
-			t.Errorf("got %q, want %q (blank line between the cached report and the next section)", got, want)
+			t.Errorf("got %q, want %q (a fully-cached, silent download block must not manufacture a leading blank line)", got, want)
 		}
 	})
 
@@ -164,7 +162,7 @@ func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 			t.Fatalf("expected no errors, got %v", errs)
 		}
 
-		want := "pkg: asset downloading [a1]...\n"
+		want := "pkg: asset fetching [a1]...\n"
 		if got := buf.String(); got != want {
 			t.Errorf("got %q, want %q (no trailing blank when the download block is the last output)", got, want)
 		}

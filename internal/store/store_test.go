@@ -24,6 +24,17 @@ func TestUserHomeDir_RefusesUnisolatedTestProcess(t *testing.T) {
 	}
 }
 
+func TestUsingTestHome(t *testing.T) {
+	t.Setenv("GHPM_TEST_HOME", "")
+	if UsingTestHome() {
+		t.Error("expected false with GHPM_TEST_HOME unset")
+	}
+	withHome(t)
+	if !UsingTestHome() {
+		t.Error("expected true with GHPM_TEST_HOME set")
+	}
+}
+
 func TestExtractsDir(t *testing.T) {
 	home := withHome(t)
 	dir, err := ExtractsDir()

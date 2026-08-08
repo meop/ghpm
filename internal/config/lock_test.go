@@ -38,6 +38,51 @@ func TestLockContention(t *testing.T) {
 	unlock1()
 }
 
+func TestCheckLock_NoLockFile(t *testing.T) {
+	dir := t.TempDir()
+	orig := lockPathFn
+	lockPathFn = func() (string, error) { return filepath.Join(dir, ".lock"), nil }
+	defer func() { lockPathFn = orig }()
+
+	if err := CheckLock(); err != nil {
+		t.Errorf("expected nil for a nonexistent lock file, got %v", err)
+	}
+}
+
+func TestCheckLock_FreeLock(t *testing.T) {
+	dir := t.TempDir()
+	orig := lockPathFn
+	lockPathFn = func() (string, error) { return filepath.Join(dir, ".lock"), nil }
+	defer func() { lockPathFn = orig }()
+
+	unlock, err := AcquireLock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock() // lock file now exists on disk but isn't held
+
+	if err := CheckLock(); err != nil {
+		t.Errorf("expected nil for an existing but unheld lock file, got %v", err)
+	}
+}
+
+func TestCheckLock_HeldLock(t *testing.T) {
+	dir := t.TempDir()
+	orig := lockPathFn
+	lockPathFn = func() (string, error) { return filepath.Join(dir, ".lock"), nil }
+	defer func() { lockPathFn = orig }()
+
+	unlock, err := AcquireLock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	if err := CheckLock(); err == nil {
+		t.Error("expected an error when the lock is held")
+	}
+}
+
 func TestLockReuse(t *testing.T) {
 	dir := t.TempDir()
 	orig := lockPathFn
