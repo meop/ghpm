@@ -53,7 +53,7 @@ func TestResolvePriorAssets_CleanCarryOver(t *testing.T) {
 		{Name: "foo-2.0-darwin.tar.gz", Size: 100},
 	}
 	old := []string{"foo-1.0-linux.tar.gz", "bar-1.0-linux.tar.gz"}
-	chosens, clean := resolvePriorAssets(newAssets, old)
+	chosens, clean := resolvePriorAssets(newAssets, old, "2.0")
 	if !clean {
 		t.Fatalf("expected clean resolution, got clean=false")
 	}
@@ -63,16 +63,39 @@ func TestResolvePriorAssets_CleanCarryOver(t *testing.T) {
 	}
 }
 
+// TestResolvePriorAssets_BuildNumberBump_CleanCarryOver guards the reported
+// llama.cpp regression: its release assets embed a "b<n>" build number
+// (isVersionToken never recognized "b1234" as version-shaped, since it only
+// strips a leading "v"), so every sync compared it for exact token equality,
+// never matched, and fell back to a full asset reprompt on every run even
+// though nothing the user picked had actually changed.
+func TestResolvePriorAssets_BuildNumberBump_CleanCarryOver(t *testing.T) {
+	newAssets := []gh.Asset{
+		{Name: "llama-b2345-bin-ubuntu-x64.zip", Size: 100},
+		{Name: "llama-b2345-bin-macos-arm64.zip", Size: 100},
+	}
+	old := []string{"llama-b2300-bin-ubuntu-x64.zip"}
+	chosens, clean := resolvePriorAssets(newAssets, old, "2345")
+	if !clean {
+		t.Fatalf("expected clean resolution, got clean=false")
+	}
+	got := names(chosens)
+	if len(got) != 1 || got[0] != "llama-b2345-bin-ubuntu-x64.zip" {
+		t.Errorf("unexpected chosens: %v", got)
+	}
+}
+
 func TestResolvePriorAssets_AmbiguousSplit_NotClean(t *testing.T) {
 	// The release now ships two variants that the stored name matches equally
-	// (the cuda-version case), so resolution is ambiguous and the whole package
-	// must fall back to a fresh prompt.
+	// (the cuda-version case: one is a byte-identical carryover, the other a
+	// valid bump to the release's own version 12.4), so resolution is
+	// ambiguous and the whole package must fall back to a fresh prompt.
 	newAssets := []gh.Asset{
 		{Name: "tool-cuda-12.4.tar.gz", Size: 100},
 		{Name: "tool-cuda-13.3.tar.gz", Size: 100},
 	}
 	old := []string{"tool-cuda-13.3.tar.gz"}
-	if _, clean := resolvePriorAssets(newAssets, old); clean {
+	if _, clean := resolvePriorAssets(newAssets, old, "12.4"); clean {
 		t.Errorf("expected clean=false for ambiguous match")
 	}
 }
@@ -84,7 +107,7 @@ func TestResolvePriorAssets_Collision_NotClean(t *testing.T) {
 		{Name: "foo-2.0-linux.tar.gz", Size: 100},
 	}
 	old := []string{"foo-1.0-linux.tar.gz", "foo-1.0-linux.tar.gz"}
-	if _, clean := resolvePriorAssets(newAssets, old); clean {
+	if _, clean := resolvePriorAssets(newAssets, old, "2.0"); clean {
 		t.Errorf("expected clean=false when two stored assets collide on one")
 	}
 }
@@ -96,13 +119,28 @@ func TestResolvePriorAssets_Missing_NotClean(t *testing.T) {
 		{Name: "other-2.0-linux.tar.gz", Size: 100},
 	}
 	old := []string{"foo-1.0-linux.tar.gz"}
-	if _, clean := resolvePriorAssets(newAssets, old); clean {
+	if _, clean := resolvePriorAssets(newAssets, old, "2.0"); clean {
 		t.Errorf("expected clean=false when stored asset is gone")
 	}
 }
 
+// TestResolvePriorAssets_VersionMismatch_NotClean guards a packaging
+// inconsistency: the differing token looks like a version bump in shape, but
+// its embedded version isn't actually the release being installed (e.g. an
+// asset that wasn't updated to match its own release tag). That must not be
+// silently accepted as a carryover.
+func TestResolvePriorAssets_VersionMismatch_NotClean(t *testing.T) {
+	newAssets := []gh.Asset{
+		{Name: "bun-v2.3.4.6-bun.tar.gz", Size: 100},
+	}
+	old := []string{"bun-v1.2.3.4-bun.tar.gz"}
+	if _, clean := resolvePriorAssets(newAssets, old, "2.3.4.5"); clean {
+		t.Errorf("expected clean=false when the asset's version doesn't match the release's own version")
+	}
+}
+
 func TestResolvePriorAssets_NoPriorAssets_NotClean(t *testing.T) {
-	if _, clean := resolvePriorAssets(nil, nil); clean {
+	if _, clean := resolvePriorAssets(nil, nil, ""); clean {
 		t.Errorf("expected clean=false with no prior assets")
 	}
 }

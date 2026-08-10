@@ -10,6 +10,7 @@ import (
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/ghpm/internal/version"
 )
 
 var ErrSkip = ui.ErrSkip
@@ -279,7 +280,10 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 	candidates := assets
 
 	if hint != "" {
-		if chosen, ok := matchByHint(candidates, hint); ok {
+		// No specific release version is being targeted here (hint is a
+		// caller-supplied name, not a prior asset from a known release), so
+		// only an exact token match can succeed — never a version bump.
+		if chosen, ok := matchByHint(candidates, hint, ""); ok {
 			return AssetCandidates{Chosen: chosen, All: candidates}, nil
 		}
 	}
@@ -474,16 +478,17 @@ func promptMultiAll(all []gh.Asset, label string) ([]gh.Asset, error) {
 }
 
 // ResolveByHint reports the asset that uniquely matches hint (a previously
-// selected asset name). Unlike SelectAssetAuto it never falls back to platform
-// scoring: a hit means the same asset was found in the new release, so callers
-// re-resolving a prior selection can distinguish "carried over unchanged" from
-// "had to guess". Returns ok=false when the hint matches zero or multiple assets.
-func ResolveByHint(assets []gh.Asset, hint string) (gh.Asset, bool) {
-	return matchByHint(assets, hint)
+// selected asset name) in a release normalized to newVersion. Unlike
+// SelectAssetAuto it never falls back to platform scoring: a hit means the
+// same asset was found in the new release, so callers re-resolving a prior
+// selection can distinguish "carried over unchanged" from "had to guess".
+// Returns ok=false when the hint matches zero or multiple assets.
+func ResolveByHint(assets []gh.Asset, hint, newVersion string) (gh.Asset, bool) {
+	return matchByHint(assets, hint, newVersion)
 }
 
-func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
-	hintTokens := stripVersionTokens(Tokenize(hint))
+func matchByHint(candidates []gh.Asset, hint, newVersion string) (gh.Asset, bool) {
+	hintTokens := Tokenize(hint)
 	if len(hintTokens) == 0 {
 		return gh.Asset{}, false
 	}
@@ -491,8 +496,7 @@ func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
 	var match gh.Asset
 	matchCount := 0
 	for _, a := range candidates {
-		candidateTokens := stripVersionTokens(Tokenize(a.Name))
-		if tokensMatch(hintTokens, candidateTokens) {
+		if tokensMatch(hintTokens, Tokenize(a.Name), newVersion) {
 			match = a
 			matchCount++
 		}
@@ -503,27 +507,68 @@ func matchByHint(candidates []gh.Asset, hint string) (gh.Asset, bool) {
 	return gh.Asset{}, false
 }
 
-func tokensMatch(a, b []string) bool {
+// tokensMatch reports whether a and b are the same tokens, order-independent,
+// allowing at most one differing pair when that pair is the release's version
+// bump (isVersionBump) — e.g. llama.cpp's "b1234" vs "b1245", or a bare
+// "0.1.0" vs "0.2.0". Every other token, including the count, must match
+// exactly.
+func tokensMatch(a, b []string, newVersion string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
+	leftoverA, leftoverB := multisetDiff(a, b)
+	switch len(leftoverA) {
+	case 0:
+		return true
+	case 1:
+		return isVersionBump(leftoverA[0], leftoverB[0], newVersion)
+	default:
+		return false
 	}
-	return true
 }
 
-func stripVersionTokens(tokens []string) []string {
-	filtered := make([]string, 0, len(tokens))
-	for _, t := range tokens {
-		if isVersionToken(t) {
+// multisetDiff cancels out tokens common to both a and b (matched by count,
+// not position) and returns what's left of each.
+func multisetDiff(a, b []string) (leftoverA, leftoverB []string) {
+	counts := make(map[string]int, len(a))
+	for _, t := range a {
+		counts[t]++
+	}
+	for _, t := range b {
+		if counts[t] > 0 {
+			counts[t]--
 			continue
 		}
-		filtered = append(filtered, t)
+		leftoverB = append(leftoverB, t)
 	}
-	return filtered
+	for t, n := range counts {
+		for range n {
+			leftoverA = append(leftoverA, t)
+		}
+	}
+	return leftoverA, leftoverB
+}
+
+// isVersionBump reports whether oldTok and newTok are the same version/build
+// marker (equal leading and trailing junk per version.SplitJunk — e.g. both
+// "b" or both "v"/".zip") with a different embedded version — and that new
+// embedded version is actually newVersion, the release being resolved. A
+// differing number that *isn't* the release's own version is a packaging
+// inconsistency (the asset wasn't bumped to match its release), not a bump
+// ghpm should paper over by guessing.
+func isVersionBump(oldTok, newTok, newVersion string) bool {
+	oldJunkA, oldVer, oldJunkB, ok := version.SplitJunk(oldTok)
+	if !ok {
+		return false
+	}
+	newJunkA, newVer, newJunkB, ok := version.SplitJunk(newTok)
+	if !ok {
+		return false
+	}
+	if oldJunkA != newJunkA || oldJunkB != newJunkB || oldVer == newVer {
+		return false
+	}
+	return newVer == newVersion
 }
 
 func IsVersionToken(t string) bool { return isVersionToken(t) }

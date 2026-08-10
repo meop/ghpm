@@ -230,35 +230,13 @@ func TestIsVersionToken(t *testing.T) {
 	}
 }
 
-func TestStripVersionTokens(t *testing.T) {
-	cases := []struct {
-		input string
-		want  []string
-	}{
-		{"ghpm-0.1.6-darwin-amd64.tar.gz", []string{"ghpm", "darwin", "amd64.tar.gz"}},
-		{"ghpm-0.1.7-darwin-amd64.tar.gz", []string{"ghpm", "darwin", "amd64.tar.gz"}},
-		{"fzf-0.56.0-linux_amd64.tar.gz", []string{"fzf", "linux_amd64.tar.gz"}},
-		{"fzf-0.71.0-linux_amd64.tar.gz", []string{"fzf", "linux_amd64.tar.gz"}},
-		{"bun-v1.3.13-linux-x64.zip", []string{"bun", "linux", "x64.zip"}},
-		{"bun-v1.3.14-linux-x64.zip", []string{"bun", "linux", "x64.zip"}},
-		{"ghpm-0.1.7-darwin-amd64-something.tar.gz", []string{"ghpm", "darwin", "amd64", "something.tar.gz"}},
-	}
-	for _, c := range cases {
-		tokens := Tokenize(c.input)
-		got := stripVersionTokens(tokens)
-		if !reflect.DeepEqual(got, c.want) {
-			t.Errorf("stripVersionTokens(Tokenize(%q)) = %v, want %v", c.input, got, c.want)
-		}
-	}
-}
-
 func TestMatchByHint_SameVersion(t *testing.T) {
 	candidates := []gh.Asset{
 		{Name: "ghpm-0.1.7-darwin-amd64.tar.gz", Size: 100},
 		{Name: "ghpm-0.1.7-linux-amd64.tar.gz", Size: 100},
 		{Name: "ghpm-0.1.7-windows-amd64.zip", Size: 100},
 	}
-	chosen, ok := matchByHint(candidates, "ghpm-0.1.6-darwin-amd64.tar.gz")
+	chosen, ok := matchByHint(candidates, "ghpm-0.1.6-darwin-amd64.tar.gz", "0.1.7")
 	if !ok {
 		t.Fatal("expected match")
 	}
@@ -272,7 +250,7 @@ func TestMatchByHint_CrossVersion(t *testing.T) {
 		{Name: "fzf-0.71.0-linux_amd64.tar.gz", Size: 100},
 		{Name: "fzf-0.71.0-darwin_amd64.tar.gz", Size: 100},
 	}
-	chosen, ok := matchByHint(candidates, "fzf-0.56.0-linux_amd64.tar.gz")
+	chosen, ok := matchByHint(candidates, "fzf-0.56.0-linux_amd64.tar.gz", "0.71.0")
 	if !ok {
 		t.Fatal("expected match")
 	}
@@ -282,13 +260,66 @@ func TestMatchByHint_CrossVersion(t *testing.T) {
 }
 
 func TestMatchByHint_MultipleMatches(t *testing.T) {
+	// Two differently-cased asset names that tokenize identically (Tokenize
+	// lowercases) — both an exact match for the hint, genuinely ambiguous
+	// regardless of newVersion (an exact match never even consults it).
 	candidates := []gh.Asset{
-		{Name: "tool-0.2.0-linux-amd64.tar.gz", Size: 100},
-		{Name: "tool-v0.2.0-linux-amd64.tar.gz", Size: 100},
+		{Name: "tool-linux-amd64.tar.gz", Size: 100},
+		{Name: "Tool-Linux-AMD64.tar.gz", Size: 100},
 	}
-	_, ok := matchByHint(candidates, "tool-0.1.0-linux-amd64.tar.gz")
+	_, ok := matchByHint(candidates, "tool-linux-amd64.tar.gz", "")
 	if ok {
-		t.Error("expected no unique match when two candidates produce same stripped tokens")
+		t.Error("expected no unique match when two candidates tokenize identically")
+	}
+}
+
+// TestMatchByHint_BuildNumberPrefix guards the llama.cpp case: a "b<n>"
+// build-number token (not "v"-prefixed, so isVersionToken never recognized
+// it) was compared for exact equality and never matched across versions,
+// forcing a full asset reprompt on every sync even though nothing about the
+// user's prior selection had actually changed.
+func TestMatchByHint_BuildNumberPrefix(t *testing.T) {
+	candidates := []gh.Asset{
+		{Name: "llama-b2345-bin-ubuntu-x64.zip", Size: 100},
+		{Name: "llama-b2345-bin-macos-arm64.zip", Size: 100},
+	}
+	chosen, ok := matchByHint(candidates, "llama-b2300-bin-ubuntu-x64.zip", "2345")
+	if !ok {
+		t.Fatal("expected the build-number bump to resolve cleanly")
+	}
+	if chosen.Name != "llama-b2345-bin-ubuntu-x64.zip" {
+		t.Errorf("got %q, want llama-b2345-bin-ubuntu-x64.zip", chosen.Name)
+	}
+}
+
+// TestMatchByHint_VersionMismatch_NoMatch guards a packaging inconsistency:
+// the differing token looks like a version bump in shape (same "b" prefix,
+// digits differ), but its embedded version isn't the release actually being
+// resolved. That must not be silently accepted.
+func TestMatchByHint_VersionMismatch_NoMatch(t *testing.T) {
+	candidates := []gh.Asset{
+		{Name: "llama-b2346-bin-ubuntu-x64.zip", Size: 100},
+	}
+	_, ok := matchByHint(candidates, "llama-b2300-bin-ubuntu-x64.zip", "2345")
+	if ok {
+		t.Error("expected no match when the asset's version doesn't match the release's own version")
+	}
+}
+
+// TestMatchByHint_TokenOrderIndependent guards that a hint still resolves
+// when the differing (version-bumped) token isn't the last-differing one
+// positionally relative to how the platform tokens happen to be scanned —
+// matching is order-independent, not just tolerant of the version position.
+func TestMatchByHint_TokenOrderIndependent(t *testing.T) {
+	candidates := []gh.Asset{
+		{Name: "tool-linux-b200-amd64.tar.gz", Size: 100},
+	}
+	chosen, ok := matchByHint(candidates, "tool-b100-linux-amd64.tar.gz", "200")
+	if !ok {
+		t.Fatal("expected match regardless of where the version token sits")
+	}
+	if chosen.Name != "tool-linux-b200-amd64.tar.gz" {
+		t.Errorf("got %q, want tool-linux-b200-amd64.tar.gz", chosen.Name)
 	}
 }
 
@@ -296,7 +327,7 @@ func TestMatchByHint_DifferentStructure(t *testing.T) {
 	candidates := []gh.Asset{
 		{Name: "ghpm-0.1.7-darwin-amd64-something.tar.gz", Size: 100},
 	}
-	_, ok := matchByHint(candidates, "ghpm-0.1.6-darwin-amd64.tar.gz")
+	_, ok := matchByHint(candidates, "ghpm-0.1.6-darwin-amd64.tar.gz", "0.1.7")
 	if ok {
 		t.Error("expected no match when structure differs")
 	}
@@ -307,7 +338,7 @@ func TestMatchByHint_BunVPrefix(t *testing.T) {
 		{Name: "bun-v1.3.14-linux-x64.zip", Size: 100},
 		{Name: "bun-v1.3.14-darwin-x64.zip", Size: 100},
 	}
-	chosen, ok := matchByHint(candidates, "bun-v1.3.13-linux-x64.zip")
+	chosen, ok := matchByHint(candidates, "bun-v1.3.13-linux-x64.zip", "1.3.14")
 	if !ok {
 		t.Fatal("expected match")
 	}
@@ -679,20 +710,50 @@ func TestPromptAssetsMulti_ShowMore_Empty_SelectsFirst(t *testing.T) {
 
 func TestTokensMatch(t *testing.T) {
 	cases := []struct {
-		a, b []string
-		want bool
+		a, b       []string
+		newVersion string
+		want       bool
 	}{
-		{[]string{"a", "b"}, []string{"a", "b"}, true},
-		{[]string{"a", "b"}, []string{"a", "c"}, false},
-		{[]string{"a"}, []string{"a", "b"}, false},
-		{[]string{}, []string{}, true},
-		{nil, nil, true},
-		{[]string{"a"}, nil, false},
+		{[]string{"a", "b"}, []string{"a", "b"}, "", true},
+		{[]string{"a", "b"}, []string{"a", "c"}, "", false},
+		{[]string{"a"}, []string{"a", "b"}, "", false},
+		{[]string{}, []string{}, "", true},
+		{nil, nil, "", true},
+		{[]string{"a"}, nil, "", false},
+		// A single differing pair is only forgiven when it looks like a
+		// version/build bump to newVersion — "b" vs "c" has no digits at all.
+		{[]string{"a", "b1"}, []string{"a", "b2"}, "2", true},
+		{[]string{"a", "b1"}, []string{"a", "b2"}, "3", false}, // bumps to some other version
+		{[]string{"a", "b1"}, []string{"a", "c1"}, "1", false},
+		// Order doesn't matter, only the multiset.
+		{[]string{"a", "b", "c1"}, []string{"c2", "b", "a"}, "2", true},
 	}
 	for _, c := range cases {
-		got := tokensMatch(c.a, c.b)
+		got := tokensMatch(c.a, c.b, c.newVersion)
 		if got != c.want {
-			t.Errorf("tokensMatch(%v, %v) = %v, want %v", c.a, c.b, got, c.want)
+			t.Errorf("tokensMatch(%v, %v, %q) = %v, want %v", c.a, c.b, c.newVersion, got, c.want)
+		}
+	}
+}
+
+func TestIsVersionBump(t *testing.T) {
+	cases := []struct {
+		old, new, newVersion string
+		want                 bool
+	}{
+		{"b1234", "b1245", "1245", true},
+		{"b1234", "b1245", "9999", false}, // bumped, but not to the release's own version
+		{"b1234", "b1234", "1234", false}, // identical isn't a "bump"
+		{"b1234", "v1245", "1245", false}, // non-digit shape differs
+		{"0.1.0", "0.2.0", "0.2.0", true},
+		{"v1.3.13", "v1.3.14", "1.3.14", true},
+		{"linux", "darwin", "", false}, // no digits at all
+		{"b1234", "linux", "", false},
+	}
+	for _, c := range cases {
+		got := isVersionBump(c.old, c.new, c.newVersion)
+		if got != c.want {
+			t.Errorf("isVersionBump(%q, %q, %q) = %v, want %v", c.old, c.new, c.newVersion, got, c.want)
 		}
 	}
 }

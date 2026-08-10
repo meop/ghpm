@@ -171,7 +171,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			failedItems = append(failedItems, failedItem{name: o.key, reason: err.Error()})
 			continue
 		}
-		chosens, clean := resolvePriorAssets(rel.Assets, o.pkg.Assets)
+		chosens, clean := resolvePriorAssets(rel.Assets, o.pkg.Assets, config.NormalizeVersion(o.latestTag))
 		if !clean {
 			pkgName, _, _ := config.ParseVersionSuffix(o.key)
 			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, "", pkgName)
@@ -478,20 +478,23 @@ func syncPkgFonts(pkgDir string, oldFont, newFont map[string]string) ([]fontSync
 }
 
 // resolvePriorAssets maps a package's previously selected assets onto the new
-// release purely by hint (the stored asset name). It returns (chosens, true)
-// only when every stored asset still resolves to a single, distinct asset,
-// preserving the prior selection's count and identity. Anything else — an asset
-// renamed, gone, now ambiguous, or two stored assets collapsing onto one — yields
-// (nil, false) so the caller re-prompts the whole package from scratch rather
-// than silently carrying over a half-matched (or scoring-guessed) set.
-func resolvePriorAssets(assets []gh.Asset, oldNames []string) ([]gh.Asset, bool) {
+// release purely by hint (the stored asset name), allowing at most a version
+// bump in the differing token — and only when that bump lands on newVersion,
+// the release actually being resolved (see asset.ResolveByHint). It returns
+// (chosens, true) only when every stored asset still resolves to a single,
+// distinct asset, preserving the prior selection's count and identity.
+// Anything else — an asset renamed, gone, now ambiguous, bumped to some other
+// version, or two stored assets collapsing onto one — yields (nil, false) so
+// the caller re-prompts the whole package from scratch rather than silently
+// carrying over a half-matched (or scoring-guessed) set.
+func resolvePriorAssets(assets []gh.Asset, oldNames []string, newVersion string) ([]gh.Asset, bool) {
 	if len(oldNames) == 0 {
 		return nil, false
 	}
 	chosens := make([]gh.Asset, 0, len(oldNames))
 	seen := make(map[string]bool, len(oldNames))
 	for _, name := range oldNames {
-		match, ok := asset.ResolveByHint(assets, name)
+		match, ok := asset.ResolveByHint(assets, name, newVersion)
 		if !ok || seen[match.Name] {
 			return nil, false
 		}
