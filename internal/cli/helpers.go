@@ -197,6 +197,16 @@ func verifyDigest(digest, filePath string) error {
 	return nil
 }
 
+// verifyAssetDigest checks assetPath against digest unless skipHashCheck is
+// set or the release reported no digest — the shared guard extractOverlay and
+// download both apply before trusting a downloaded asset.
+func verifyAssetDigest(digest, assetPath string) error {
+	if skipHashCheck || digest == "" {
+		return nil
+	}
+	return verifyDigest(digest, assetPath)
+}
+
 func addNameFormatFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVarP(&longNames, "long-names", "l", false, "Print names only, one per line")
 	cmd.Flags().BoolVarP(&shortNames, "short-names", "s", false, "Print names only, space-separated on one line")
@@ -470,10 +480,8 @@ func extractOverlay(dirs store.Dirs, extractKey, ver, cacheDir, displayName stri
 
 	for _, chosen := range chosens {
 		assetPath := filepath.Join(cacheDir, chosen.Name)
-		if !skipHashCheck && chosen.Digest != "" {
-			if err := verifyDigest(chosen.Digest, assetPath); err != nil {
-				return extractResult{}, fmt.Errorf("%s: %s: %w", displayName, chosen.Name, err)
-			}
+		if err := verifyAssetDigest(chosen.Digest, assetPath); err != nil {
+			return extractResult{}, fmt.Errorf("%s: %s: %w", displayName, chosen.Name, err)
 		}
 
 		if err := asset.ExtractPackage(cacheDir, chosen.Name, pkgDir); err != nil {

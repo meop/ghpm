@@ -10,11 +10,10 @@ import (
 	"github.com/meop/ghpm/internal/ui"
 )
 
-// TestRunOutdated_ShowsTypeAndTarget guards outdated's table columns after
-// repo/asset/artifact were all tried and dropped (see list_test.go's
-// TestRunList_ShowsTypeAndTarget for why) — just name/version/update/pin/
-// type/target should remain.
-func TestRunOutdated_ShowsTypeAndTarget(t *testing.T) {
+// TestRunOutdated_ShowsRepoTypeAndTarget guards outdated's table columns
+// (see list_test.go's TestRunList_ShowsRepoTypeAndTarget for why asset/
+// artifact were dropped) — name/version/update/pin/repo/type/target.
+func TestRunOutdated_ShowsRepoTypeAndTarget(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 	writeManifest(t, &config.Manifest{
@@ -33,13 +32,13 @@ func TestRunOutdated_ShowsTypeAndTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "type") || !strings.Contains(out, "target") {
-		t.Errorf("expected \"type\"/\"target\" column headers:\n%s", out)
+	if !strings.Contains(out, "repo") || !strings.Contains(out, "type") || !strings.Contains(out, "target") {
+		t.Errorf("expected \"repo\"/\"type\"/\"target\" column headers:\n%s", out)
 	}
-	if !strings.Contains(out, "bin") {
-		t.Errorf("expected the bin's type in the table:\n%s", out)
+	if !strings.Contains(out, "bin") || !strings.Contains(out, "junegunn") {
+		t.Errorf("expected the bin's type and repo in the table:\n%s", out)
 	}
-	if strings.Contains(out, "junegunn") || strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") || strings.Contains(out, "bin/fzf") {
-		t.Errorf("repo/asset/artifact should no longer appear in the table:\n%s", out)
+	if strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") || strings.Contains(out, "bin/fzf") {
+		t.Errorf("asset/artifact should not appear in the table:\n%s", out)
 	}
 }

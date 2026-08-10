@@ -37,6 +37,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		installed string
 		latest    string
 		pkg       config.PackageEntry
+		source    string
 	}
 
 	matched := filterExtracts(manifest.Extracts, args)
@@ -75,11 +76,13 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		pkg := manifest.Extracts[res.Key]
 		latest := config.NormalizeVersion(res.LatestTag)
 		if config.CompareVersions(latest, pkg.Version) > 0 {
+			pkgName, _, _ := config.ParseVersionSuffix(res.Key)
 			outdated = append(outdated, outdatedPkg{
 				key:       res.Key,
 				installed: pkg.Version,
 				latest:    latest,
 				pkg:       pkg,
+				source:    manifest.Repos[pkgName],
 			})
 		}
 	}
@@ -115,11 +118,11 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 
 	var tableRows [][]string
 	for _, o := range outdated {
-		prefix := []string{o.key, o.installed, o.latest, o.pkg.Pin}
+		prefix := []string{o.key, o.installed, o.latest, o.pkg.Pin, o.source}
 		tableRows = appendEntryRows(tableRows, prefix, o.pkg)
 	}
-	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil}
-	printTable([]string{"name", "version", "update", "pin", "type", "target"}, tableRows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil}
+	printTable([]string{"name", "version", "update", "pin", "repo", "type", "target"}, tableRows, colors)
 
 	if hadErrors {
 		return errSilent

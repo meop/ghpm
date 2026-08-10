@@ -4,6 +4,8 @@ import (
 	"slices"
 
 	"github.com/spf13/cobra"
+
+	"github.com/meop/ghpm/internal/config"
 )
 
 var longNames, shortNames bool
@@ -50,7 +52,8 @@ func runList(cmd *cobra.Command, args []string) error {
 	var tableRows [][]string
 	for _, k := range keys {
 		p := extracts[k]
-		prefix := []string{k, p.Version, p.Pin}
+		baseName, _, _ := config.ParseVersionSuffix(k)
+		prefix := []string{k, p.Version, p.Pin, manifest.Repos[baseName]}
 		tableRows = appendEntryRows(tableRows, prefix, p)
 	}
 
@@ -58,7 +61,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		print("no packages installed")
 		return nil
 	}
-	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
-	printTable([]string{"name", "version", "pin", "type", "target"}, tableRows, colors)
+	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil, nil}
+	printTable([]string{"name", "version", "pin", "repo", "type", "target"}, tableRows, colors)
 	return nil
 }

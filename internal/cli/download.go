@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -27,10 +28,11 @@ func newDownloadCmd() *cobra.Command {
 
 func runDownload(cmd *cobra.Command, args []string) error {
 	destPath, _ := cmd.Flags().GetString("path")
-	ci, err := initCommand(cmdOptions{Manifest: true, GH: true, Repos: true, SkipHashCheck: true})
+	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, Repos: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}
+	defer ci.close()
 	cfg := ci.cfg
 	manifest := ci.manifest
 	repos := ci.repos
@@ -157,36 +159,53 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	dlTasks := make([]parallel.Task[struct{}], len(ready))
+	// Route through the same downloadAllAssets pool add/sync use rather than a
+	// separate one-off loop, so an asset already sitting in the cache from a
+	// prior add/sync/download is skipped instead of being unconditionally
+	// re-fetched and clobbered — GitHub release assets are immutable once
+	// published, so a forced re-download buys nothing.
+	var downloads []assetDownload
+	dests := make([]string, len(ready))
 	for i, r := range ready {
-		dlTasks[i] = parallel.Task[struct{}]{
-			Name: r.name,
-			Run: func() (struct{}, error) {
-				owner, repo, _ := gh.SplitSource(r.source)
-				dest := destPath
-				if dest == "" {
-					var err error
-					dest, err = dirs.ReleaseDir(r.source, r.release.TagName)
-					if err != nil {
-						return struct{}{}, err
-					}
-				}
-				return struct{}{}, downloadAsset(ctx, ghClient, owner, repo, r.release.TagName, r.chosen.Name, dest, r.name)
-			},
+		owner, repo, _ := gh.SplitSource(r.source)
+		dest := destPath
+		if dest == "" {
+			var err error
+			dest, err = dirs.ReleaseDir(r.source, r.release.TagName)
+			if err != nil {
+				printFail(cfg, "%s: %v", r.name, err)
+				hadErrors = true
+				failedItems = append(failedItems, failedItem{name: r.name, reason: err.Error()})
+				continue
+			}
 		}
+		dests[i] = dest
+		downloads = append(downloads, assetDownload{
+			pkgIdx: i, owner: owner, repo: repo, tagName: r.release.TagName,
+			cacheDir: dest, displayName: r.name, asset: r.chosen,
+		})
 	}
+	downloadErrs := downloadAllAssets(ctx, ghClient, downloads, cfg.NumParallel)
 
 	successCount := 0
-	for _, res := range parallel.Run(cmd.Context(), dlTasks, cfg.NumParallel) {
-		if res.Err != nil {
-			printFail(cfg, "%s: %v", res.Name, res.Err)
-			hadErrors = true
-			failedItems = append(failedItems, failedItem{name: res.Name, reason: res.Err.Error()})
-		} else {
-			successCount++
+	for i, r := range ready {
+		if dests[i] == "" {
+			continue
 		}
+		if err, failed := downloadErrs[i]; failed {
+			printFail(cfg, "%s: %v", r.name, err)
+			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.name, reason: err.Error()})
+			continue
+		}
+		if err := verifyAssetDigest(r.chosen.Digest, filepath.Join(dests[i], r.chosen.Name)); err != nil {
+			printFail(cfg, "%s: %v", r.name, err)
+			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: r.name, reason: err.Error()})
+			continue
+		}
+		successCount++
 	}
-	sep()
 	if successCount > 0 {
 		printPass(cfg, "downloaded %d asset(s)", successCount)
 	}
