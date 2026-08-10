@@ -36,10 +36,16 @@ func (l PinLevel) String() string {
 	return "latest"
 }
 
-// ParseConstraint parses a version string into a Constraint.
-// The v prefix is optional and stripped.
+// ParseConstraint parses a version string into a Constraint. Any leading
+// junk is stripped via version.SplitJunk — not just a "v" prefix — so a full
+// literal release tag (e.g. bun's "bun-v1.2.3.4", llama.cpp's "b1234") works
+// as a pin input too, not just a bare version.
 func ParseConstraint(s string) (Constraint, error) {
-	s = strings.TrimPrefix(s, "v")
+	_, ver, trailing, ok := version.SplitJunk(s)
+	if !ok {
+		return Constraint{}, fmt.Errorf("invalid version %q: expected numeric major version", s)
+	}
+	s = ver + trailing
 	parts := strings.Split(s, ".")
 	c := Constraint{Raw: s, Minor: -1}
 
@@ -66,10 +72,11 @@ func ParseConstraint(s string) (Constraint, error) {
 	return c, nil
 }
 
-// Matches returns true if the given version satisfies this constraint.
-// version may have a v prefix; it is stripped before comparison.
-func (c Constraint) Matches(version string) bool {
-	parts := versionParts(version)
+// Matches returns true if tag satisfies this constraint. tag may carry any
+// leading junk (a "v" prefix, a package-name prefix, llama.cpp's bare "b");
+// it's stripped via NormalizeVersion before comparison.
+func (c Constraint) Matches(tag string) bool {
+	parts := versionParts(tag)
 	if len(parts) == 0 {
 		return false
 	}
@@ -82,7 +89,7 @@ func (c Constraint) Matches(version string) bool {
 		}
 	}
 	if c.Level == PinExact {
-		return strings.TrimPrefix(version, "v") == c.Raw
+		return NormalizeVersion(tag) == c.Raw
 	}
 	return true
 }

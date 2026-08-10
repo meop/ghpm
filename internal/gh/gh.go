@@ -11,6 +11,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
+	"github.com/meop/ghpm/internal/version"
 )
 
 func IsRateLimited(err error) bool {
@@ -131,17 +132,45 @@ func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) 
 	return sanitizeRelease(rel)
 }
 
+// GetReleaseByTag fetches the release at tag, trying it exactly as given
+// first (the fast path for a caller re-fetching a tag it already confirmed
+// exists, e.g. sync refreshing a known release), then falling back through
+// candidateTags built from tag's bare version. That covers pinning by just a
+// version number regardless of which of ghpm's known tagging conventions the
+// repo actually uses.
 func GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, error) {
 	rel, err := getReleaseView(ctx, owner, repo, tag)
-	if err != nil {
-		alt := alternateVTag(tag)
-		rel2, err2 := getReleaseView(ctx, owner, repo, alt)
-		if err2 != nil {
-			return Release{}, fmt.Errorf("%v; %v", err, err2)
-		}
-		return rel2, nil
+	if err == nil {
+		return rel, nil
 	}
-	return rel, nil
+	lastErr := err
+	for _, cand := range candidateTags(repo, tag) {
+		if cand == tag {
+			continue
+		}
+		rel, err := getReleaseView(ctx, owner, repo, cand)
+		if err == nil {
+			return rel, nil
+		}
+		lastErr = err
+	}
+	return Release{}, lastErr
+}
+
+// candidateTags returns tag string variants to try, in priority order: bare
+// version, "v"+version, "<repo>-v"+version, "b"+version, "<repo>-b"+version.
+// This is every gh release tagging convention ghpm has seen so far: bare or
+// "v"-prefixed (most projects), llama.cpp's bare "b"-prefixed build numbers,
+// and bun's "<repo>-v"-prefixed tags.
+func candidateTags(repo, ver string) []string {
+	core := version.Normalize(ver)
+	return []string{
+		core,
+		"v" + core,
+		repo + "-v" + core,
+		"b" + core,
+		repo + "-b" + core,
+	}
 }
 
 func FindLatestMatching(ctx context.Context, owner, repo string, c config.Constraint) (Release, error) {
@@ -194,13 +223,6 @@ func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, erro
 		return Release{}, fmt.Errorf("parsing release: %w", err)
 	}
 	return sanitizeRelease(rel)
-}
-
-func alternateVTag(tag string) string {
-	if strings.HasPrefix(tag, "v") {
-		return tag[1:]
-	}
-	return "v" + tag
 }
 
 func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {

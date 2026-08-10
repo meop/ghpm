@@ -20,6 +20,10 @@ func TestParseConstraint(t *testing.T) {
 		{"14.1.2", 14, 1, PinExact, "14.1.2", false},
 		{"0.56.0", 0, 56, PinExact, "0.56.0", false},
 		{"v0.56.0", 0, 56, PinExact, "0.56.0", false},
+		// A full literal release tag works as a pin input too, not just a
+		// bare version — any leading junk is stripped, not only "v".
+		{"bun-v1.2.3.4", 1, 2, PinExact, "1.2.3.4", false},
+		{"b1234", 1234, -1, PinMajor, "1234", false},
 		{"notaversion", 0, 0, 0, "", true},
 	}
 	for _, c := range cases {
@@ -65,6 +69,10 @@ func TestConstraintMatches(t *testing.T) {
 		{"14.1.0", "v14.1.0", true},
 		{"14.1.0", "14.1.1", false},
 		{"14.1.0", "14.2.0", false},
+		// Exact pin by bare version against a package-name-prefixed tag
+		// (bun's "bun-v1.2.3.4") — not just a "v" prefix.
+		{"1.2.3.4", "bun-v1.2.3.4", true},
+		{"1.2.3.4", "bun-v1.2.3.5", false},
 	}
 	for _, c := range cases {
 		con, err := ParseConstraint(c.constraint)

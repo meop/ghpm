@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
@@ -76,46 +77,63 @@ func TestGetLatestRelease_MockGH(t *testing.T) {
 	}
 }
 
-func TestAlternateVTag(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"v1.2.3", "1.2.3"},
-		{"1.2.3", "v1.2.3"},
-		{"v", ""},
-		{"", "v"},
-	}
-	for _, c := range cases {
-		if got := alternateVTag(c.in); got != c.want {
-			t.Errorf("alternateVTag(%q) = %q, want %q", c.in, got, c.want)
-		}
+func TestCandidateTags(t *testing.T) {
+	got := candidateTags("bun", "v1.2.3.4")
+	want := []string{"1.2.3.4", "v1.2.3.4", "bun-v1.2.3.4", "b1.2.3.4", "bun-b1.2.3.4"}
+	if !slices.Equal(got, want) {
+		t.Errorf("candidateTags(%q, %q) = %v, want %v", "bun", "v1.2.3.4", got, want)
 	}
 }
 
-// TestGetReleaseByTag_FallsBackToAlternateVTag covers the retry: a tag
-// lookup that fails is retried once with the v-prefix toggled (bun tags
-// releases "v1.3.13"; some repos tag "1.3.13" instead, or vice versa).
-func TestGetReleaseByTag_FallsBackToAlternateVTag(t *testing.T) {
+// TestGetReleaseByTag_FallsBackThroughCandidates covers pinning by a bare
+// version against a repo that tags releases with a package-name prefix
+// (bun's "bun-v1.2.3.4"): the exact tag and the plain "v"-prefixed guess both
+// miss, so it must keep trying rather than give up after one retry.
+func TestGetReleaseByTag_FallsBackThroughCandidates(t *testing.T) {
 	fakeGH(t, `
 		for a in "$@"; do
-			if [ "$a" = "v1.2.3" ]; then
-				echo '{"tagName":"v1.2.3","assets":[]}'
+			if [ "$a" = "bun-v1.2.3.4" ]; then
+				echo '{"tagName":"bun-v1.2.3.4","assets":[]}'
 				exit 0
 			fi
 		done
 		exit 1
 	`)
 
-	rel, err := GetReleaseByTag(context.Background(), "owner", "repo", "1.2.3")
+	rel, err := GetReleaseByTag(context.Background(), "owner", "bun", "1.2.3.4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rel.TagName != "v1.2.3" {
-		t.Errorf("expected tag v1.2.3, got %s", rel.TagName)
+	if rel.TagName != "bun-v1.2.3.4" {
+		t.Errorf("expected tag bun-v1.2.3.4, got %s", rel.TagName)
 	}
 }
 
-// TestGetReleaseByTag_BothAttemptsFail confirms both errors are surfaced
-// (not just the second attempt's) when neither tag spelling resolves.
-func TestGetReleaseByTag_BothAttemptsFail(t *testing.T) {
+// TestGetReleaseByTag_BareBuildNumber covers llama.cpp's tagging: a bare
+// "b<n>" build number with no "v" and no package-name prefix at all.
+func TestGetReleaseByTag_BareBuildNumber(t *testing.T) {
+	fakeGH(t, `
+		for a in "$@"; do
+			if [ "$a" = "b1234" ]; then
+				echo '{"tagName":"b1234","assets":[]}'
+				exit 0
+			fi
+		done
+		exit 1
+	`)
+
+	rel, err := GetReleaseByTag(context.Background(), "owner", "llama.cpp", "1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "b1234" {
+		t.Errorf("expected tag b1234, got %s", rel.TagName)
+	}
+}
+
+// TestGetReleaseByTag_AllAttemptsFail confirms an error surfaces (not a
+// silent empty release) when no candidate tag resolves.
+func TestGetReleaseByTag_AllAttemptsFail(t *testing.T) {
 	fakeGH(t, `echo "release not found" >&2 && exit 1`)
 
 	_, err := GetReleaseByTag(context.Background(), "owner", "repo", "1.2.3")
