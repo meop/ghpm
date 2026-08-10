@@ -727,6 +727,9 @@ func TestTokensMatch(t *testing.T) {
 		{[]string{"a", "b1"}, []string{"a", "c1"}, "1", false},
 		// Order doesn't matter, only the multiset.
 		{[]string{"a", "b", "c1"}, []string{"c2", "b", "a"}, "2", true},
+		// More than one token differs — never forgiven, regardless of
+		// newVersion, even if each pair individually looks like a bump.
+		{[]string{"a", "b1", "c1"}, []string{"a", "b2", "c2"}, "2", false},
 	}
 	for _, c := range cases {
 		got := tokensMatch(c.a, c.b, c.newVersion)
