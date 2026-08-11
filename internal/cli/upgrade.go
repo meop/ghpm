@@ -22,10 +22,11 @@ import (
 
 func newUpgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "upgrade",
-		Short: "Upgrade ghpm and gh to their latest releases",
-		Args:  cobra.NoArgs,
-		RunE:  runUpgrade,
+		Use:     "upgrade",
+		Aliases: []string{"ug", "upg"},
+		Short:   "Upgrade ghpm and gh to their latest releases",
+		Args:    cobra.NoArgs,
+		RunE:    runUpgrade,
 	}
 	addSkipHashCheckFlag(cmd)
 	return cmd

@@ -11,7 +11,7 @@ import (
 func newFindCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "find [term...]",
-		Aliases: []string{"fi", "se", "search"},
+		Aliases: []string{"f", "fi", "se", "search"},
 		Short:   "List or search cached repos by name or source",
 		RunE:    runFind,
 	}

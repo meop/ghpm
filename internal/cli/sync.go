@@ -21,7 +21,7 @@ import (
 func newSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "sync [name...]",
-		Aliases: []string{"sy", "up", "update"},
+		Aliases: []string{"s", "sy", "up", "update"},
 		Short:   "Sync packages to their latest releases",
 		RunE:    runSync,
 	}

@@ -19,7 +19,7 @@ import (
 func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "add <name> [name...]",
-		Aliases: []string{"ad", "in", "install"},
+		Aliases: []string{"a", "ad", "in", "install"},
 		Short:   "Add packages from releases",
 		Args:    cobra.MinimumNArgs(1),
 		RunE:    runAdd,
@@ -206,6 +206,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			failedItems = append(failedItems, failedItem{name: r.job.name, reason: err.Error()})
 			continue
+		}
+		// A first-time add always confirms the asset, even an unambiguous top
+		// score — that's exactly when a wrong auto-pick is most consequential
+		// and least likely to be noticed.
+		if ac.Chosen.Name != "" {
+			ac.Compatible = []gh.Asset{ac.Chosen}
+			ac.Chosen = gh.Asset{}
 		}
 		chosens, err := asset.PromptAssetsMulti(ac, r.job.name)
 		if errors.Is(err, asset.ErrSkip) {

@@ -13,7 +13,7 @@ var longNames, shortNames bool
 func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list [name...]",
-		Aliases: []string{"li", "ls"},
+		Aliases: []string{"l", "li", "ls"},
 		Short:   "List installed packages, optionally filtered by name",
 		Args:    cobra.ArbitraryArgs,
 		RunE:    runList,

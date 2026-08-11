@@ -13,7 +13,7 @@ import (
 func newOutdatedCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "outdated [name...]",
-		Aliases: []string{"ou", "out", "stale"},
+		Aliases: []string{"o", "ou", "out", "stale"},
 		Short:   "List packages with newer releases available, optionally filtered by name",
 		Args:    cobra.ArbitraryArgs,
 		RunE:    runOutdated,

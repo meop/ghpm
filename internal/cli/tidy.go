@@ -16,7 +16,7 @@ import (
 func newTidyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "tidy",
-		Aliases: []string{"ti", "cl", "clean"},
+		Aliases: []string{"t", "ti", "cl", "clean"},
 		Short:   "Clean unused downloads and orphaned items",
 		Args:    cobra.NoArgs,
 		RunE:    runTidy,

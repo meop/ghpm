@@ -2,6 +2,7 @@ package asset
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"reflect"
 	"runtime"
@@ -153,50 +154,58 @@ func TestTokenize(t *testing.T) {
 	}
 }
 
-func TestContainsAnyOf(t *testing.T) {
+// TestScoreAsset_PlatformDetection guards the same cases TestContainsAnyOf
+// used to cover under the old boundary-substring matcher, now against
+// scoreAsset's exact-token-with-digit-trim matcher (see tokenEquals). Several
+// of these ("mac" not matching inside "cmake", "win" not matching inside
+// "darwin"/"kotlin") are safer under this design by construction — token
+// equality never does substring containment at all — but "win32"/"win64"
+// matching the "win" alias and "claude-win32_x64.zip" (two different
+// delimiters straddling the same token) still need to work, and did, via
+// looseTokenize's coarse-then-fallback tiering (see its comment).
+func TestScoreAsset_PlatformDetection(t *testing.T) {
 	cases := []struct {
 		name     string
-		prefixes []string
-		want     bool
+		wantOS   bool
+		wantArch bool
 	}{
-		{"tool-darwin-amd64.tar.gz", []string{"windows"}, false},
-		{"tool-darwin-amd64.tar.gz", []string{"darwin", "macos"}, true},
-		{"tool-windows-x64.zip", []string{"windows"}, true},
-		{"tool-linux-amd64.tar.gz", []string{"linux"}, true},
-		{"golangci-lint-1.0-darwin-amd64.tar.gz", []string{"linux"}, false},
-		{"tool-macos-arm64.tar.gz", []string{"darwin", "macos"}, true},
-		{"tool-osx-arm64.tar.gz", []string{"darwin", "macos", "osx"}, true},
-		{"tool-mac-arm64.tar.gz", []string{"mac"}, true},
-		{"cmake-tool-linux-amd64.tar.gz", []string{"mac"}, false}, // "mac" must not match inside "cmake"
-		{"claude-win32_x64.zip", []string{"windows"}, false},
-		{"tool-unknown-linux-gnu-x86_64.tar.gz", []string{"x86_64", "x64", "amd64"}, true},
-		{"tool-linux-aarch64.tar.gz", []string{"arm64", "aarch64"}, true},
-		{"bottom_x86_64-pc-windows-msvc.zip", []string{"x86_64", "x64", "amd64"}, true},
-		{"bottom_i686-pc-windows-msvc.zip", []string{"x86_64", "x64", "amd64"}, false},
-		// "win" must not match inside "darwin" — a plain strings.Contains would
-		// flag a macOS asset as Windows-compatible.
-		{"tool-darwin-arm64.tar.gz", []string{"win"}, false},
+		{"tool-darwin-amd64.tar.gz", false, true},
+		{"tool-macos-arm64.tar.gz", false, false},
+		{"tool-osx-arm64.tar.gz", false, false},
+		{"tool-mac-arm64.tar.gz", false, false},
+		// "mac" must not match inside "cmake".
+		{"cmake-tool-linux-amd64.tar.gz", true, true},
+		{"tool-windows-x64.zip", false, true},
+		{"tool-linux-amd64.tar.gz", true, true},
+		{"golangci-lint-1.0-darwin-amd64.tar.gz", false, true},
+		{"tool-unknown-linux-gnu-x86_64.tar.gz", true, true},
+		{"tool-linux-aarch64.tar.gz", true, false},
+		{"bottom_x86_64-pc-windows-msvc.zip", false, true},
+		{"bottom_i686-pc-windows-msvc.zip", false, false},
+		// "win" must not match inside "darwin".
+		{"tool-darwin-arm64.tar.gz", false, false},
 		// llama.cpp names its Windows builds "win", not "windows".
-		{"llama-b1-bin-win-cuda-12.4-x64.zip", []string{"win"}, true},
-		// A digit ends the match segment just like '-'/'_'/'.' do, so "win"
-		// matches inside "win32"/"win64" too — claude-code's Windows assets are
-		// literally named "win32" (both x64 and arm64; it's Node/Electron's
-		// platform label, not a 32-bit marker) and there's no need to list every
-		// numbered variant as its own alias.
-		{"claude-win32_x64.zip", []string{"win"}, true},
-		{"tool-bin-win64-cuda.zip", []string{"win"}, true},
-		// "lin" must not match inside "kotlin"/"berlin" — only a delimiter or
-		// digit ends the run of letters, so a longer word containing "lin" is
-		// safe by the same rule that protects "darwin" from "win".
-		{"tool-kotlin-plugin-amd64.tar.gz", []string{"lin"}, false},
+		{"llama-b1-bin-win-cuda-12.4-x64.zip", false, true},
+		// "win32"/"win64" sanitize to "win" via digit-trim, and survive the
+		// mixed "-" then "_" delimiters straddling them.
+		{"claude-win32_x64.zip", false, true},
+		{"tool-bin-win64-cuda.zip", false, false},
+		// "lin" must not match inside "kotlin"/"berlin".
+		{"tool-kotlin-plugin-amd64.tar.gz", false, true},
 		// llama.cpp names its Linux builds "ubuntu", which ghpm has no alias
 		// for — osNames intentionally doesn't enumerate distros.
-		{"llama-b1-bin-ubuntu-x64.tar.gz", []string{"linux", "lin"}, false},
+		{"llama-b1-bin-ubuntu-x64.tar.gz", false, true},
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
 	}
 	for _, c := range cases {
-		got := containsAnyOf(strings.ToLower(c.name), c.prefixes)
-		if got != c.want {
-			t.Errorf("containsAnyOf(%q, %v) = %v, want %v", c.name, c.prefixes, got, c.want)
+		sr := scoreAsset(c.name, "")
+		if sr.osMatch != c.wantOS {
+			t.Errorf("scoreAsset(%q).osMatch = %v, want %v", c.name, sr.osMatch, c.wantOS)
+		}
+		if sr.archMatch != c.wantArch {
+			t.Errorf("scoreAsset(%q).archMatch = %v, want %v", c.name, sr.archMatch, c.wantArch)
 		}
 	}
 }
@@ -347,29 +356,6 @@ func TestMatchByHint_BunVPrefix(t *testing.T) {
 	}
 }
 
-func TestWeightedMatchScore(t *testing.T) {
-	prefixes := []string{"darwin", "macos", "mac", "osx"} // index 0 worth 4, ... index 3 worth 1
-	cases := []struct {
-		name string
-		want int
-	}{
-		{"tool-darwin-arm64.tar.gz", 4},
-		{"tool-macos-arm64.tar.gz", 3},
-		{"tool-osx-arm64.tar.gz", 1},
-		{"tool-generic-arm64.tar.gz", 0},
-		// redundant aliases each add their own weight, rewarding a name that
-		// signals the platform more than once over one with a single hint
-		{"tool-darwin-macos-arm64.tar.gz", 7}, // darwin(4) + macos(3)
-		{"tool-mac-mac-arm64.tar.gz", 4},      // two "mac" hits, 2 * weight(2)
-	}
-	for _, c := range cases {
-		got := weightedMatchScore(strings.ToLower(c.name), prefixes)
-		if got != c.want {
-			t.Errorf("weightedMatchScore(%q, %v) = %d, want %d", c.name, prefixes, got, c.want)
-		}
-	}
-}
-
 func TestScoreAsset_HasNegative(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("platform-specific test")
@@ -393,25 +379,30 @@ func TestScoreAsset_HasNegative(t *testing.T) {
 	}
 }
 
-// covers hosts osNames/archNames has no entry for (e.g. freebsd, 386)
-func TestMatchPlatformSignal_UnlistedHost(t *testing.T) {
+// covers hosts osNames/archNames has no entry for (e.g. freebsd, loong64)
+func TestScoreAssetForHost_UnlistedHost(t *testing.T) {
 	cases := []struct {
-		name      string
-		hostKey   string
-		names     map[string][]string
-		wantScore int
-		wantNeg   bool
+		name     string
+		goos     string
+		goarch   string
+		wantOS   bool
+		wantArch bool
+		wantNeg  bool
 	}{
-		{"tool-freebsd-amd64.tar.gz", "freebsd", osNames, 1, false}, // no known-OS token: match by elimination
-		{"tool-linux-amd64.tar.gz", "freebsd", osNames, 0, true},    // claims a different known OS: excluded
-		{"tool-386.tar.gz", "386", archNames, 1, false},
-		{"tool-arm64.tar.gz", "386", archNames, 0, true},
+		// no known-OS token at all: match by elimination
+		{"tool-amd64.tar.gz", "freebsd", "amd64", true, true, false},
+		// claims a different known OS: excluded, not elimination
+		{"tool-linux-amd64.tar.gz", "freebsd", "amd64", false, true, true},
+		// no known-arch token at all: match by elimination
+		{"tool-linux.tar.gz", "linux", "loong64", true, true, false},
+		// claims a different known arch: excluded, not elimination
+		{"tool-linux-arm64.tar.gz", "linux", "loong64", true, false, true},
 	}
 	for _, c := range cases {
-		score, neg := matchPlatformSignal(strings.ToLower(c.name), c.hostKey, c.names)
-		if score != c.wantScore || neg != c.wantNeg {
-			t.Errorf("matchPlatformSignal(%q, %q) = (%v, %v), want (%v, %v)",
-				c.name, c.hostKey, score, neg, c.wantScore, c.wantNeg)
+		sr := scoreAssetForHost(c.name, "", c.goos, c.goarch)
+		if sr.osMatch != c.wantOS || sr.archMatch != c.wantArch || sr.hasNeg != c.wantNeg {
+			t.Errorf("scoreAssetForHost(%q, goos=%q, goarch=%q) = (osMatch=%v, archMatch=%v, hasNeg=%v), want (%v, %v, %v)",
+				c.name, c.goos, c.goarch, sr.osMatch, sr.archMatch, sr.hasNeg, c.wantOS, c.wantArch, c.wantNeg)
 		}
 	}
 }
@@ -460,10 +451,13 @@ func TestSelectAssetAuto_BareBinaries(t *testing.T) {
 }
 
 // TestSelectAssetAuto_PrefersCanonicalAlias covers osNames/archNames'
-// positional weighting: "amd64" (index 0 of archNames["amd64"]) outscores
-// the "x64" alias (index 2), so what used to be a forced tie between two
-// equally-valid spellings of the same arch now auto-selects the canonical
-// one instead of asking the user to pick between indistinguishable options.
+// positional weighting: "amd64" (index 0 of archNames["amd64"]) and "x64"
+// (index 2) both flatten to the same active score (arch match is a boolean,
+// not a magnitude — a same-repo sibling with the "better" spelling must never
+// outscore and exclude the real binary), so this is a genuine tie and both
+// land in Compatible. aliasWeight only breaks the tie in ordering, listing
+// the canonical spelling first, rather than auto-selecting between two real
+// candidates the user never got a chance to see.
 func TestSelectAssetAuto_PrefersCanonicalAlias(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("platform-specific test")
@@ -476,8 +470,11 @@ func TestSelectAssetAuto_PrefersCanonicalAlias(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ac.Chosen.Name != "tool-linux-amd64.tar.gz" {
-		t.Errorf("expected auto-select of the canonical alias, got Chosen=%q Compatible=%v", ac.Chosen.Name, ac.Compatible)
+	if ac.Chosen.Name != "" {
+		t.Errorf("expected a prompt, not an auto-select, got Chosen=%q", ac.Chosen.Name)
+	}
+	if len(ac.Compatible) != 2 || ac.Compatible[0].Name != "tool-linux-amd64.tar.gz" || ac.Compatible[1].Name != "tool-linux-x64.tar.gz" {
+		t.Errorf("expected amd64 ordered first, both compatible, got %v", ac.Compatible)
 	}
 }
 
@@ -528,6 +525,23 @@ func TestSelectAssetAuto_NoCompatible(t *testing.T) {
 	}
 	if len(ac.Hidden) != 2 {
 		t.Errorf("expected 2 hidden, got %d", len(ac.Hidden))
+	}
+}
+
+// TestSelectAssetAuto_NothingScoredReturnsError guards against dumping an
+// entire release's asset list (a monorepo release can ship 150+) on the user
+// when not one of them scored any signal at all — pkgName didn't match, and
+// nothing suggests a platform, archive, or binary either. That's ghpm's
+// heuristics coming up empty, not a real choice for the user to make, so it
+// reports the same "no compatible assets" error as an empty release instead.
+func TestSelectAssetAuto_NothingScoredReturnsError(t *testing.T) {
+	assets := []gh.Asset{
+		{Name: "readme.txt", Size: 100},
+		{Name: "notes.dat", Size: 100},
+	}
+	_, err := SelectAssetAuto(assets, testCfg(), "", "tool")
+	if !errors.Is(err, ErrNoCompatibleAsset) {
+		t.Errorf("expected ErrNoCompatibleAsset, got %v", err)
 	}
 }
 
@@ -778,6 +792,112 @@ func TestStripAssetExt(t *testing.T) {
 		if got := stripAssetExt(c.name); got != c.want {
 			t.Errorf("stripAssetExt(%q) = %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+func TestIsKnownAliasToken(t *testing.T) {
+	cases := []struct {
+		token string
+		want  bool
+	}{
+		{"linux", true},
+		{"amd64", true},
+		{"x86_64", true},
+		{"musl", true},
+		// win32/win64 sanitize to "win" once digits are stripped — not a
+		// substring or boundary check, an exact match against the stripped form.
+		{"win32", true},
+		{"win64", true},
+		{"codex", false},
+		{"app", false},
+		{"unknown", false},
+	}
+	for _, c := range cases {
+		if got := isKnownAliasToken(c.token); got != c.want {
+			t.Errorf("isKnownAliasToken(%q) = %v, want %v", c.token, got, c.want)
+		}
+	}
+}
+
+// TestExtraTokenCount_BoundaryAndDelimiterAgnostic guards the exact cases
+// worked through by hand: pkgName and a platform alias should net zero extra
+// tokens regardless of which order they appear in or which delimiter
+// separates them — including "x86_64_codex", where "_" is the only delimiter
+// present at all. looseTokenize's greedy longest-match search always tries
+// "x86_64" whole before ever trying to split at its own internal "_", the
+// same way it recognizes "bottom_x86_64" (a real asset shape) whole — there's
+// no ambiguity to fall back on here, the longer known token always wins.
+// "amd64codex" glued with no delimiter at all is genuinely unrecognizable as
+// either, since no span of it (long or short) matches anything known.
+func TestExtraTokenCount_BoundaryAndDelimiterAgnostic(t *testing.T) {
+	cases := []struct {
+		name, pkgName string
+		want          int
+	}{
+		{"x86_64-codex", "codex", 0},
+		{"codex-x86_64", "codex", 0},
+		{"amd64_codex", "codex", 0},
+		{"x86_64_codex", "codex", 0},
+		{"amd64codex", "codex", 1},
+	}
+	for _, c := range cases {
+		if got := scoreAsset(c.name, c.pkgName).extra; got != c.want {
+			t.Errorf("scoreAsset(%q, %q).extra = %d, want %d", c.name, c.pkgName, got, c.want)
+		}
+	}
+}
+
+// TestExtraTokenCount_RepeatsCountOnce guards that a repeated leftover word
+// only counts once — same as a repeated pkgName/alias/version mention
+// doesn't earn (or cost) extra credit either.
+func TestExtraTokenCount_RepeatsCountOnce(t *testing.T) {
+	if got := scoreAsset("codex-foo-foo-x86_64-linux", "codex").extra; got != 1 {
+		t.Errorf("extra repeated leftover = %d, want 1", got)
+	}
+}
+
+// TestExtraTokenCount_PeriodDelimiter guards "." as a fallback split
+// delimiter alongside "_", for a name that glues pkgName directly to
+// something else with a period rather than a dash or underscore.
+func TestExtraTokenCount_PeriodDelimiter(t *testing.T) {
+	if got := scoreAsset("codex.app-x86_64-linux", "codex").extra; got != 1 {
+		t.Errorf("scoreAsset(%q).extra = %d, want 1 (just \"app\")", "codex.app-x86_64-linux", got)
+	}
+}
+
+// TestSelectAssetAuto_MonorepoSiblingTools is a compact reproduction of the
+// reported openai/codex bug: a monorepo release ships several tools under
+// one repo, each named "pkgname-<subtool>-<platform>", so a sibling tool's
+// asset also contains pkgName as a delimited token and ties the real
+// binary's *active* (name+os+arch+ext) score exactly — that tie is real and
+// stays a tie (all three remain in Compatible, requiring a choice, rather
+// than one being silently auto-installed). What changes is the order:
+// "other" (extraTokenCount) breaks the tie by preferring the name with fewer
+// non-pkgName, non-platform words, so the real "codex" binary sorts first —
+// the correct default — instead of losing an alphabetical coin flip to
+// "codex-app-server" (see git history for the real 150+-asset release this
+// was diagnosed against).
+func TestSelectAssetAuto_MonorepoSiblingTools(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "codex-app-server-x86_64-unknown-linux-musl.tar.gz", Size: 100},
+		{Name: "codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz", Size: 100},
+		{Name: "codex-x86_64-unknown-linux-musl.tar.gz", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "" {
+		t.Fatalf("expected a genuine tie (no auto-pick), got silent Chosen=%q", ac.Chosen.Name)
+	}
+	if len(ac.Compatible) != 3 {
+		t.Fatalf("expected all 3 tied siblings to stay visible in Compatible, got %d: %v", len(ac.Compatible), ac.Compatible)
+	}
+	if ac.Compatible[0].Name != "codex-x86_64-unknown-linux-musl.tar.gz" {
+		t.Errorf("expected the real codex binary to sort first, got Compatible=%v", ac.Compatible)
 	}
 }
 
