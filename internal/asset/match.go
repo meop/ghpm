@@ -281,8 +281,7 @@ func looseTokenize(name, pkgName string) []string {
 	pos := 0
 	for pos < len(name) {
 		next := -1
-		for i := len(bounds) - 1; i >= 0; i-- {
-			b := bounds[i]
+		for _, b := range slices.Backward(bounds) {
 			if b <= pos {
 				break
 			}
