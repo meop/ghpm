@@ -25,7 +25,7 @@ var osNames = map[string][]string{
 
 var archNames = map[string][]string{
 	"arm64": {"arm64", "aarch64"},
-	"amd64": {"amd64", "x86_64", "x64"},
+	"amd64": {"amd64", "x86_64", "x86-64", "x64"},
 }
 
 var toolPrefs = map[string][]string{
