@@ -89,22 +89,23 @@ func nameStem(name string) string {
 	return s
 }
 
-// rankBins splits bins into those whose name contains the package-name stem
-// (preferred — the short list) and the rest (hidden behind "show more"), like
-// asset compatible/hidden scoring. When none match the stem, all are preferred
-// so nothing is hidden and the user simply sees every executable.
+// rankBins splits bins into those whose name is the package-name stem plus an
+// undelimited suffix (preferred — the short list: "uv" → uv, uvx) and the
+// rest (hidden behind "show more" — a delimiter after the stem, like
+// "llama-cli" under stem "llama", means a distinct sibling tool, not the same
+// binary). No pkgName (empty stem) disables ranking entirely.
 func rankBins(bins []BinCandidate, name string) (preferred, hidden []BinCandidate) {
 	stem := nameStem(name)
+	if stem == "" {
+		return bins, nil
+	}
 	for _, b := range bins {
 		base := strings.ToLower(strings.TrimSuffix(b.BinName, ".exe"))
-		if stem != "" && hasDelimitedSubstring(base, stem) {
+		if strings.HasPrefix(base, stem) && (len(base) == len(stem) || !isTokenDelim(base[len(stem)])) {
 			preferred = append(preferred, b)
 		} else {
 			hidden = append(hidden, b)
 		}
-	}
-	if len(preferred) == 0 {
-		return bins, nil
 	}
 	return preferred, hidden
 }

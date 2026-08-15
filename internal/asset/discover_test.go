@@ -201,16 +201,16 @@ func TestNameStem(t *testing.T) {
 }
 
 func TestSelectBins_PreferredShortList(t *testing.T) {
-	// "llama.cpp" → stem "llama": llama-* are preferred, rpc-server hidden.
-	fakeStdin(t, "\n") // empty selects all preferred, not the hidden rpc-server
-	c := []BinCandidate{{BinName: "llama-cli"}, {BinName: "llama-server"}, {BinName: "rpc-server"}}
-	got, err := SelectBins(c, "llama.cpp")
+	// stem "uv": uv/uvx (no delimiter after the stem) preferred, uv-toolchain (delimited) hidden.
+	fakeStdin(t, "\n") // empty selects all preferred, not the hidden uv-toolchain
+	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}, {BinName: "uv-toolchain"}}
+	got, err := SelectBins(c, "uv")
 	if err != nil || len(got) != 2 {
 		t.Fatalf("expected 2 preferred bins; got %v,%v", got, err)
 	}
 	for _, b := range got {
-		if b.BinName == "rpc-server" {
-			t.Errorf("rpc-server should be hidden, not selected by default: %v", got)
+		if b.BinName == "uv-toolchain" {
+			t.Errorf("uv-toolchain should be hidden, not selected by default: %v", got)
 		}
 	}
 }
@@ -227,13 +227,33 @@ func TestRankBins_StemBoundary(t *testing.T) {
 	}
 }
 
+// A sibling binary with no delimiter (uvx, npx-style) still counts as a prefix match.
+func TestRankBins_PrefixNoDelimiter(t *testing.T) {
+	preferred, hidden := rankBins([]BinCandidate{{BinName: "uv"}, {BinName: "uvx"}}, "uv")
+	if len(preferred) != 2 || len(hidden) != 0 {
+		t.Errorf("expected [uv uvx] both preferred, got preferred=%v hidden=%v", preferred, hidden)
+	}
+}
+
+// A delimiter right after the stem (llama-cli under stem "llama") makes it a
+// distinct sibling tool, not the same binary — hidden, none preferred, no fallback.
+func TestRankBins_DelimitedSuffixAllHidden(t *testing.T) {
+	preferred, hidden := rankBins([]BinCandidate{{BinName: "llama-cli"}, {BinName: "llama-server"}}, "llama.cpp")
+	if len(preferred) != 0 {
+		t.Errorf("expected none preferred, got %v", preferred)
+	}
+	if len(hidden) != 2 {
+		t.Errorf("expected both hidden, got %v", hidden)
+	}
+}
+
 func TestSelectBins_ShowMoreRevealsHidden(t *testing.T) {
-	// Pick "show more" (index 3 = after the two preferred), then rpc-server (3) from the full list.
+	// Pick "show more" (index 3 = after the two preferred), then uv-toolchain (3) from the full list.
 	fakeStdin(t, "3\n3\n")
-	c := []BinCandidate{{BinName: "llama-cli"}, {BinName: "llama-server"}, {BinName: "rpc-server"}}
-	got, err := SelectBins(c, "llama.cpp")
-	if err != nil || len(got) != 1 || got[0].BinName != "rpc-server" {
-		t.Errorf("expected [rpc-server] via show more; got %v,%v", got, err)
+	c := []BinCandidate{{BinName: "uv"}, {BinName: "uvx"}, {BinName: "uv-toolchain"}}
+	got, err := SelectBins(c, "uv")
+	if err != nil || len(got) != 1 || got[0].BinName != "uv-toolchain" {
+		t.Errorf("expected [uv-toolchain] via show more; got %v,%v", got, err)
 	}
 }
 
@@ -241,7 +261,7 @@ func TestSelectBins_ShowMoreRevealsHidden(t *testing.T) {
 // menu interrupts a stream of progress output (e.g. during `up`), it must be
 // preceded and followed by a blank line and name the package it belongs to.
 func TestSelectBins_PromptLabelAndBlank(t *testing.T) {
-	fakeStdin(t, "3\n")
+	fakeStdin(t, "1\n")
 	var buf bytes.Buffer
 	ui.SetOutput(&buf)
 	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
