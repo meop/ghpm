@@ -406,6 +406,9 @@ func scoreAssetForHost(name, pkgName, goos, goarch string) scoreResult {
 	if !r.archMatch && r.archWrong > 0 {
 		r.hasNeg = true
 	}
+	if hasUnknownExt(strings.ToLower(name)) {
+		r.hasNeg = true
+	}
 
 	return r
 }
@@ -420,6 +423,18 @@ func hasRecognizedExt(lower string) bool {
 		}
 	}
 	return strings.HasSuffix(lower, ".exe")
+}
+
+// hasUnknownExt reports a real trailing extension hasRecognizedExt doesn't allow (a digit-led segment is a version fragment, not one).
+func hasUnknownExt(lower string) bool {
+	i := strings.LastIndexByte(lower, '.')
+	if i < 0 || i == len(lower)-1 {
+		return false
+	}
+	if c := lower[i+1]; c < 'a' || c > 'z' {
+		return false
+	}
+	return !hasRecognizedExt(lower)
 }
 
 type AssetCandidates struct {
@@ -488,6 +503,18 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 		})
 	}
 
+	// Nothing scored and nothing even claimed a (wrong) platform: report "found nothing" instead of dumping the whole release on the user.
+	informative := false
+	for _, c := range all {
+		if c.active > 0 || c.wrongCount > 0 {
+			informative = true
+			break
+		}
+	}
+	if len(all) > 0 && !informative {
+		return AssetCandidates{}, ErrNoCompatibleAsset
+	}
+
 	var compatible, hidden []candidateScore
 	for _, c := range all {
 		if c.hasNeg {
@@ -508,16 +535,6 @@ func SelectAssetAuto(assets []gh.Asset, cfg *config.Settings, hint, pkgName stri
 		if c.active > maxActive {
 			maxActive = c.active
 		}
-	}
-
-	// Every same-platform-or-better candidate scored zero: pkgName didn't
-	// match, and nothing about any name suggests this OS/arch, a real
-	// archive, or a binary either. Dumping the whole release's asset list on
-	// the user isn't useful (a monorepo release can ship 150+) — report it
-	// as "found nothing", same as an empty release, so it gets investigated
-	// as a scoring gap rather than pushed onto the user to sort out by hand.
-	if len(compatible) > 0 && maxActive == 0 {
-		return AssetCandidates{}, ErrNoCompatibleAsset
 	}
 
 	var short []candidateScore

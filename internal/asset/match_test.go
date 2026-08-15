@@ -51,6 +51,28 @@ func TestHasRecognizedExt(t *testing.T) {
 	}
 }
 
+func TestHasUnknownExt(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"tool-linux-amd64.tar.gz", false},
+		{"shfmt_v3.13.1_linux_amd64", false},
+		{"shfmt_v3.13.1_windows_amd64.exe", false},
+		{"LICENSE", false},
+		{"fzf-0.56.0.deb", true},
+		{"tool-1.0-1.x86_64.rpm", true},
+		{"checksums.txt", true},
+		{"fzf-0.56.0-linux_amd64.tar.gz.sha256", true},
+	}
+	for _, c := range cases {
+		got := hasUnknownExt(strings.ToLower(c.name))
+		if got != c.want {
+			t.Errorf("hasUnknownExt(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 // TestSelectAssetAuto_JunkLosesOnScoreAlone confirms nothing needs to
 // pre-filter checksums/docs/source-tarballs by name: a real binary already
 // out-scores them (pkgName + OS/arch + recognized-extension match), so they
@@ -370,6 +392,7 @@ func TestScoreAsset_HasNegative(t *testing.T) {
 		{"tool-windows-amd64.zip", true},
 		{"tool-linux-arm64.tar.gz", true},
 		{"tool-generic.tar.gz", false},
+		{"tool_amd64.deb", true},
 	}
 	for _, c := range cases {
 		got := scoreAsset(c.name, "").hasNeg
@@ -525,6 +548,51 @@ func TestSelectAssetAuto_NoCompatible(t *testing.T) {
 	}
 	if len(ac.Hidden) != 2 {
 		t.Errorf("expected 2 hidden, got %d", len(ac.Hidden))
+	}
+}
+
+// An unknown-extension .deb must not win by default just for staying silent about platform.
+func TestSelectAssetAuto_DebNeverWinsByDefault(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "tool_1.0-1_i386.deb", Size: 100},
+		{Name: "tool-v1.0-windows-amd64.zip", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ac.Chosen.Name != "" {
+		t.Errorf("expected no auto-select, got %q", ac.Chosen.Name)
+	}
+	if len(ac.Compatible) != 0 {
+		t.Errorf("expected 0 compatible, got %d: %v", len(ac.Compatible), ac.Compatible)
+	}
+	if len(ac.Hidden) != 2 {
+		t.Errorf("expected 2 hidden, got %d: %v", len(ac.Hidden), ac.Hidden)
+	}
+}
+
+// A wrong-platform claim is still real signal, even at active=0, so it must not trip the "nothing scored" error.
+func TestSelectAssetAuto_WrongPlatformIsNotNothingScored(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("platform-specific test")
+	}
+	assets := []gh.Asset{
+		{Name: "app-darwin-arm64", Size: 100},
+		{Name: "app-windows-arm64", Size: 100},
+	}
+	ac, err := SelectAssetAuto(assets, testCfg(), "", "mytool")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(ac.Compatible) != 0 {
+		t.Errorf("expected 0 compatible, got %d: %v", len(ac.Compatible), ac.Compatible)
+	}
+	if len(ac.Hidden) != 2 {
+		t.Errorf("expected 2 hidden, got %d: %v", len(ac.Hidden), ac.Hidden)
 	}
 }
 
