@@ -92,6 +92,65 @@ func TestReservedFontNames_ExcludesOwner(t *testing.T) {
 	}
 }
 
+func TestSameKeySetFold_ExactMatch(t *testing.T) {
+	recase, ok := sameKeySetFold(
+		[]string{"Hack-Regular.ttf", "Hack-Bold.ttf"},
+		[]string{"Hack-Bold.ttf", "Hack-Regular.ttf"},
+	)
+	if !ok {
+		t.Fatal("expected match")
+	}
+	if recase["Hack-Regular.ttf"] != "Hack-Regular.ttf" {
+		t.Errorf("expected identity recase, got %q", recase["Hack-Regular.ttf"])
+	}
+}
+
+func TestSameKeySetFold_CasingOnlyDiff(t *testing.T) {
+	recase, ok := sameKeySetFold(
+		[]string{"HackNerdFontMono-Regular.ttf"},
+		[]string{"HackNerdFontMono-regular.ttf"},
+	)
+	if !ok {
+		t.Fatal("expected a casing-only difference to still match")
+	}
+	if recase["HackNerdFontMono-regular.ttf"] != "HackNerdFontMono-Regular.ttf" {
+		t.Errorf("expected recase to the newly discovered casing, got %q", recase["HackNerdFontMono-regular.ttf"])
+	}
+}
+
+func TestSameKeySetFold_BinCasingOnlyDiff(t *testing.T) {
+	recase, ok := sameKeySetFold(
+		[]string{"bin/MyTool"},
+		[]string{"bin/mytool"},
+	)
+	if !ok {
+		t.Fatal("expected a casing-only bin rename to still match")
+	}
+	if recase["bin/mytool"] != "bin/MyTool" {
+		t.Errorf("expected recase to the newly discovered casing, got %q", recase["bin/mytool"])
+	}
+}
+
+func TestSameKeySetFold_ExtensionDiffers(t *testing.T) {
+	_, ok := sameKeySetFold(
+		[]string{"Hack-Regular.otf"},
+		[]string{"Hack-Regular.ttf"},
+	)
+	if ok {
+		t.Error("expected a real extension change to reprompt, not silently match")
+	}
+}
+
+func TestSameKeySetFold_MembershipDiffers(t *testing.T) {
+	_, ok := sameKeySetFold(
+		[]string{"Hack-Regular.ttf", "Hack-Italic.ttf"},
+		[]string{"Hack-Regular.ttf", "Hack-Bold.ttf"},
+	)
+	if ok {
+		t.Error("expected a changed font set to reprompt")
+	}
+}
+
 func TestInitCommand_Minimal(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})

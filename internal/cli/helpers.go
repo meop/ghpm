@@ -253,23 +253,33 @@ func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) []
 	return rows
 }
 
-// sameStringSet reports whether a and b hold the same elements, ignoring order.
-// Used to decide whether a package's discovered bin/font set is unchanged since
-// last install (carry prior choices) or has changed (reprompt from scratch).
-func sameStringSet(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
+// sameKeySetFold reports whether newKeys and oldKeys hold the same bin/font
+// keys once case is ignored, and if so returns an old→new casing map. Bin and
+// font paths are case-sensitive on disk, so even a casing-only rename between
+// releases must re-point the stored path at the new file — but it still
+// carries the prior selection over silently rather than reprompting, since
+// nothing the user chose actually changed. Used by sync to decide whether a
+// package's discovered bin/font set is unchanged since last install (carry
+// prior choices) or has changed (reprompt from scratch); a genuine difference
+// (name, extension, or membership) returns ok=false so the caller falls back
+// to a full reprompt.
+func sameKeySetFold(newKeys, oldKeys []string) (recase map[string]string, ok bool) {
+	if len(newKeys) != len(oldKeys) {
+		return nil, false
 	}
-	as := slices.Clone(a)
-	bs := slices.Clone(b)
-	slices.Sort(as)
-	slices.Sort(bs)
-	for i := range as {
-		if as[i] != bs[i] {
-			return false
+	byLower := make(map[string]string, len(newKeys))
+	for _, k := range newKeys {
+		byLower[strings.ToLower(k)] = k
+	}
+	recase = make(map[string]string, len(oldKeys))
+	for _, old := range oldKeys {
+		newKey, found := byLower[strings.ToLower(old)]
+		if !found {
+			return nil, false
 		}
+		recase[old] = newKey
 	}
-	return true
+	return recase, true
 }
 
 // selectAndNameBins runs a fresh bin selection + naming pass, shared by add and by

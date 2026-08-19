@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -281,17 +280,28 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 		// Decide carry-vs-reprompt by comparing the *full* set of bins discovered
 		// this release against the full set discovered at install time (selected +
-		// declined, from the manifest). Identical → the package's layout is
-		// unchanged, so the prior selection and shim names carry over silently
-		// (nothing the user chose has changed; we only re-point shims at the new
-		// version). Any difference → the layout changed, so the package is
-		// reprompted from scratch via the same fresh flow add uses — including the
-		// rename prompt. No prior shim name is ever reused silently once we reprompt.
+		// declined, from the manifest), tolerating a casing-only rename
+		// (sameKeySetFold) the same way fonts do. Identical (aside from case) → the
+		// package's layout is unchanged, so the prior selection and shim names
+		// carry over silently (nothing the user chose has changed; we only
+		// re-point shims at the new version, recasing the stored path when the
+		// release re-cased a file). Any other difference → the layout changed, so
+		// the package is reprompted from scratch via the same fresh flow add uses
+		// — including the rename prompt. No prior shim name is ever reused
+		// silently once we reprompt.
 		if len(tr.bins) > 0 {
 			pkgBase, _, pinned := config.ParseVersionSuffix(tr.r.key)
-			if prev := tr.r.pkg.DiscoveredBins(); len(prev) > 0 && sameStringSet(binKeys(tr.bins), prev) {
-				newBin = maps.Clone(tr.r.pkg.Bin)
-				newBinDeclined = slices.Clone(tr.r.pkg.BinDeclined)
+			prev := tr.r.pkg.DiscoveredBins()
+			recase, foldOK := sameKeySetFold(binKeys(tr.bins), prev)
+			if len(prev) > 0 && foldOK {
+				newBin = make(map[string]string, len(tr.r.pkg.Bin))
+				for shimName, oldKey := range tr.r.pkg.Bin {
+					newBin[shimName] = recase[oldKey]
+				}
+				newBinDeclined = make([]string, len(tr.r.pkg.BinDeclined))
+				for i, oldKey := range tr.r.pkg.BinDeclined {
+					newBinDeclined[i] = recase[oldKey]
+				}
 				for _, binKey := range sortedValues(newBin) {
 					print("%s: bin found [%s]", res.Name, binKey)
 				}
@@ -328,12 +338,22 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		// Fonts follow the same carry-vs-reprompt rule against the full discovered
-		// font set.
+		// font set, including bin's tolerance for a casing-only rename
+		// (sameKeySetFold) — no reprompt is warranted just because a release
+		// re-cased a file.
 		if !pkgFailed && len(tr.fonts) > 0 {
 			pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
-			if prev := tr.r.pkg.DiscoveredFonts(); len(prev) > 0 && sameStringSet(fontKeys(tr.fonts), prev) {
-				newFont = maps.Clone(tr.r.pkg.Font)
-				newFontDeclined = slices.Clone(tr.r.pkg.FontDeclined)
+			prev := tr.r.pkg.DiscoveredFonts()
+			recase, foldOK := sameKeySetFold(fontKeys(tr.fonts), prev)
+			if len(prev) > 0 && foldOK {
+				newFont = make(map[string]string, len(tr.r.pkg.Font))
+				for fontName, oldPath := range tr.r.pkg.Font {
+					newFont[fontName] = recase[oldPath]
+				}
+				newFontDeclined = make([]string, len(tr.r.pkg.FontDeclined))
+				for i, oldPath := range tr.r.pkg.FontDeclined {
+					newFontDeclined[i] = recase[oldPath]
+				}
 				for _, fontName := range sortedKeys(newFont) {
 					print("%s: font found [%s]", res.Name, fontName)
 				}
