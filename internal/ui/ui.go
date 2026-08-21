@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/mattn/go-isatty"
 )
 
 // ErrSkip signals the user declined a selection prompt.
@@ -43,7 +45,26 @@ func SetOutput(w io.Writer) {
 }
 
 // SetInput redirects the prompt reader (tests).
-func SetInput(r io.Reader) { in = bufio.NewReader(r) }
+func SetInput(r io.Reader) {
+	in = bufio.NewReader(r)
+	interactiveOverride = true
+}
+
+// interactiveOverride records that input was redirected by a caller (tests),
+// where prompts are expected to work off the substituted reader.
+var interactiveOverride bool
+
+// Interactive reports whether there is someone to answer a prompt. Without it a
+// menu read hits EOF, and ReadSingle's empty-input default would pick item 1 —
+// choosing on the user's behalf in a script. A char-device test is not enough:
+// /dev/null is one, so a redirect from it would read as a terminal.
+func Interactive() bool {
+	if interactiveOverride {
+		return true
+	}
+	fd := os.Stdin.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
 
 // SetColorResolver installs the function mapping a role ("warn", "fail",
 // "pass") to a colorizer, or nil to disable color for that role.

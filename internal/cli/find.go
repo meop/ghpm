@@ -58,6 +58,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	var hadNoMatch bool
 	for _, term := range args {
 		sep()
 		if len(args) > 1 {
@@ -75,6 +76,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 		if len(matches) == 0 {
 			print("no repos matching %q", term)
+			hadNoMatch = true
 			continue
 		}
 
@@ -94,6 +96,9 @@ func runFind(cmd *cobra.Command, args []string) error {
 			rows[i] = []string{m.name, m.source}
 		}
 		printTable([]string{"name", "repo"}, rows, nil)
+	}
+	if hadNoMatch {
+		return errSilent
 	}
 	return nil
 }

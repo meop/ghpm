@@ -216,7 +216,13 @@ func (m *Manifest) FindBySource(source string) (string, bool) {
 }
 
 // SearchGitHub runs `gh search repos` and prompts the user to pick a result.
+// With nobody to ask, an unknown name is simply not found: picking a repo out
+// of a search on a script's behalf is how `info <typo>` ends up reporting on
+// somebody else's project.
 func SearchGitHub(name string) (string, error) {
+	if !ui.Interactive() {
+		return "", fmt.Errorf("not found: %q", name)
+	}
 	ghPath, err := ghbin.Find()
 	if err != nil {
 		return "", err
