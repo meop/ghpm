@@ -19,6 +19,9 @@ func withHome(t *testing.T) string {
 	t.Setenv("HOME", tmp)
 	t.Setenv("USERPROFILE", tmp)
 	t.Setenv("LOCALAPPDATA", filepath.Join(tmp, "AppData", "Local"))
+	// userFontDir prefers XDG_DATA_HOME over HOME, so a home-only override leaves
+	// font paths pointing at the real user's directories
+	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, ".local", "share"))
 	return tmp
 }
 
