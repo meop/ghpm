@@ -129,7 +129,11 @@ func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) 
 	if err := json.Unmarshal(out, &rel); err != nil {
 		return Release{}, fmt.Errorf("parsing release: %w", err)
 	}
-	return sanitizeRelease(rel)
+	rel, err = sanitizeRelease(rel)
+	if err != nil {
+		return Release{}, err
+	}
+	return resolvePointerRelease(ctx, owner, repo, rel)
 }
 
 // GetReleaseByTag fetches the release at tag, trying it exactly as given
@@ -211,6 +215,17 @@ func DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest string) 
 }
 
 func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, error) {
+	rel, err := viewRelease(ctx, owner, repo, tag)
+	if err != nil {
+		return Release{}, err
+	}
+	return resolvePointerRelease(ctx, owner, repo, rel)
+}
+
+// viewRelease fetches and sanitizes tag's release, with no pointer-hop
+// resolution — the fetch a hop itself uses to reach the release it points at,
+// so following a pointer doesn't loop back through resolvePointerRelease.
+func viewRelease(ctx context.Context, owner, repo, tag string) (Release, error) {
 	out, err := runCmd(ctx, "gh", "release", "view", tag,
 		"-R", owner+"/"+repo,
 		"--json", "tagName,assets",

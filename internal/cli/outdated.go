@@ -75,7 +75,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		checked++
 		pkg := manifest.Extracts[res.Key]
 		latest := config.NormalizeVersion(res.LatestTag)
-		if config.CompareVersions(latest, pkg.Version) > 0 {
+		if config.IsUpgrade(latest, pkg.Version) {
 			pkgName, _, _ := config.ParseVersionSuffix(res.Key)
 			outdated = append(outdated, outdatedPkg{
 				key:       res.Key,

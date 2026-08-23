@@ -107,6 +107,37 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
+// TestIsUpgrade_SchemeChange covers llama.cpp's transition from bare "b<n>"
+// build counters to real dotted semver: a build number already in the
+// thousands must still lose to a freshly-cut "v0.2.0", even though it wins
+// a raw numeric compare.
+func TestIsUpgrade_SchemeChange(t *testing.T) {
+	if !IsUpgrade("0.2.0", "6234") {
+		t.Error("a dotted release should be an upgrade over a bare build counter, regardless of magnitude")
+	}
+	if !IsUpgrade("0.2.0", "1") {
+		t.Error("a dotted release should be an upgrade over a small bare counter too")
+	}
+}
+
+func TestIsUpgrade_OrdinarySameScheme(t *testing.T) {
+	cases := []struct {
+		latest, installed string
+		want              bool
+	}{
+		{"1.10.0", "1.9.0", true},
+		{"1.9.0", "1.10.0", false},
+		{"1.0.0", "1.0.0", false},
+		{"6235", "6234", true}, // both bare counters: ordinary numeric compare still applies
+		{"6234", "6235", false},
+	}
+	for _, c := range cases {
+		if got := IsUpgrade(c.latest, c.installed); got != c.want {
+			t.Errorf("IsUpgrade(%q, %q) = %v, want %v", c.latest, c.installed, got, c.want)
+		}
+	}
+}
+
 func TestNormalizeVersion(t *testing.T) {
 	cases := [][2]string{
 		{"v1.2.3", "1.2.3"},
