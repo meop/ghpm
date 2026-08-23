@@ -117,23 +117,6 @@ func CompareVersions(a, b string) int {
 	return 0
 }
 
-// IsUpgrade reports whether latest should replace installed. The common case
-// is a numeric comparison (CompareVersions). But a repo occasionally starts
-// handing out real dotted semver where it used to hand out only a single bare
-// build counter — llama.cpp cutting "v0.2.0" releases where it used to hand
-// out only "b6234"-style counters, for example — and a counter already in the
-// thousands compares as "greater" than a fresh v0.x by raw magnitude, even
-// though it is the older scheme. Going from one dotted part to two-or-more is
-// exactly that signal: nobody ships a single-integer semver major in the
-// thousands, so a part-count jump is treated as always an upgrade rather than
-// trusting the numbers to mean the same thing across schemes.
-func IsUpgrade(latest, installed string) bool {
-	if len(versionParts(installed)) <= 1 && len(versionParts(latest)) >= 2 {
-		return latest != installed
-	}
-	return CompareVersions(latest, installed) > 0
-}
-
 func versionParts(v string) []int {
 	v = NormalizeVersion(v)
 	raw := strings.Split(v, ".")

@@ -53,7 +53,7 @@ The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips t
 - `cmd/ghpm/` — entry point
 - `internal/cli/` — subcommands; `helpers.go` has shared shim-naming and confirm logic
 - `internal/config/` — manifest (JSON), settings (`config.toml`), repo map (`repo.toml`, a flat name→source table), name resolution, semver, file locking
-- `internal/gh/` — all GitHub interaction via `gh` CLI (`os/exec`), never a Go SDK. `pointer.go` holds per-repo "pointer hop" resolution: a release that only names its real assets (llama.cpp's stable `vX.Y.Z` tags carry a `nightly-tag.txt` pointing at the `b<n>` build that has them) gets swapped for the release it points at, transparently, for every caller — see `pointerHops`
+- `internal/gh/` — all GitHub interaction via `gh` CLI (`os/exec`), never a Go SDK. `pointer.go`: a release whose one asset is a known pointer filename (`pointerAssetNames`, e.g. llama.cpp's `nightly-tag.txt`) gets its Assets swapped for the release the file's content names
 - `internal/asset/` — asset scoring/selection, extraction, binary/font discovery, name conflict resolution; `prompt.go` has shared selection-read helpers
 - `internal/ui/` — the single sink for all console output and prompts (deferred separators, styled lines, tables, confirm/select reads, `ErrSkip` sentinel). Imports no other internal package; color is injected via `SetColorResolver`
 - `internal/shim/` — shim creation/removal (symlink on Unix, stamped .exe on Windows)

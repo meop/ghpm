@@ -121,7 +121,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		checked++
 		pkg := targets[res.Key]
 		latest := config.NormalizeVersion(res.LatestTag)
-		if !config.IsUpgrade(latest, pkg.Version) && !forceSync {
+		if config.CompareVersions(latest, pkg.Version) <= 0 && !forceSync {
 			continue
 		}
 		outdated = append(outdated, outdatedPkg{key: res.Key, source: keyToSource[res.Key], pkg: pkg, latestTag: res.LatestTag})
