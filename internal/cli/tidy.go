@@ -340,7 +340,7 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 		return false
 	}
 
-	expected := map[string]bool{exeName(binGh): true, exeName(binGhpm): true}
+	expected := map[string]bool{exeName(binGhpm): true}
 	for _, pkg := range manifest.Extracts {
 		for shimName := range pkg.AllBins() {
 			expected[shimName] = true

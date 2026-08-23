@@ -97,7 +97,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			pkgName = repoName
 		}
 
-		if pkgName == binGh || pkgName == binGhpm {
+		if pkgName == binGhpm {
 			print("%s: already self managed", pkgName)
 			continue
 		}

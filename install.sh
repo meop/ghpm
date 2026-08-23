@@ -6,6 +6,7 @@ GHPM_REPO='meop/ghpm'
 SHEESH_REPO='meop/sheesh'
 GHPM_BIN="$HOME/.ghpm/bin"
 GHPM_SHIM="$HOME/.ghpm/shim"
+GHPM_VENDOR="$HOME/.ghpm/vendor"
 
 ARCH=$(uname -m)
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -142,13 +143,16 @@ fetch_release "$GH_REPO"
 GH_TAG=$(release_tag)
 echo "  version: $GH_TAG"
 case "$OS" in
-  darwin) install_from_release "gh_.*_macOS_${ARCH_GO}.zip"    'gh' "$GHPM_BIN" ;;
-  linux)  install_from_release "gh_.*_linux_${ARCH_GO}.tar.gz" 'gh' "$GHPM_BIN" ;;
+  darwin) install_from_release "gh_.*_macOS_${ARCH_GO}.zip"    'gh' "$GHPM_VENDOR" ;;
+  linux)  install_from_release "gh_.*_linux_${ARCH_GO}.tar.gz" 'gh' "$GHPM_VENDOR" ;;
 esac
+# ghpm's gh is vendored: off PATH, with its own auth, so it is unaffected by
+# whatever gh the system has and does not hand its token to anything else
 export PATH="$GHPM_BIN:$PATH"
-if ! gh auth status > /dev/null 2>&1; then
-  echo 'Authenticating gh...'
-  gh auth login --insecure-storage < /dev/tty
+export GH_CONFIG_DIR="$GHPM_VENDOR/gh-config"
+if ! "$GHPM_VENDOR/gh" auth status > /dev/null 2>&1; then
+  echo 'Authenticating ghpm'"'"'s gh...'
+  "$GHPM_VENDOR/gh" auth login --insecure-storage < /dev/tty
 fi
 
 # Install ghpm

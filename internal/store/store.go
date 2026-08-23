@@ -101,8 +101,18 @@ func ghpmSubDir(mkdir bool, elems ...string) (string, error) {
 	return dir, nil
 }
 
+// BinDir holds ghpm itself and the shims it stamps for packages — everything
+// meant to be on the user's PATH.
 func BinDir() (string, error) {
 	return ghpmSubDir(true, "bin")
+}
+
+// VendorDir holds the tools ghpm needs to work, not the ones it installs for
+// you. Nothing here belongs on PATH: it is invoked by absolute path, so a
+// vendored copy can be older, newer, or differently authenticated than the
+// same tool elsewhere on the system without either one disturbing the other.
+func VendorDir() (string, error) {
+	return ghpmSubDir(true, "vendor")
 }
 
 func ShimDir() (string, error) {

@@ -16,6 +16,7 @@ import (
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
+	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 )
@@ -162,11 +163,24 @@ func installedBinaryVersion(path string) string {
 }
 
 func checkGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*upgradeItem, error) {
-	binDir, err := store.BinDir()
+	ghPath, err := ghbin.VendorPath()
 	if err != nil {
 		return nil, err
 	}
-	ghPath := filepath.Join(binDir, exeName(binGh))
+	binDir := filepath.Dir(ghPath)
+
+	// a copy from before vendoring sits in bin/, where a package shim named gh
+	// now wants to live; move it rather than leaving two of them
+	if _, err := os.Stat(ghPath); err != nil {
+		if oldDir, dirErr := store.BinDir(); dirErr == nil {
+			oldPath := filepath.Join(oldDir, exeName(binGh))
+			if _, statErr := os.Stat(oldPath); statErr == nil {
+				if mkErr := os.MkdirAll(binDir, 0755); mkErr == nil {
+					_ = os.Rename(oldPath, ghPath)
+				}
+			}
+		}
+	}
 
 	if _, err := os.Stat(ghPath); err != nil {
 		return nil, nil

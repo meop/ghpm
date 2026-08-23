@@ -118,14 +118,13 @@ func fetchAndCacheRepos(source string) (int, error) {
 	if !strings.Contains(slug, "/") {
 		return 0, fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
 	}
-	ghPath, err := ghbin.Find()
-	if err != nil {
-		return 0, err
-	}
-	cmd := exec.Command(ghPath, "api", //nolint:gosec
+	cmd, err := ghbin.Command("api",
 		fmt.Sprintf("repos/%s/contents/repo.toml", slug),
 		"--header", "Accept: application/vnd.github.raw+json",
 	)
+	if err != nil {
+		return 0, err
+	}
 	data, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -223,11 +222,11 @@ func SearchGitHub(name string) (string, error) {
 	if !ui.Interactive() {
 		return "", fmt.Errorf("not found: %q", name)
 	}
-	ghPath, err := ghbin.Find()
+	cmd, err := ghbin.Command("search", "repos", name, "--limit", "5", "--json", "fullName")
 	if err != nil {
 		return "", err
 	}
-	out, err := exec.Command(ghPath, "search", "repos", name, "--limit", "5", "--json", "fullName").Output() //nolint:gosec
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("gh search failed — is gh authenticated?")
 	}

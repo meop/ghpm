@@ -226,12 +226,17 @@ func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, erro
 }
 
 func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
+	var cmd *exec.Cmd
 	if name == "gh" {
-		if p, err := ghbin.Find(); err == nil {
-			name = p
+		c, err := ghbin.Command(args...)
+		if err != nil {
+			return nil, err
 		}
+		cmd = exec.CommandContext(ctx, c.Path, c.Args[1:]...)
+		cmd.Env = c.Env
+	} else {
+		cmd = exec.CommandContext(ctx, name, args...)
 	}
-	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {

@@ -280,7 +280,7 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 	yes = true
 	defer func() { yes = false }()
 
-	binDir := makeBinDir(t, "gh", "ghpm", "orphan")
+	binDir := makeBinDir(t, "ghpm", "orphan")
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{},
@@ -289,7 +289,8 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 
 	cleanOrphanedBinShims(nil, manifest)
 
-	for _, name := range []string{"gh", "ghpm"} {
+	// gh is a package now, not machinery, so bin/ exempts only ghpm itself
+	for _, name := range []string{"ghpm"} {
 		if _, err := os.Lstat(filepath.Join(binDir, name)); err != nil {
 			t.Errorf("%s was removed but should have been kept", name)
 		}
