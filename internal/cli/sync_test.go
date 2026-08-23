@@ -157,9 +157,7 @@ func TestSyncBinShims_RemovesStaleWhenAllBinsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	stalePath := filepath.Join(binDir, "old")
-	if err := os.WriteFile(stalePath, []byte{}, 0755); err != nil {
-		t.Fatal(err)
-	}
+	writeFakeShim(t, stalePath)
 
 	errs := syncBinShims(t.TempDir(), map[string]string{"old": "bin/old"}, nil)
 	if len(errs) != 0 {
@@ -178,9 +176,7 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 		t.Fatal(err)
 	}
 	stalePath := filepath.Join(binDir, "old")
-	if err := os.WriteFile(stalePath, []byte{}, 0755); err != nil {
-		t.Fatal(err)
-	}
+	writeFakeShim(t, stalePath)
 
 	errs := syncBinShims(t.TempDir(), map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"})
 	if len(errs) != 0 {

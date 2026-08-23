@@ -477,7 +477,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		var failReason string
 		for shimName, binsKey := range p.bin {
 			binDir, binName := parseBinPath(binsKey)
-			if err := shim.Create(shimName, binName, p.pkgDir, binDir); err != nil {
+			if err := shim.Create(shimName, binName, p.pkgDir, binDir, forceInstall); err != nil {
 				printFail(cfg, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
 				shimFailed = true
 				hadErrors = true

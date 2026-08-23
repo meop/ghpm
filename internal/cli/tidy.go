@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/shim"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -351,7 +352,12 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	if binEntries, err := os.ReadDir(binDir); err == nil {
 		for _, e := range binEntries {
 			if !expected[e.Name()] {
-				paths = append(paths, filepath.Join(binDir, e.Name()))
+				full := filepath.Join(binDir, e.Name())
+				// only ghpm's own shims are ghpm's to clean up
+				if !shim.IsShim(full) {
+					continue
+				}
+				paths = append(paths, full)
 				binRows = append(binRows, []string{e.Name()})
 			}
 		}

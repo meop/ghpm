@@ -32,9 +32,9 @@ func makeBinDir(t *testing.T, files ...string) string {
 		t.Fatal(err)
 	}
 	for _, name := range files {
-		if err := os.WriteFile(filepath.Join(binDir, name), []byte{}, 0755); err != nil {
-			t.Fatal(err)
-		}
+		// a fixture bin has to look like a shim ghpm stamped, or tidy will rightly
+		// leave it alone as somebody else's binary
+		writeFakeShim(t, filepath.Join(binDir, name))
 	}
 	return binDir
 }

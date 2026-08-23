@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/meop/ghpm/internal/store"
 )
 
 func withHome(t *testing.T) string {
@@ -49,7 +51,7 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Create("fzf", "fzf", pkgDir, ""); err != nil {
+	if err := Create("fzf", "fzf", pkgDir, "", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +75,7 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 func TestCreate_KebabMissing(t *testing.T) {
 	withHome(t)
 	pkgDir := t.TempDir()
-	err := Create("fzf", "fzf", pkgDir, "")
+	err := Create("fzf", "fzf", pkgDir, "", false)
 	if err == nil {
 		t.Fatal("expected error when kebab is absent")
 	}
@@ -89,9 +91,7 @@ func TestRemove_RemovesShim(t *testing.T) {
 		t.Fatal(err)
 	}
 	shimPath := filepath.Join(binDir, exeName("fzf"))
-	if err := os.WriteFile(shimPath, []byte{}, 0755); err != nil {
-		t.Fatal(err)
-	}
+	writeFakeShim(t, shimPath)
 
 	if err := Remove("fzf"); err != nil {
 		t.Fatal(err)
@@ -105,5 +105,93 @@ func TestRemove_Idempotent(t *testing.T) {
 	withHome(t)
 	if err := Remove("doesnotexist"); err != nil {
 		t.Errorf("Remove of nonexistent shim returned error: %v", err)
+	}
+}
+
+// writeFakeShim stamps what IsShim looks for: the kebab marker and a source
+// path inside ghpm's extract dir.
+func writeFakeShim(t *testing.T, path string) {
+	t.Helper()
+	extracts, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(sheeshMarker + "\x00" + filepath.Join(extracts, "fzf", "1.0", "fzf"))
+	if err := os.WriteFile(path, body, 0755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIsShim_OnlyOurOwn(t *testing.T) {
+	home := withHome(t)
+	binDir := filepath.Join(home, ".ghpm", "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	ours := filepath.Join(binDir, "fzf")
+	writeFakeShim(t, ours)
+	if !IsShim(ours) {
+		t.Error("a shim ghpm stamped should be recognized")
+	}
+
+	theirs := filepath.Join(binDir, "someone-elses")
+	if err := os.WriteFile(theirs, []byte("#!/bin/sh\necho hi\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if IsShim(theirs) {
+		t.Error("a binary ghpm did not stamp must not be claimed")
+	}
+
+	// a sheesh shim pointing somewhere else is not ghpm's to touch either
+	elsewhere := filepath.Join(binDir, "elsewhere")
+	if err := os.WriteFile(elsewhere, []byte(sheeshMarker+"\x00/opt/other/bin/tool"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if IsShim(elsewhere) {
+		t.Error("a shim pointing outside ghpm's extract dir must not be claimed")
+	}
+}
+
+func TestRemove_LeavesForeignBinaryAlone(t *testing.T) {
+	home := withHome(t)
+	binDir := filepath.Join(home, ".ghpm", "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	theirs := filepath.Join(binDir, exeName("fzf"))
+	if err := os.WriteFile(theirs, []byte("not a shim"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Remove("fzf"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(theirs); err != nil {
+		t.Error("removing a package took a binary ghpm never installed")
+	}
+}
+
+func TestCreate_RefusesToReplaceForeignBinaryWithoutForce(t *testing.T) {
+	home := withHome(t)
+	binDir := filepath.Join(home, ".ghpm", "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	theirs := filepath.Join(binDir, exeName("fzf"))
+	if err := os.WriteFile(theirs, []byte("not a shim"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Create("fzf", "fzf", t.TempDir(), "", false)
+	if err == nil {
+		t.Fatal("expected a refusal to overwrite a foreign binary")
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Errorf("the refusal should say how to override it, got %v", err)
+	}
+	body, _ := os.ReadFile(theirs)
+	if string(body) != "not a shim" {
+		t.Error("the foreign binary was modified despite the refusal")
 	}
 }

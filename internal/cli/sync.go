@@ -459,7 +459,7 @@ func syncBinShims(pkgDir string, oldBin, newBin map[string]string) []shimSyncErr
 	var errs []shimSyncErr
 	for shimName, binKey := range newBin {
 		binDir, binName := parseBinPath(binKey)
-		if err := shim.Create(shimName, binName, pkgDir, binDir); err != nil {
+		if err := shim.Create(shimName, binName, pkgDir, binDir, false); err != nil {
 			errs = append(errs, shimSyncErr{shimName, err})
 		}
 	}
