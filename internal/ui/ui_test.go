@@ -19,6 +19,26 @@ func capture(t *testing.T, input string) *bytes.Buffer {
 	return buf
 }
 
+func TestInteractive_ForcedNonInteractiveOverridesTestInputOverride(t *testing.T) {
+	capture(t, "") // SetInput makes interactiveOverride true
+	SetNonInteractive(true)
+	t.Cleanup(func() { SetNonInteractive(false) })
+
+	if Interactive() {
+		t.Error("expected SetNonInteractive(true) to force Interactive() false even with input redirected")
+	}
+}
+
+func TestInteractive_NotForcedLeavesTestInputOverrideAlone(t *testing.T) {
+	capture(t, "")
+	SetNonInteractive(false)
+	t.Cleanup(func() { SetNonInteractive(false) })
+
+	if !Interactive() {
+		t.Error("expected the test input override to still report interactive when non-interactive isn't forced")
+	}
+}
+
 func TestBreak_NoLeadingBlank(t *testing.T) {
 	buf := capture(t, "")
 	Break() // nothing emitted yet

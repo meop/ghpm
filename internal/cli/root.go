@@ -7,6 +7,7 @@ import (
 
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -17,10 +18,11 @@ const (
 )
 
 var (
-	version = "dev"
-	dryRun  bool
-	quiet   bool
-	yes     bool
+	version        = "dev"
+	dryRun         bool
+	quiet          bool
+	yes            bool
+	nonInteractive bool
 )
 
 func SetVersion(v string) { version = v }
@@ -153,6 +155,10 @@ func NewRootCmd() *cobra.Command {
 			_ = cmd.Help()
 			return nil
 		},
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ui.SetNonInteractive(nonInteractive)
+			return nil
+		},
 	}
 
 	root.SetUsageTemplate(`Usage:{{if .Runnable}}
@@ -184,6 +190,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 	root.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "Print execution only without running")
 	root.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	root.PersistentFlags().BoolVarP(&yes, "yes", "y", false, "Yes for confirmation prompts")
+	root.PersistentFlags().BoolVar(&nonInteractive, "non-interactive", false, "Never prompt (e.g. an ambiguous name lookup fails instead of offering a picker); for scripted use")
 
 	root.SetHelpCommand(&cobra.Command{Hidden: true})
 

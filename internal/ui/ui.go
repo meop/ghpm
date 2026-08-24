@@ -54,11 +54,26 @@ func SetInput(r io.Reader) {
 // where prompts are expected to work off the substituted reader.
 var interactiveOverride bool
 
+// forcedNonInteractive records that a caller (--non-interactive) has said
+// nobody's there to answer, regardless of what stdin looks like — a TTY check
+// alone can't tell "a human is running this" from "a script is running this
+// from inside its own interactive shell," which is exactly the case for a
+// tool that shells out to ghpm as one step of a larger, non-interactive plan.
+var forcedNonInteractive bool
+
+// SetNonInteractive forces Interactive to report false, overriding the TTY
+// check. Meant for a caller that knows nobody can answer a prompt even though
+// stdin happens to be a terminal (inherited from an interactive parent).
+func SetNonInteractive(v bool) { forcedNonInteractive = v }
+
 // Interactive reports whether there is someone to answer a prompt. Without it a
 // menu read hits EOF, and ReadSingle's empty-input default would pick item 1 —
 // choosing on the user's behalf in a script. A char-device test is not enough:
 // /dev/null is one, so a redirect from it would read as a terminal.
 func Interactive() bool {
+	if forcedNonInteractive {
+		return false
+	}
 	if interactiveOverride {
 		return true
 	}

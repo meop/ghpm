@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -305,5 +306,31 @@ func TestFindBySource(t *testing.T) {
 	_, found = m.FindBySource("github.com/nobody/nothere")
 	if found {
 		t.Error("FindBySource(nothere) should not be found")
+	}
+}
+
+// TestSearchGitHub_NonInteractiveFailsWithoutPrompting exercises the default
+// test environment (stdin isn't a terminal), the common case: no result
+// picker fires, and no gh call is needed to know that.
+func TestSearchGitHub_NonInteractiveFailsWithoutPrompting(t *testing.T) {
+	_, err := SearchGitHub("some-nonexistent-name")
+	if err == nil {
+		t.Fatal("expected SearchGitHub to fail rather than prompt when non-interactive")
+	}
+}
+
+// TestSearchGitHub_ForcedNonInteractiveOverridesInteractiveInput covers the
+// actual bug this exists for: a caller (like ghpm's own --non-interactive
+// flag) that knows nobody can answer, even though something upstream —
+// SetInput here, an inherited terminal in production — makes stdin look
+// answerable.
+func TestSearchGitHub_ForcedNonInteractiveOverridesInteractiveInput(t *testing.T) {
+	ui.SetInput(strings.NewReader("1\n"))
+	ui.SetNonInteractive(true)
+	t.Cleanup(func() { ui.SetNonInteractive(false) })
+
+	_, err := SearchGitHub("some-nonexistent-name")
+	if err == nil {
+		t.Fatal("expected forced non-interactive to override an interactive-looking input reader")
 	}
 }
