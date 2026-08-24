@@ -108,7 +108,7 @@ func bootstrap(ctx context.Context, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(work)
+	defer func() { _ = os.RemoveAll(work) }()
 
 	archivePath := filepath.Join(work, assetName)
 	if err := downloadFile(ctx, assetURL, archivePath); err != nil {
@@ -147,7 +147,7 @@ func fetchJSON(ctx context.Context, url string, v any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s: %s", url, resp.Status)
 	}
@@ -163,7 +163,7 @@ func downloadFile(ctx context.Context, url, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s: %s", url, resp.Status)
 	}
@@ -171,7 +171,7 @@ func downloadFile(ctx context.Context, url, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	_, err = io.Copy(out, resp.Body)
 	return err
 }
@@ -195,12 +195,12 @@ func extractOneFromTarGz(archivePath, wantName, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {
@@ -223,7 +223,7 @@ func extractOneFromZip(archivePath, wantName, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() || filepath.Base(f.Name) != wantName {
@@ -233,7 +233,7 @@ func extractOneFromZip(archivePath, wantName, dest string) error {
 		if err != nil {
 			return err
 		}
-		defer rc.Close()
+		defer func() { _ = rc.Close() }()
 		return streamToFile(rc, dest)
 	}
 	return fmt.Errorf("%s not found in %s", wantName, filepath.Base(archivePath))
@@ -244,7 +244,7 @@ func streamToFile(r io.Reader, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	_, err = io.Copy(out, r)
 	return err
 }

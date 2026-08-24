@@ -39,7 +39,7 @@ func resolvePointerRelease(ctx context.Context, owner, repo string, rel Release)
 	if err != nil {
 		return Release{}, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 
 	if err := DownloadAsset(ctx, owner, repo, rel.TagName, pointer, tmp); err != nil {
 		return Release{}, fmt.Errorf("release %s: fetching %s: %w", rel.TagName, pointer, err)
