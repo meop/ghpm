@@ -42,7 +42,10 @@ func fakeKebab(t *testing.T, shimDir string) {
 
 func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 	home := withHome(t)
-	shimDir := filepath.Join(home, ".ghpm", "shim")
+	shimDir, err := store.ShimDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	fakeKebab(t, shimDir)
 
 	pkgDir := t.TempDir()

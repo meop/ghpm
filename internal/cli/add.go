@@ -68,7 +68,7 @@ type installTaskResult struct {
 func runAdd(cmd *cobra.Command, args []string) error {
 	forceInstall, _ := cmd.Flags().GetBool("force")
 	ctx := cmd.Context()
-	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Dirs: true, Repos: true, SkipHashCheck: true})
+	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Shim: true, Dirs: true, Repos: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}

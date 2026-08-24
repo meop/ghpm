@@ -38,6 +38,31 @@ func unreachableAPI(t *testing.T) {
 	t.Cleanup(func() { ghReleaseAPI = orig })
 }
 
+// serveGhRelease stands up a local server offering a single asset (built by
+// fakeGhAsset for the current platform) and points ghReleaseAPI at it.
+func serveGhRelease(t *testing.T, binName, content string) {
+	t.Helper()
+	assetName, archive := fakeGhAsset(t, binName, content)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/download/"+assetName, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	mux.HandleFunc("/repos/cli/cli/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"assets": []map[string]string{
+				{"name": assetName, "browser_download_url": srv.URL + "/download/" + assetName},
+			},
+		})
+	})
+	orig := ghReleaseAPI
+	ghReleaseAPI = srv.URL + "/repos/cli/cli/releases/latest"
+	t.Cleanup(func() { ghReleaseAPI = orig })
+}
+
 func TestEnsure_NoOpWhenVendoredAlreadyExists(t *testing.T) {
 	withHome(t)
 	unreachableAPI(t)
@@ -57,13 +82,28 @@ func TestEnsure_NoOpWhenVendoredAlreadyExists(t *testing.T) {
 	}
 }
 
-func TestEnsure_NoOpWhenPathHasGh(t *testing.T) {
+// TestEnsure_BootstrapsEvenWhenPathHasGh is the core of this design: ghpm's
+// own gh use never depends on PATH, so Ensure vendors its own copy even when
+// a perfectly usable gh already sits on PATH.
+func TestEnsure_BootstrapsEvenWhenPathHasGh(t *testing.T) {
 	withHome(t)
-	unreachableAPI(t)
 	fakePathGH(t)
+	serveGhRelease(t, vendorName(), "fake gh binary")
 
 	if err := Ensure(context.Background()); err != nil {
-		t.Errorf("expected no error (and no network call) when PATH already has gh, got %v", err)
+		t.Fatal(err)
+	}
+
+	vendored, err := VendorPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(vendored)
+	if err != nil {
+		t.Fatalf("expected a vendored gh despite PATH already having one: %v", err)
+	}
+	if string(got) != "fake gh binary" {
+		t.Errorf("vendored gh has wrong content: %q", got)
 	}
 }
 
@@ -95,27 +135,7 @@ func TestEnsure_ExpiredContextFailsFast(t *testing.T) {
 func TestEnsure_BootstrapsWhenNothingFound(t *testing.T) {
 	withHome(t)
 	t.Setenv("PATH", t.TempDir())
-
-	binName := vendorName()
-	assetName, archive := fakeGhAsset(t, binName, "fake gh binary")
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/download/"+assetName, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(archive)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	mux.HandleFunc("/repos/cli/cli/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"assets": []map[string]string{
-				{"name": assetName, "browser_download_url": srv.URL + "/download/" + assetName},
-			},
-		})
-	})
-	orig := ghReleaseAPI
-	ghReleaseAPI = srv.URL + "/repos/cli/cli/releases/latest"
-	t.Cleanup(func() { ghReleaseAPI = orig })
+	serveGhRelease(t, vendorName(), "fake gh binary")
 
 	if err := Ensure(context.Background()); err != nil {
 		t.Fatal(err)

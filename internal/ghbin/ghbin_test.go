@@ -16,7 +16,7 @@ func withHome(t *testing.T) string {
 	return tmp
 }
 
-func TestFind_PrefersTheVendoredCopy(t *testing.T) {
+func TestFind_ResolvesTheVendoredCopy(t *testing.T) {
 	withHome(t)
 	vendored, err := VendorPath()
 	if err != nil {
@@ -35,6 +35,18 @@ func TestFind_PrefersTheVendoredCopy(t *testing.T) {
 	}
 	if got != vendored {
 		t.Errorf("want the vendored gh at %s, got %s", vendored, got)
+	}
+}
+
+// TestFind_NeverFallsBackToPath is the other half of Ensure always vendoring
+// regardless of PATH: Find must not quietly hand back a PATH gh either, or
+// ghpm would still end up running an unvendored, unisolated copy.
+func TestFind_NeverFallsBackToPath(t *testing.T) {
+	withHome(t)
+	fakePathGH(t)
+
+	if _, err := Find(); err == nil {
+		t.Fatal("expected Find to fail rather than fall back to a PATH gh")
 	}
 }
 

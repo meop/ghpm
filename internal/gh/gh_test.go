@@ -10,22 +10,37 @@ import (
 	"time"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/ghbin"
 )
 
-// fakeGH writes a fake `gh` script that prints JSON to stdout.
+// withTestHome isolates ~/.ghpm (and anywhere else HOME-derived) to a temp
+// dir, same as the rest of the test suite's withHome helpers.
+func withTestHome(t *testing.T) string {
+	t.Helper()
+	tmp := t.TempDir()
+	t.Setenv("GHPM_TEST_HOME", tmp)
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	return tmp
+}
+
+// fakeGH stamps a fake `gh` script directly at ghpm's vendored gh path — the
+// only gh ghpm ever runs internally now, so tests plant it there rather than
+// on PATH. Isolates HOME itself so every caller gets it for free.
 func fakeGH(t *testing.T, script string) string {
 	t.Helper()
-	dir := t.TempDir()
-	bin := filepath.Join(dir, "gh")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
+	withTestHome(t)
+	vendored, err := ghbin.VendorPath()
+	if err != nil {
 		t.Fatal(err)
 	}
-	path := dir
-	if filepath.Separator != '\\' {
-		path += string(os.PathListSeparator) + os.Getenv("PATH")
+	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("PATH", path)
-	return dir
+	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Dir(vendored)
 }
 
 func TestSplitSource(t *testing.T) {
@@ -227,10 +242,7 @@ func TestListReleases_MockGH(t *testing.T) {
 }
 
 func TestCheckInstalled_NotFound(t *testing.T) {
-	empty := t.TempDir()
-	t.Setenv("PATH", empty)
-	t.Setenv("HOME", empty)
-	t.Setenv("USERPROFILE", empty)
+	withTestHome(t)
 
 	// an already-expired context fails the vendor bootstrap's fetch without
 	// touching the network, deterministically simulating "offline"

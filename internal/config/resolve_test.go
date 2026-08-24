@@ -7,6 +7,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/ui"
 )
@@ -31,18 +32,21 @@ func writeRepoTOML(t *testing.T, dir, content string) {
 	}
 }
 
+// fakeGHBin stamps a fake `gh` script directly at ghpm's vendored gh path —
+// the only gh ghpm ever runs internally now. Callers must have already
+// isolated HOME (withHome) so this resolves to a test-owned path.
 func fakeGHBin(t *testing.T, script string) {
 	t.Helper()
-	dir := t.TempDir()
-	bin := filepath.Join(dir, "gh")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
+	vendored, err := ghbin.VendorPath()
+	if err != nil {
 		t.Fatal(err)
 	}
-	path := dir
-	if filepath.Separator != '\\' {
-		path += string(os.PathListSeparator) + os.Getenv("PATH")
+	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("PATH", path)
+	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeConfigTOML(t *testing.T, s *Settings) {

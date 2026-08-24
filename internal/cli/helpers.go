@@ -97,6 +97,7 @@ type cmdOptions struct {
 	Lock          bool
 	Manifest      bool
 	GH            bool
+	Shim          bool
 	Dirs          bool
 	Repos         bool
 	SkipHashCheck bool
@@ -146,6 +147,13 @@ func initCommand(ctx context.Context, opts cmdOptions) (*cmdInit, error) {
 			return nil, ci.fail()
 		}
 		ci.gh = gh.NewCLI()
+	}
+
+	if opts.Shim {
+		if err := ensureSheesh(ctx, cfg, ci.gh); err != nil {
+			printFail(cfg, "%v", err)
+			return nil, ci.fail()
+		}
 	}
 
 	if opts.Repos {

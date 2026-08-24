@@ -29,17 +29,19 @@ type ghRelease struct {
 	} `json:"assets"`
 }
 
-// Ensure makes sure some gh is usable — vendored or on PATH — downloading the
-// latest release directly when neither is there. gh is obviously not
-// available yet to fetch gh with, so this talks to the GitHub API directly.
-// Staying current after that is `ghpm upgrade`'s job, not every invocation's.
+// Ensure makes sure ghpm has its own vendored gh, downloading the latest
+// release directly — gh is obviously not available yet to fetch gh with —
+// when nothing is vendored yet. Never skipped just because something is on
+// PATH: ghpm's own gh use doesn't depend on it. A no-op once a vendored copy
+// exists; staying current after that is `ghpm upgrade`'s job, not every
+// invocation's.
 func Ensure(ctx context.Context) error {
-	if _, err := Find(); err == nil {
-		return nil
-	}
 	path, err := VendorPath()
 	if err != nil {
 		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return nil
 	}
 	if err := bootstrap(ctx, path); err != nil {
 		return err
@@ -99,6 +101,9 @@ func bootstrap(ctx context.Context, dest string) error {
 	}
 
 	vendorDir := filepath.Dir(dest)
+	if err := os.MkdirAll(vendorDir, 0755); err != nil {
+		return err
+	}
 	work, err := os.MkdirTemp(vendorDir, ".gh-bootstrap-*")
 	if err != nil {
 		return err
@@ -112,9 +117,6 @@ func bootstrap(ctx context.Context, dest string) error {
 
 	extracted, err := extractOne(archivePath, vendorName())
 	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(vendorDir, 0755); err != nil {
 		return err
 	}
 	if err := os.Rename(extracted, dest); err != nil {

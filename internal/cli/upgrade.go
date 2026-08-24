@@ -299,6 +299,38 @@ func checkShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*
 	return &upgradeItem{name: binSheesh, current: currentVer, latest: latestVer, install: install}, nil
 }
 
+// ensureSheesh makes sure ghpm has its own vendored kebab, fetching and
+// vendoring the latest sheesh release when nothing is there yet — gh's
+// vendor bootstrap can talk raw HTTP because gh isn't there yet to help;
+// kebab has no such bootstrap problem, since anything that needs it already
+// required gh first. Staying current after that is `ghpm upgrade`'s job
+// (checkShim), not every invocation's.
+func ensureSheesh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
+	shimDir, err := store.ShimDir()
+	if err != nil {
+		return err
+	}
+	kebabPath := filepath.Join(shimDir, exeName("kebab"))
+	if _, err := os.Stat(kebabPath); err == nil {
+		return nil
+	}
+
+	rel, err := ghClient.GetLatestRelease(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo)
+	if err != nil {
+		return err
+	}
+	_, tmpDir, cleanup, err := fetchSelected(ctx, cfg, ghClient, config.RepoSheesh, rel, binSheesh)
+	if err != nil {
+		return err
+	}
+	if cleanup == nil {
+		return fmt.Errorf("no sheesh release asset found for this platform")
+	}
+	defer cleanup()
+
+	return copyExecutablesToDir(tmpDir, shimDir)
+}
+
 // fetchSelected selects an asset for pkgName, downloads, verifies, and extracts
 // it into a fresh temp dir. It returns the chosen asset, the temp dir, and a
 // cleanup func. On ErrSkip it returns an empty asset name and a nil cleanup.

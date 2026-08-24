@@ -4,13 +4,10 @@ param()
 $ErrorActionPreference = 'Stop'
 
 $GhpmRepo = 'meop/ghpm'
-$SheeshRepo = 'meop/sheesh'
 $GhpmBin = "$env:USERPROFILE\.ghpm\bin"
-$GhpmShim = "$env:USERPROFILE\.ghpm\shim"
 
 $IsArm64 = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq `
   [System.Runtime.InteropServices.Architecture]::Arm64
-$Arch = if ($IsArm64) { 'aarch64' } else { 'x86_64' }
 $GoArch = if ($IsArm64) { 'arm64' } else { 'amd64' }
 
 function Get-LatestRelease($Repo) {
@@ -34,28 +31,6 @@ function Find-Asset($Release, $Pattern) {
   }
   Write-Host "  matched asset: $($asset.name) -> $($asset.browser_download_url)"
   $asset
-}
-
-function Install-AllExe($Release, $Pattern, $Dest) {
-  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
-  Write-Host "  temp dir: $tmp"
-  New-Item -ItemType Directory -Path $tmp | Out-Null
-  try {
-    $asset = Find-Asset $Release $Pattern
-    $zip = Join-Path $tmp 'pkg.zip'
-    Write-Host "  downloading to $zip"
-    Invoke-WebRequest $asset.browser_download_url -OutFile $zip -UseBasicParsing
-    $size = (Get-Item $zip).Length
-    Write-Host "  downloaded $size bytes"
-    Expand-Archive $zip -DestinationPath $tmp
-    if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest | Out-Null }
-    Get-ChildItem $tmp -Recurse -Filter '*.exe' | ForEach-Object {
-      Copy-Item $_.FullName "$Dest\$($_.Name)" -Force
-      Write-Host "  installed $Dest\$($_.Name)"
-    }
-  } finally {
-    Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
-  }
 }
 
 function Install-Binary($Release, $Pattern, $Binary, $Dest) {
@@ -97,12 +72,6 @@ $GhpmRelease = Get-LatestRelease $GhpmRepo
 Write-Host "  version: $($GhpmRelease.tag_name)"
 Install-Binary $GhpmRelease "ghpm-.*-windows-$GoArch\.zip$" 'ghpm.exe' $GhpmBin
 $env:PATH = "$GhpmBin;$env:PATH"
-
-# Install shim (sheesh runtime + kebab stamper)
-Write-Host "Fetching latest shim release: github.com/$SheeshRepo"
-$SheeshRelease = Get-LatestRelease $SheeshRepo
-Write-Host "  version: $($SheeshRelease.tag_name)"
-Install-AllExe $SheeshRelease "sheesh-.*-windows-$Arch\.zip$" $GhpmShim
 
 Write-Host ''
 Write-Host 'Refreshing repo sources...'

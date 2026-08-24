@@ -21,10 +21,20 @@ type fakeGHClient struct {
 	mu         sync.Mutex
 	downloaded []string
 	failAssets map[string]bool
+
+	// latestRelease/latestReleaseErr control GetLatestRelease's response,
+	// for callers (e.g. ensureSheesh) that act on it rather than just
+	// downloading assets by name.
+	latestRelease    gh.Release
+	latestReleaseErr error
+	// downloadContent, when set, makes DownloadAsset write real bytes to
+	// dest/pattern instead of just recording the call — needed by callers
+	// that go on to extract what was "downloaded".
+	downloadContent []byte
 }
 
 func (f *fakeGHClient) GetLatestRelease(context.Context, string, string) (gh.Release, error) {
-	return gh.Release{}, nil
+	return f.latestRelease, f.latestReleaseErr
 }
 func (f *fakeGHClient) GetReleaseByTag(context.Context, string, string, string) (gh.Release, error) {
 	return gh.Release{}, nil
@@ -35,13 +45,20 @@ func (f *fakeGHClient) FindLatestMatching(context.Context, string, string, confi
 func (f *fakeGHClient) ListReleases(context.Context, string, string) ([]gh.Release, error) {
 	return nil, nil
 }
-func (f *fakeGHClient) DownloadAsset(_ context.Context, _, _, _, pattern, _ string) error {
+func (f *fakeGHClient) DownloadAsset(_ context.Context, _, _, _, pattern, dest string) error {
 	f.mu.Lock()
 	f.downloaded = append(f.downloaded, pattern)
 	fail := f.failAssets[pattern]
+	content := f.downloadContent
 	f.mu.Unlock()
 	if fail {
 		return fmt.Errorf("simulated failure for %s", pattern)
+	}
+	if content != nil {
+		if err := os.MkdirAll(dest, 0755); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dest, pattern), content, 0644)
 	}
 	return nil
 }

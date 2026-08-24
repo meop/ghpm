@@ -24,9 +24,9 @@ go install github.com/meop/ghpm/cmd/ghpm@latest
 
 After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a shim there — a symlink on Linux/macOS, an `.exe` shim on Windows.
 
-`~/.ghpm/vendor/` holds the tools ghpm needs to work rather than the ones it installs for you — currently its own `gh`, with its own `GH_CONFIG_DIR` beside it. Nothing there belongs on PATH: ghpm invokes it by absolute path, so its copy can be older, newer, or differently authenticated than any `gh` elsewhere on the system without either one disturbing the other. That also frees the name, so `ghpm add gh` installs gh like any other package.
+`~/.ghpm/vendor/` holds the tools ghpm needs to work rather than the ones it installs for you: `gh` (with its own `GH_CONFIG_DIR` beside it) under `vendor/gh/`, and sheesh's `kebab` stamper under `vendor/sheesh/`. Nothing there belongs on PATH — ghpm invokes each by absolute path, and never falls back to whatever the system happens to have on PATH instead. A vendored copy can be older, newer, or differently authenticated than the same tool elsewhere on the system without either one disturbing the other. Vendoring `gh` this way also frees the name, so `ghpm add gh` installs gh like any other package.
 
-ghpm doesn't require `gh` to already be on your system: the first command that needs it vendors the latest release itself, and prompts you to `gh auth login` if that copy isn't authenticated yet.
+ghpm doesn't require `gh` or sheesh to already be on your system: the first command that needs either vendors it itself (fetching `gh` directly, since `gh` obviously isn't available yet to fetch `gh` with), and prompts you to `gh auth login` if that copy isn't authenticated yet.
 
 ## Usage
 
@@ -145,7 +145,7 @@ If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a rep
 - Release assets are cached in `~/.ghpm/download/github.com/<owner>/<repo>/<version>/`
 - Packages are extracted to `~/.ghpm/extract/<key>/<version>/` with full directory structure
 - A shim in `~/.ghpm/bin/` points at the binary in each package's extract dir
-- ghpm's own `gh` lives in `~/.ghpm/vendor/`, off PATH, authenticated separately, and vendors + authenticates itself on first use if it isn't there yet
+- ghpm's own `gh` and sheesh's `kebab` live under `~/.ghpm/vendor/`, off PATH, and each vendors itself on first use if it isn't there yet — `gh` also authenticates itself separately from the system `gh`, if any
 - State is tracked in `~/.ghpm/manifest.json`, including the binaries and fonts you *declined* at install time — so `sync` knows the exact set a release offered last time
 - On `sync`, a package carries its prior choices (which binaries to shim, what to name them) silently as long as the release offers the same set of binaries and fonts. If that set changes — a new helper binary appears, one is dropped — the package is re-prompted from scratch, including any renames; nothing is reused silently once you're asked again
 - SHA256 of each downloaded asset is verified against the digest returned by the GitHub API; mismatch is a hard error (bypass with `--skip-hash-check`)

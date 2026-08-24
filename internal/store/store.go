@@ -115,8 +115,11 @@ func VendorDir() (string, error) {
 	return ghpmSubDir(true, "vendor")
 }
 
+// ShimDir holds sheesh's own kebab stamper (and whatever else its release
+// ships), alongside gh under vendor — the other tool ghpm needs to work
+// rather than one it installs for you.
 func ShimDir() (string, error) {
-	return ghpmSubDir(true, "shim")
+	return ghpmSubDir(true, "vendor", "sheesh")
 }
 
 func ExtractsDir() (string, error) {

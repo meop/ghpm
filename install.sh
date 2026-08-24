@@ -2,22 +2,14 @@
 set -e
 
 GHPM_REPO='meop/ghpm'
-SHEESH_REPO='meop/sheesh'
 GHPM_BIN="$HOME/.ghpm/bin"
-GHPM_SHIM="$HOME/.ghpm/shim"
 
 ARCH=$(uname -m)
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 
-# normalize to Rust target arch names (x86_64/aarch64)
 case "$ARCH" in
-  arm64)  ARCH='aarch64' ;;
-  amd64)  ARCH='x86_64' ;;
-esac
-
-case "$ARCH" in
-  aarch64) ARCH_GO='arm64' ;;
-  x86_64)  ARCH_GO='amd64' ;;
+  arm64|aarch64) ARCH_GO='arm64' ;;
+  amd64|x86_64)  ARCH_GO='amd64' ;;
   *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
@@ -56,33 +48,6 @@ release_asset_url() {
     exit 1
   fi
   printf '%s' "$url"
-}
-
-install_shim_from_release() {
-  pattern="$1" dest="$2"
-  tmp=$(mktemp -d)
-  url=$(release_asset_url "$pattern")
-  pkg="$tmp/pkg"
-  echo "  downloading $url"
-  echo "  temp dir: $tmp"
-  curl -fsSL "$url" -o "$pkg" || {
-    echo "  download failed: $url" >&2
-    rm -rf "$tmp"
-    exit 1
-  }
-  echo "  downloaded $(wc -c < "$pkg" | tr -d ' ') bytes to $pkg"
-  case "$url" in
-    *.tar.gz|*.tgz) tar xzf "$pkg" -C "$tmp" ;;
-    *.zip) unzip -q "$pkg" -d "$tmp" ;;
-  esac
-  mkdir -p "$dest"
-  find "$tmp" -type f ! -name 'pkg' | while IFS= read -r f; do
-    name=$(basename "$f")
-    cp "$f" "$dest/$name"
-    chmod +x "$dest/$name"
-    echo "  installed $dest/$name"
-  done
-  rm -rf "$tmp"
 }
 
 install_from_release() {
@@ -142,13 +107,6 @@ GHPM_TAG=$(release_tag)
 echo "  version: $GHPM_TAG"
 install_from_release "ghpm-.*-${OS}-${ARCH_GO}.tar.gz" 'ghpm' "$GHPM_BIN"
 export PATH="$GHPM_BIN:$PATH"
-
-# Install shim (sheesh runtime + kebab stamper)
-echo "Fetching latest shim release: github.com/$SHEESH_REPO"
-fetch_release "$SHEESH_REPO"
-SHEESH_TAG=$(release_tag)
-echo "  version: $SHEESH_TAG"
-install_shim_from_release "sheesh-.*-${OS}-${ARCH}.tar.gz" "$GHPM_SHIM"
 
 echo ''
 echo 'Refreshing repo sources...'
