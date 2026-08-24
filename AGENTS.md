@@ -58,7 +58,7 @@ The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips t
 - `internal/ui/` — the single sink for all console output and prompts (deferred separators, styled lines, tables, confirm/select reads, `ErrSkip` sentinel). Imports no other internal package; color is injected via `SetColorResolver`
 - `internal/shim/` — shim creation/removal (symlink on Unix, stamped .exe on Windows)
 - `internal/store/` — `~/.ghpm/` path helpers; `BinDir` is what goes on PATH (ghpm itself plus package shims), `VendorDir` is what ghpm needs to work and deliberately does not
-- `internal/ghbin/` — resolves gh, preferring the vendored copy over PATH, and runs it against ghpm's own `GH_CONFIG_DIR` so its auth is independent of the system gh's
+- `internal/ghbin/` — resolves gh, preferring the vendored copy over PATH, and runs it against ghpm's own `GH_CONFIG_DIR` so its auth is independent of the system gh's. `bootstrap.go`'s `Ensure` vendors gh directly from the GitHub API (no `gh` dependency, since none may exist yet) the first time neither a vendored copy nor PATH has one, then runs `gh auth login` if that copy isn't authenticated and there's a TTY to answer it
 - `internal/parallel/` — bounded worker pool used for parallel download+extract
 
 ## Manifest and disk layout

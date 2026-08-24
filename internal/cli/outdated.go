@@ -23,14 +23,14 @@ func newOutdatedCmd() *cobra.Command {
 }
 
 func runOutdated(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Manifest: true, GH: true})
+	ctx := cmd.Context()
+	ci, err := initCommand(ctx, cmdOptions{Manifest: true, GH: true})
 	if err != nil {
 		return err
 	}
 	cfg := ci.cfg
 	manifest := ci.manifest
 	ghClient := ci.gh
-	ctx := cmd.Context()
 
 	type outdatedPkg struct {
 		key       string

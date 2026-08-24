@@ -3,12 +3,10 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
-$GhRepo = 'cli/cli'
 $GhpmRepo = 'meop/ghpm'
 $SheeshRepo = 'meop/sheesh'
 $GhpmBin = "$env:USERPROFILE\.ghpm\bin"
 $GhpmShim = "$env:USERPROFILE\.ghpm\shim"
-$GhpmVendor = "$env:USERPROFILE\.ghpm\vendor"
 
 $IsArm64 = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq `
   [System.Runtime.InteropServices.Architecture]::Arm64
@@ -93,26 +91,12 @@ function Install-Binary($Release, $Pattern, $Binary, $Dest) {
   }
 }
 
-# Install gh
-Write-Host "Fetching latest gh release: github.com/$GhRepo"
-$GhRelease = Get-LatestRelease $GhRepo
-Write-Host "  version: $($GhRelease.tag_name)"
-Install-Binary $GhRelease "gh_.*_windows_$GoArch\.zip$" 'gh.exe' $GhpmVendor
-# ghpm's gh is vendored: off PATH, with its own auth, so it is unaffected by
-# whatever gh the system has and does not hand its token to anything else
-$env:PATH = "$GhpmBin;$env:PATH"
-$env:GH_CONFIG_DIR = "$GhpmVendor\gh-config"
-& "$GhpmVendor\gh.exe" auth status 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "Authenticating ghpm's gh..."
-  & "$GhpmVendor\gh.exe" auth login --insecure-storage
-}
-
 # Install ghpm
 Write-Host "Fetching latest ghpm release: github.com/$GhpmRepo"
 $GhpmRelease = Get-LatestRelease $GhpmRepo
 Write-Host "  version: $($GhpmRelease.tag_name)"
 Install-Binary $GhpmRelease "ghpm-.*-windows-$GoArch\.zip$" 'ghpm.exe' $GhpmBin
+$env:PATH = "$GhpmBin;$env:PATH"
 
 # Install shim (sheesh runtime + kebab stamper)
 Write-Host "Fetching latest shim release: github.com/$SheeshRepo"

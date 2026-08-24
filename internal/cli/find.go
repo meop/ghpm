@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"context"
 	"slices"
 	"strings"
 
@@ -25,7 +26,7 @@ type repoMatch struct {
 }
 
 func runFind(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Repos: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Repos: true})
 	if err != nil {
 		return err
 	}

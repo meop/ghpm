@@ -102,7 +102,7 @@ type cmdOptions struct {
 	SkipHashCheck bool
 }
 
-func initCommand(opts cmdOptions) (*cmdInit, error) {
+func initCommand(ctx context.Context, opts cmdOptions) (*cmdInit, error) {
 	ci := &cmdInit{dirs: store.NewLocalDirs()}
 
 	if opts.Lock {
@@ -141,7 +141,7 @@ func initCommand(opts cmdOptions) (*cmdInit, error) {
 	}
 
 	if opts.GH {
-		if err := gh.CheckInstalled(); err != nil {
+		if err := gh.CheckInstalled(ctx); err != nil {
 			printFail(cfg, "%v", err)
 			return nil, ci.fail()
 		}

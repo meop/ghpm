@@ -19,7 +19,7 @@ func TestRunDownload_NoGH(t *testing.T) {
 	quiet = true
 	defer func() { quiet = false }()
 
-	err := runDownload(cmdWithContext(), []string{"fzf"})
+	err := runDownload(cmdWithExpiredContext(), []string{"fzf"})
 	if err == nil {
 		t.Fatal("expected error when gh not found")
 	}
@@ -108,7 +108,7 @@ func TestRunInfo_NoGH(t *testing.T) {
 	quiet = true
 	defer func() { quiet = false }()
 
-	err := runInfo(cmdWithContext(), []string{"fzf"})
+	err := runInfo(cmdWithExpiredContext(), []string{"fzf"})
 	if err == nil {
 		t.Fatal("expected error when gh not found")
 	}
@@ -124,7 +124,7 @@ func TestRunOutdated_NoGH(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
 	})
 
-	err := runOutdated(cmdWithContext(), []string{})
+	err := runOutdated(cmdWithExpiredContext(), []string{})
 	if err == nil {
 		t.Fatal("expected error when gh not found")
 	}

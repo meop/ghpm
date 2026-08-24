@@ -31,7 +31,8 @@ func newSyncCmd() *cobra.Command {
 
 func runSync(cmd *cobra.Command, args []string) error {
 	forceSync, _ := cmd.Flags().GetBool("force")
-	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, SkipHashCheck: true})
+	ctx := cmd.Context()
+	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}
@@ -40,7 +41,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	manifest := ci.manifest
 	ghClient := ci.gh
 	dirs := ci.dirs
-	ctx := cmd.Context()
 
 	targets := map[string]config.PackageEntry{}
 	if len(args) == 0 {

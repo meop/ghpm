@@ -34,13 +34,13 @@ func newUpgradeCmd() *cobra.Command {
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Lock: true, GH: true, SkipHashCheck: true})
+	ctx := cmd.Context()
+	ci, err := initCommand(ctx, cmdOptions{Lock: true, GH: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}
 	defer ci.close()
 	cfg := ci.cfg
-	ctx := cmd.Context()
 	ghClient := ci.gh
 
 	// Phase 1: check each component's version (no install). Up-to-date ones are

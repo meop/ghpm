@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ func newTidyCmd() *cobra.Command {
 }
 
 func runTidy(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Lock: true, Manifest: true})
 	if err != nil {
 		return err
 	}

@@ -1,12 +1,10 @@
 #!/usr/bin/env sh
 set -e
 
-GH_REPO='cli/cli'
 GHPM_REPO='meop/ghpm'
 SHEESH_REPO='meop/sheesh'
 GHPM_BIN="$HOME/.ghpm/bin"
 GHPM_SHIM="$HOME/.ghpm/shim"
-GHPM_VENDOR="$HOME/.ghpm/vendor"
 
 ARCH=$(uname -m)
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -137,30 +135,13 @@ install_from_release() {
   rm -rf "$tmp"
 }
 
-# Install gh
-echo "Fetching latest gh release: github.com/$GH_REPO"
-fetch_release "$GH_REPO"
-GH_TAG=$(release_tag)
-echo "  version: $GH_TAG"
-case "$OS" in
-  darwin) install_from_release "gh_.*_macOS_${ARCH_GO}.zip"    'gh' "$GHPM_VENDOR" ;;
-  linux)  install_from_release "gh_.*_linux_${ARCH_GO}.tar.gz" 'gh' "$GHPM_VENDOR" ;;
-esac
-# ghpm's gh is vendored: off PATH, with its own auth, so it is unaffected by
-# whatever gh the system has and does not hand its token to anything else
-export PATH="$GHPM_BIN:$PATH"
-export GH_CONFIG_DIR="$GHPM_VENDOR/gh-config"
-if ! "$GHPM_VENDOR/gh" auth status > /dev/null 2>&1; then
-  echo 'Authenticating ghpm'"'"'s gh...'
-  "$GHPM_VENDOR/gh" auth login --insecure-storage < /dev/tty
-fi
-
 # Install ghpm
 echo "Fetching latest ghpm release: github.com/$GHPM_REPO"
 fetch_release "$GHPM_REPO"
 GHPM_TAG=$(release_tag)
 echo "  version: $GHPM_TAG"
 install_from_release "ghpm-.*-${OS}-${ARCH_GO}.tar.gz" 'ghpm' "$GHPM_BIN"
+export PATH="$GHPM_BIN:$PATH"
 
 # Install shim (sheesh runtime + kebab stamper)
 echo "Fetching latest shim release: github.com/$SHEESH_REPO"

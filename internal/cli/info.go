@@ -48,7 +48,8 @@ type infoOutcome struct {
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Manifest: true, GH: true, Repos: true})
+	ctx := cmd.Context()
+	ci, err := initCommand(ctx, cmdOptions{Manifest: true, GH: true, Repos: true})
 	if err != nil {
 		return err
 	}
@@ -56,7 +57,6 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	manifest := ci.manifest
 	repos := ci.repos
 	ghClient := ci.gh
-	ctx := cmd.Context()
 
 	// Phase 1: local resolution only (no network) — errors here are recorded,
 	// not printed yet, so per-arg output still lands in original argument order

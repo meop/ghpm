@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +17,18 @@ type ctxKey struct{}
 func cmdWithContext() *cobra.Command {
 	cmd := &cobra.Command{}
 	ctx := context.WithValue(context.Background(), ctxKey{}, true)
+	cmd.SetContext(ctx)
+	return cmd
+}
+
+// cmdWithExpiredContext is for tests asserting gh is NOT found: an already-
+// expired context fails the vendor bootstrap's fetch without touching the
+// network, deterministically simulating "offline" rather than actually
+// racing the real GitHub API.
+func cmdWithExpiredContext() *cobra.Command {
+	cmd := &cobra.Command{}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
+	cancel()
 	cmd.SetContext(ctx)
 	return cmd
 }

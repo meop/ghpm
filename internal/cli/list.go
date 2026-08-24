@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -23,7 +24,7 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Manifest: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Manifest: true})
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/meop/ghpm/internal/config"
 )
@@ -231,7 +232,12 @@ func TestCheckInstalled_NotFound(t *testing.T) {
 	t.Setenv("HOME", empty)
 	t.Setenv("USERPROFILE", empty)
 
-	if err := CheckInstalled(); err == nil {
+	// an already-expired context fails the vendor bootstrap's fetch without
+	// touching the network, deterministically simulating "offline"
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
+	defer cancel()
+
+	if err := CheckInstalled(ctx); err == nil {
 		t.Error("expected error when gh not found")
 	}
 }

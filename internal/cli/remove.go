@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func newRemoveCmd() *cobra.Command {
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Lock: true, Manifest: true})
 	if err != nil {
 		return err
 	}

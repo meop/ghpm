@@ -18,7 +18,7 @@ func TestRunUpgrade_NoGH(t *testing.T) {
 	quiet = true
 	defer func() { quiet = false }()
 
-	err := runUpgrade(cmdWithContext(), nil)
+	err := runUpgrade(cmdWithExpiredContext(), nil)
 	if err == nil {
 		t.Fatal("expected error when gh not found")
 	}

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
@@ -17,7 +19,7 @@ func newRefreshCmd() *cobra.Command {
 }
 
 func runRefresh(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(cmdOptions{Lock: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Lock: true})
 	if err != nil {
 		return err
 	}

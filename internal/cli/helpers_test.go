@@ -2,12 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -155,7 +157,7 @@ func TestInitCommand_Minimal(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 
-	ci, err := initCommand(cmdOptions{})
+	ci, err := initCommand(context.Background(), cmdOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +180,7 @@ func TestInitCommand_WithManifest(t *testing.T) {
 		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
 	})
 
-	ci, err := initCommand(cmdOptions{Manifest: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Manifest: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +196,7 @@ func TestInitCommand_WithLock(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 
-	ci, err := initCommand(cmdOptions{Lock: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Lock: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +212,12 @@ func TestInitCommand_GHCheckFails(t *testing.T) {
 	t.Setenv("PATH", empty)
 	writeSettings(t, &config.Settings{})
 
-	_, err := initCommand(cmdOptions{GH: true})
+	// an already-expired context fails the vendor bootstrap's fetch without
+	// touching the network, deterministically simulating "offline"
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
+	defer cancel()
+
+	_, err := initCommand(ctx, cmdOptions{GH: true})
 	if err == nil {
 		t.Fatal("expected error when gh not found")
 	}
@@ -220,7 +227,7 @@ func TestInitCommand_ReposLoadFailure(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 
-	ci, err := initCommand(cmdOptions{Repos: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Repos: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +288,7 @@ func TestInitCommand_SkipHashCheck_PropagatesFromSettings(t *testing.T) {
 	skipHashCheck = false
 	defer func() { skipHashCheck = false }()
 
-	_, err := initCommand(cmdOptions{SkipHashCheck: true})
+	_, err := initCommand(context.Background(), cmdOptions{SkipHashCheck: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +409,7 @@ func TestInitCommand_WithDirs(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 
-	ci, err := initCommand(cmdOptions{Dirs: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Dirs: true})
 	if err != nil {
 		t.Fatal(err)
 	}

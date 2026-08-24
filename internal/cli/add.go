@@ -67,7 +67,8 @@ type installTaskResult struct {
 
 func runAdd(cmd *cobra.Command, args []string) error {
 	forceInstall, _ := cmd.Flags().GetBool("force")
-	ci, err := initCommand(cmdOptions{Lock: true, Manifest: true, GH: true, Dirs: true, Repos: true, SkipHashCheck: true})
+	ctx := cmd.Context()
+	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Dirs: true, Repos: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}
@@ -77,7 +78,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	repos := ci.repos
 	ghClient := ci.gh
 	dirs := ci.dirs
-	ctx := cmd.Context()
 
 	var resolved []jobWithRelease
 	var hadErrors bool
