@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/store"
 )
@@ -159,9 +160,12 @@ func TestSyncBinShims_RemovesStaleWhenAllBinsGone(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	errs := syncBinShims(t.TempDir(), map[string]string{"old": "bin/old"}, nil)
+	installed, errs := syncBinShims(&config.Settings{}, t.TempDir(), map[string]string{"old": "bin/old"}, nil)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if len(installed) != 0 {
+		t.Errorf("expected no installed bins, got %v", installed)
 	}
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Errorf("expected stale shim %s to be removed, stat err = %v", stalePath, err)
@@ -178,9 +182,12 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	errs := syncBinShims(t.TempDir(), map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"})
+	installed, errs := syncBinShims(&config.Settings{}, t.TempDir(), map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"})
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if _, ok := installed["new"]; !ok {
+		t.Errorf("expected new to be recorded as installed, got %v", installed)
 	}
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Errorf("expected old shim to be removed")
@@ -198,6 +205,27 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	}
 }
 
+// TestSyncBinShims_FailedCreateNotRecorded guards against a failed shim.Create
+// still reading back as installed, the same class of bug as add.go's applyShimPlan.
+func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
+	withHome(t)
+	binDir, err := store.BinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No fakeKebab staged, so shim.Create fails for every entry in newBin.
+	installed, errs := syncBinShims(&config.Settings{}, t.TempDir(), map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"})
+	if len(errs) == 0 {
+		t.Fatal("expected an error when kebab is not staged")
+	}
+	if _, ok := installed["gh"]; ok {
+		t.Errorf("expected a failed create to not be recorded as installed, got %v", installed)
+	}
+	if _, statErr := os.Stat(filepath.Join(binDir, "gh")); !os.IsNotExist(statErr) {
+		t.Errorf("expected no shim file left behind")
+	}
+}
+
 // TestSyncPkgFonts_UninstallsStaleWhenAllFontsGone guards the sync.go
 // regression mirroring the bin one above: a release dropping every font a
 // package used to have (newFont empty) left the old font file installed
@@ -208,12 +236,15 @@ func TestSyncPkgFonts_UninstallsStaleWhenAllFontsGone(t *testing.T) {
 	fontsDir := filepath.Join(home, "xdg-data", "fonts")
 	makeFontFile(t, fontsDir, "Hack-Regular.ttf")
 
-	errs, err := syncPkgFonts(t.TempDir(), map[string]string{"hack": "Hack-Regular.ttf"}, nil)
+	installed, errs, err := syncPkgFonts(&config.Settings{}, t.TempDir(), map[string]string{"hack": "Hack-Regular.ttf"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(errs) != 0 {
 		t.Fatalf("unexpected font errors: %v", errs)
+	}
+	if len(installed) != 0 {
+		t.Errorf("expected no installed fonts, got %v", installed)
 	}
 	if fontInstalled("Hack-Regular.ttf", fontsDir) {
 		t.Errorf("expected stale font to be uninstalled")
@@ -227,11 +258,30 @@ func TestSyncPkgFonts_NoOpWhenBothEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	errs, err := syncPkgFonts(t.TempDir(), nil, nil)
+	_, errs, err := syncPkgFonts(&config.Settings{}, t.TempDir(), nil, nil)
 	if err != nil || len(errs) != 0 {
 		t.Fatalf("expected a clean no-op, got errs=%v err=%v", errs, err)
 	}
 	if _, statErr := os.Stat(wantDir); !os.IsNotExist(statErr) {
 		t.Errorf("expected fonts dir to never be created when both maps are empty")
+	}
+}
+
+// TestSyncPkgFonts_FailedInstallNotRecorded guards against a failed
+// installFont call still reading back as installed.
+func TestSyncPkgFonts_FailedInstallNotRecorded(t *testing.T) {
+	home := withHome(t)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "xdg-data"))
+
+	// No source file exists at pkgDir/Missing.ttf, so installFont's copy fails.
+	installed, errs, err := syncPkgFonts(&config.Settings{}, t.TempDir(), nil, map[string]string{"missing": "Missing.ttf"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(errs) == 0 {
+		t.Fatal("expected an error for a missing source font")
+	}
+	if _, ok := installed["missing"]; ok {
+		t.Errorf("expected the failed font to not be recorded as installed, got %v", installed)
 	}
 }

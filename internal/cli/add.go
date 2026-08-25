@@ -54,6 +54,20 @@ func (j installJob) key() string {
 	return j.name + "@" + strings.TrimPrefix(j.version, "v")
 }
 
+type shimPlan struct {
+	key          string
+	jobName      string
+	source       string
+	pkgDir       string
+	assets       []string
+	bin          map[string]string
+	font         map[string]string
+	binDeclined  []string
+	fontDeclined []string
+	pin          string
+	version      string
+}
+
 type jobWithRelease struct {
 	job     installJob
 	release gh.Release
@@ -286,19 +300,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
 
-	type shimPlan struct {
-		key          string
-		jobName      string
-		source       string
-		pkgDir       string
-		assets       []string
-		bin          map[string]string
-		font         map[string]string
-		binDeclined  []string
-		fontDeclined []string
-		pin          string
-		version      string
-	}
 	var shimPlans []shimPlan
 
 	for _, res := range installResults {
@@ -457,65 +458,31 @@ func runAdd(cmd *cobra.Command, args []string) error {
 					}
 					if fontsDir, err := userFontDir(); err == nil {
 						for _, fontPath := range staleFontPaths(oldFonts, newPaths) {
-							uninstallFont(fontPath, fontsDir)
+							if err := uninstallFont(fontPath, fontsDir); err != nil {
+								printWarn(cfg, "%s: could not remove stale font: %v", filepath.Base(fontPath), err)
+							}
 						}
 					}
 				}
 			}
 		}
-		manifest.Repos[p.jobName] = p.source
-		manifest.Extracts[p.key] = config.PackageEntry{
-			Pin:          p.pin,
-			Version:      p.version,
-			Assets:       p.assets,
-			Bin:          p.bin,
-			Font:         p.font,
-			BinDeclined:  p.binDeclined,
-			FontDeclined: p.fontDeclined,
+		installedBin, installedFont, failed, failReason := applyShimPlan(p, forceInstall, shim.Create, ensureFontDir, installFont)
+		if failed {
+			hadErrors = true
 		}
-		shimFailed := false
-		var failReason string
-		for shimName, binsKey := range p.bin {
-			binDir, binName := parseBinPath(binsKey)
-			if err := shim.Create(shimName, binName, p.pkgDir, binDir, forceInstall); err != nil {
-				printFail(cfg, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
-				shimFailed = true
-				hadErrors = true
-				if failReason == "" {
-					failReason = fmt.Sprintf("%s: could not create shim: %v", shimName, err)
-				}
+		if len(installedBin) > 0 || len(installedFont) > 0 {
+			manifest.Repos[p.jobName] = p.source
+			manifest.Extracts[p.key] = config.PackageEntry{
+				Pin:          p.pin,
+				Version:      p.version,
+				Assets:       p.assets,
+				Bin:          installedBin,
+				Font:         installedFont,
+				BinDeclined:  p.binDeclined,
+				FontDeclined: p.fontDeclined,
 			}
 		}
-		fontFailed := false
-		if len(p.font) > 0 {
-			fontsDir, err := ensureFontDir()
-			if err != nil {
-				printFail(cfg, "%s: font dir: %v", p.jobName, err)
-				fontFailed = true
-				hadErrors = true
-				if failReason == "" {
-					failReason = fmt.Sprintf("font dir: %v", err)
-				}
-			}
-			if !fontFailed {
-				fontNames := make([]string, 0, len(p.font))
-				for fontName := range p.font {
-					fontNames = append(fontNames, fontName)
-				}
-				slices.Sort(fontNames)
-				for _, fontName := range fontNames {
-					srcPath := filepath.Join(p.pkgDir, filepath.FromSlash(p.font[fontName]))
-					if err := installFont(srcPath, fontsDir); err != nil {
-						printFail(cfg, "%s: %s: could not install font: %v", p.jobName, fontName, err)
-						hadErrors = true
-						if failReason == "" {
-							failReason = fmt.Sprintf("%s: could not install font: %v", fontName, err)
-						}
-					}
-				}
-			}
-		}
-		if !shimFailed && !fontFailed {
+		if !failed {
 			successCount++
 		} else {
 			failedItems = append(failedItems, failedItem{name: p.jobName, reason: failReason})
@@ -534,6 +501,60 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 	return nil
+}
+
+// applyShimPlan returns only the shims/fonts that actually succeeded, so a caller never records a failed one as installed.
+func applyShimPlan(
+	p shimPlan,
+	forceInstall bool,
+	createShim func(shimName, binaryName, pkgDir, binSubdir string, force bool) error,
+	ensureFontDirFn func() (string, error),
+	installFontFn func(srcPath, fontsDir string) error,
+) (installedBin, installedFont map[string]string, failed bool, failReason string) {
+	installedBin = make(map[string]string, len(p.bin))
+	for shimName, binsKey := range p.bin {
+		binDir, binName := parseBinPath(binsKey)
+		if err := createShim(shimName, binName, p.pkgDir, binDir, forceInstall); err != nil {
+			printFail(nil, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
+			failed = true
+			if failReason == "" {
+				failReason = fmt.Sprintf("%s: could not create shim: %v", shimName, err)
+			}
+			continue
+		}
+		installedBin[shimName] = binsKey
+	}
+
+	installedFont = make(map[string]string, len(p.font))
+	if len(p.font) > 0 {
+		fontsDir, err := ensureFontDirFn()
+		if err != nil {
+			printFail(nil, "%s: font dir: %v", p.jobName, err)
+			failed = true
+			if failReason == "" {
+				failReason = fmt.Sprintf("font dir: %v", err)
+			}
+		} else {
+			fontNames := make([]string, 0, len(p.font))
+			for fontName := range p.font {
+				fontNames = append(fontNames, fontName)
+			}
+			slices.Sort(fontNames)
+			for _, fontName := range fontNames {
+				srcPath := filepath.Join(p.pkgDir, filepath.FromSlash(p.font[fontName]))
+				if err := installFontFn(srcPath, fontsDir); err != nil {
+					printFail(nil, "%s: %s: could not install font: %v", p.jobName, fontName, err)
+					failed = true
+					if failReason == "" {
+						failReason = fmt.Sprintf("%s: could not install font: %v", fontName, err)
+					}
+					continue
+				}
+				installedFont[fontName] = p.font[fontName]
+			}
+		}
+	}
+	return installedBin, installedFont, failed, failReason
 }
 
 func parseSourceArg(name string) (source, repoName string, err error) {

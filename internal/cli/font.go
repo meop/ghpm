@@ -69,10 +69,14 @@ func staleFontPaths(oldFonts map[string]string, newPaths []string) []string {
 	return stale
 }
 
-func uninstallFont(fontKey, fontsDir string) {
+func uninstallFont(fontKey, fontsDir string) error {
 	fontName := filepath.Base(fontKey)
-	_ = os.Remove(filepath.Join(fontsDir, fontName))
+	err := os.Remove(filepath.Join(fontsDir, fontName))
+	if os.IsNotExist(err) {
+		err = nil
+	}
 	unregisterFont(fontName)
+	return err
 }
 
 func fontInstalled(fontKey, fontsDir string) bool {

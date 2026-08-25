@@ -88,8 +88,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if fontsDir, err := userFontDir(); err == nil {
-			for _, fontPath := range t.pkg.AllFonts() {
-				uninstallFont(fontPath, fontsDir)
+			for fontName, fontPath := range t.pkg.AllFonts() {
+				if err := uninstallFont(fontPath, fontsDir); err != nil {
+					printWarn(cfg, "%s: could not remove font: %v", fontName, err)
+				}
 			}
 		}
 		successCount++

@@ -42,6 +42,24 @@ func TestFontInstalled_Missing(t *testing.T) {
 	}
 }
 
+func TestUninstallFont_RemovesFile(t *testing.T) {
+	tmp := t.TempDir()
+	makeFontFile(t, tmp, "Hack-Regular.ttf")
+	if err := uninstallFont("Hack-Regular.ttf", tmp); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fontInstalled("Hack-Regular.ttf", tmp) {
+		t.Error("expected font file to be removed")
+	}
+}
+
+func TestUninstallFont_AlreadyGoneIsNotAnError(t *testing.T) {
+	tmp := t.TempDir()
+	if err := uninstallFont("Hack-Regular.ttf", tmp); err != nil {
+		t.Errorf("expected nil error for an already-missing font, got %v", err)
+	}
+}
+
 func TestFontInstalled_SubdirKey(t *testing.T) {
 	tmp := t.TempDir()
 	makeFontFile(t, tmp, "Hack-Regular.ttf")

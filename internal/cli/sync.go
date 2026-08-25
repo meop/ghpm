@@ -326,8 +326,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// just when len(tr.bins) > 0 above, since a release can drop every bin a
 		// package used to have (newBin then stays empty) and the old shims still
 		// need removing.
+		binsSynced := false
 		if !pkgFailed && (len(tr.r.pkg.Bin) > 0 || len(newBin) > 0) {
-			for _, e := range syncBinShims(tr.pkgDir, tr.r.pkg.Bin, newBin) {
+			installedBin, binErrs := syncBinShims(cfg, tr.pkgDir, tr.r.pkg.Bin, newBin)
+			binsSynced = true
+			newBin = installedBin
+			for _, e := range binErrs {
 				printFail(cfg, "%s: %s: could not update shim: %v", res.Name, e.name, e.err)
 				hadErrors = true
 				pkgFailed = true
@@ -379,8 +383,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// Sync installed fonts to newFont whenever the package had or gains any
 		// fonts — mirrors the bin handling above: a release can drop every font a
 		// package used to have, and the old ones still need uninstalling.
+		fontsSynced := false
 		if !pkgFailed && (len(tr.r.pkg.Font) > 0 || len(newFont) > 0) {
-			fontErrs, err := syncPkgFonts(tr.pkgDir, tr.r.pkg.Font, newFont)
+			installedFont, fontErrs, err := syncPkgFonts(cfg, tr.pkgDir, tr.r.pkg.Font, newFont)
+			fontsSynced = true
+			newFont = installedFont
 			if err != nil {
 				printFail(cfg, "%s: font dir: %v", res.Name, err)
 				hadErrors = true
@@ -413,15 +420,24 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if !pkgFailed && (len(newBin) > 0 || len(newFont) > 0) {
+		// Write happens regardless of pkgFailed once anything mutated on disk.
+		if binsSynced || fontsSynced {
+			finalBin, finalBinDeclined := tr.r.pkg.Bin, tr.r.pkg.BinDeclined
+			if binsSynced {
+				finalBin, finalBinDeclined = newBin, newBinDeclined
+			}
+			finalFont, finalFontDeclined := tr.r.pkg.Font, tr.r.pkg.FontDeclined
+			if fontsSynced {
+				finalFont, finalFontDeclined = newFont, newFontDeclined
+			}
 			manifest.Extracts[tr.r.key] = config.PackageEntry{
 				Pin:          tr.r.pkg.Pin,
 				Version:      newVer,
 				Assets:       assetNames(tr.r.chosens),
-				Bin:          newBin,
-				Font:         newFont,
-				BinDeclined:  newBinDeclined,
-				FontDeclined: newFontDeclined,
+				Bin:          finalBin,
+				Font:         finalFont,
+				BinDeclined:  finalBinDeclined,
+				FontDeclined: finalFontDeclined,
 			}
 		}
 	}
@@ -448,22 +464,26 @@ type shimSyncErr struct {
 	err  error
 }
 
-// syncBinShims removes every shim named in oldBin, then creates a shim for
-// every entry in newBin. Both maps may be empty — ranging over an empty map
-// is a no-op — so a package whose bins vanish entirely (newBin empty) still
-// gets its stale shims removed.
-func syncBinShims(pkgDir string, oldBin, newBin map[string]string) []shimSyncErr {
+// syncBinShims returns only the shims actually confirmed created, so a caller never records a failed one as installed.
+func syncBinShims(cfg *config.Settings, pkgDir string, oldBin, newBin map[string]string) (installedBin map[string]string, errs []shimSyncErr) {
 	for shimName := range oldBin {
-		_ = shim.Remove(shimName)
+		if _, keep := newBin[shimName]; keep {
+			continue
+		}
+		if err := shim.Remove(shimName); err != nil {
+			printWarn(cfg, "%s: could not remove stale shim: %v", shimName, err)
+		}
 	}
-	var errs []shimSyncErr
+	installedBin = make(map[string]string, len(newBin))
 	for shimName, binKey := range newBin {
 		binDir, binName := parseBinPath(binKey)
 		if err := shim.Create(shimName, binName, pkgDir, binDir, false); err != nil {
 			errs = append(errs, shimSyncErr{shimName, err})
+			continue
 		}
+		installedBin[shimName] = binKey
 	}
-	return errs
+	return installedBin, errs
 }
 
 // fontSyncErr is one font-install failure from syncPkgFonts, naming the font
@@ -473,28 +493,30 @@ type fontSyncErr struct {
 	err  error
 }
 
-// syncPkgFonts installs every entry in newFont, then removes any previously
-// installed font whose file is no longer among newFont's paths. If both maps
-// are empty there's nothing to do, so fontsDir isn't even created.
-func syncPkgFonts(pkgDir string, oldFont, newFont map[string]string) ([]fontSyncErr, error) {
+// syncPkgFonts returns only the fonts actually confirmed installed, so a caller never records a failed one as installed.
+func syncPkgFonts(cfg *config.Settings, pkgDir string, oldFont, newFont map[string]string) (installedFont map[string]string, errs []fontSyncErr, err error) {
 	if len(oldFont) == 0 && len(newFont) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	fontsDir, err := ensureFontDir()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var errs []fontSyncErr
+	installedFont = make(map[string]string, len(newFont))
 	for fontName, fontPath := range newFont {
 		srcPath := filepath.Join(pkgDir, filepath.FromSlash(fontPath))
-		if err := installFont(srcPath, fontsDir); err != nil {
-			errs = append(errs, fontSyncErr{fontName, err})
+		if installErr := installFont(srcPath, fontsDir); installErr != nil {
+			errs = append(errs, fontSyncErr{fontName, installErr})
+			continue
 		}
+		installedFont[fontName] = fontPath
 	}
 	for _, fontPath := range staleFontPaths(oldFont, sortedValues(newFont)) {
-		uninstallFont(fontPath, fontsDir)
+		if err := uninstallFont(fontPath, fontsDir); err != nil {
+			printWarn(cfg, "%s: could not remove stale font: %v", filepath.Base(fontPath), err)
+		}
 	}
-	return errs, nil
+	return installedFont, errs, nil
 }
 
 // resolvePriorAssets maps a package's previously selected assets onto the new
