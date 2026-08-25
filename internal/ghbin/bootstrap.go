@@ -80,7 +80,7 @@ func authIfNeeded(ctx context.Context, ghPath string) error {
 // short-lived token has no way to silently renew itself once nothing is
 // watching for the prompt that would refresh it.
 func login(ctx context.Context, ghPath string, env []string) error {
-	ui.Out("ghpm's gh needs a token (repo scope; also read:org for org-owned private repos) — paste a personal access token, then press enter:")
+	ui.Out("ghpm's gh needs a token — it only ever reads, so a fine-grained PAT with just Contents: Read-only is enough (classic PATs have no narrower option than the full repo scope) — paste a personal access token, then press enter:")
 	cmd := exec.CommandContext(ctx, ghPath, "auth", "login", "--insecure-storage", "--with-token")
 	cmd.Env = env
 	cmd.Stdin = os.Stdin
