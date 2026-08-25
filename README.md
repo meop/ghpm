@@ -26,7 +26,7 @@ After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a s
 
 `~/.ghpm/vendor/` holds the tools ghpm needs to work rather than the ones it installs for you: `gh` (with its own `GH_CONFIG_DIR` beside it) under `vendor/gh/`, and sheesh's `kebab` stamper under `vendor/sheesh/`. Nothing there belongs on PATH — ghpm invokes each by absolute path, and never falls back to whatever the system happens to have on PATH instead. A vendored copy can be older, newer, or differently authenticated than the same tool elsewhere on the system without either one disturbing the other. Vendoring `gh` this way also frees the name, so `ghpm add gh` installs gh like any other package.
 
-ghpm doesn't require `gh` or sheesh to already be on your system: the first command that needs either vendors it itself (fetching `gh` directly, since `gh` obviously isn't available yet to fetch `gh` with), and prompts you to `gh auth login` if that copy isn't authenticated yet.
+ghpm doesn't require `gh` or sheesh to already be on your system: the first command that needs either vendors it itself (fetching `gh` directly, since `gh` obviously isn't available yet to fetch `gh` with), and prompts you for a personal access token if that copy isn't authenticated yet — not the browser device flow, since ghpm's own gh is meant to keep working unattended, and a device-flow token has no way to silently renew itself once nobody's watching for the prompt. If a stored token stops working later (revoked, expired), the next command that hits it re-prompts and retries automatically rather than leaving every later command to fail the same way.
 
 ## Usage
 

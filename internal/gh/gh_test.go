@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
+	"github.com/meop/ghpm/internal/ui"
 )
 
 // withTestHome isolates ~/.ghpm (and anywhere else HOME-derived) to a temp
@@ -72,6 +74,69 @@ func TestSplitSource(t *testing.T) {
 		if owner != c.owner || repo != c.repo {
 			t.Errorf("SplitSource(%q) = (%q, %q), want (%q, %q)", c.source, owner, repo, c.owner, c.repo)
 		}
+	}
+}
+
+// TestRunCmd_RetriesOnceAfterAuthFailureWhenInteractive covers the reactive
+// half of auth handling: a call that fails looking like a bad/expired
+// credential gets one retry, after a (here, faked) re-auth — rather than
+// leaving a dead token to fail every command after it too.
+func TestRunCmd_RetriesOnceAfterAuthFailureWhenInteractive(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "retried")
+	t.Setenv("RETRY_MARKER", marker)
+
+	fakeGH(t, `
+		case "$*" in
+			*"auth login"*)
+				exit 0
+				;;
+			*"release view"*)
+				if [ -f "$RETRY_MARKER" ]; then
+					echo '{"tagName":"v1.0.0","assets":[]}'
+				else
+					touch "$RETRY_MARKER"
+					echo "gh: Bad credentials (HTTP 401)" >&2
+					exit 1
+				fi
+				;;
+		esac
+	`)
+	ui.SetInput(strings.NewReader(""))
+	t.Cleanup(func() { ui.SetNonInteractive(false) })
+
+	rel, err := GetLatestRelease(context.Background(), "owner", "repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "v1.0.0" {
+		t.Errorf("expected the retried call to succeed, got %+v", rel)
+	}
+}
+
+// TestRunCmd_NoRetryWhenNotInteractive covers the other half: with nobody to
+// answer a re-auth prompt, the original auth error surfaces once rather than
+// hanging or looping.
+func TestRunCmd_NoRetryWhenNotInteractive(t *testing.T) {
+	calls := filepath.Join(t.TempDir(), "calls")
+	t.Setenv("CALL_LOG", calls)
+
+	fakeGH(t, `
+		echo x >> "$CALL_LOG"
+		echo "gh: Bad credentials (HTTP 401)" >&2
+		exit 1
+	`)
+	// force non-interactive regardless of test order/leakage from
+	// ui.SetInput's interactiveOverride, which has no reset of its own
+	ui.SetNonInteractive(true)
+	t.Cleanup(func() { ui.SetNonInteractive(false) })
+
+	_, err := GetLatestRelease(context.Background(), "owner", "repo")
+	if err == nil {
+		t.Fatal("expected the auth error to surface")
+	}
+	body, _ := os.ReadFile(calls)
+	if got := len(strings.TrimSpace(string(body))); got != 1 {
+		t.Errorf("expected exactly one call attempt (no retry) when not interactive, got %d", got)
 	}
 }
 

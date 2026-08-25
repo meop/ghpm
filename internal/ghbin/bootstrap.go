@@ -34,7 +34,10 @@ type ghRelease struct {
 // when nothing is vendored yet. Never skipped just because something is on
 // PATH: ghpm's own gh use doesn't depend on it. A no-op once a vendored copy
 // exists; staying current after that is `ghpm upgrade`'s job, not every
-// invocation's.
+// invocation's. Staying *authenticated* is a separate concern handled
+// reactively — see ReAuth — rather than checked here on every invocation:
+// that would mean a network round trip before every single gh call, on top
+// of the one the call itself is about to make.
 func Ensure(ctx context.Context) error {
 	path, err := VendorPath()
 	if err != nil {
@@ -52,7 +55,7 @@ func Ensure(ctx context.Context) error {
 // authIfNeeded runs `gh auth login` against a freshly vendored gh when
 // nobody's logged in yet — the vendored copy starts with an empty config, and
 // gh refuses almost everything until it has a token. Skipped entirely when
-// there's nobody to answer the prompts; that command's own gh invocation will
+// there's nobody to answer the prompt; that command's own gh invocation will
 // then fail with gh's own auth-login message.
 func authIfNeeded(ctx context.Context, ghPath string) error {
 	if !ui.Interactive() {
@@ -69,14 +72,42 @@ func authIfNeeded(ctx context.Context, ghPath string) error {
 	if status.Run() == nil {
 		return nil
 	}
+	return login(ctx, ghPath, env)
+}
 
-	ui.Out("Authenticating ghpm's gh...")
-	login := exec.CommandContext(ctx, ghPath, "auth", "login", "--insecure-storage")
-	login.Env = env
-	login.Stdin = os.Stdin
-	login.Stdout = os.Stdout
-	login.Stderr = os.Stderr
-	return login.Run()
+// login prompts for a personal access token rather than the browser device
+// flow: ghpm's vendored gh is meant for unattended use, and a device flow's
+// short-lived token has no way to silently renew itself once nothing is
+// watching for the prompt that would refresh it.
+func login(ctx context.Context, ghPath string, env []string) error {
+	ui.Out("ghpm's gh needs a token (repo, read:org, gist scopes) — paste a personal access token, then press enter:")
+	cmd := exec.CommandContext(ctx, ghPath, "auth", "login", "--insecure-storage", "--with-token")
+	cmd.Env = env
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// ReAuth is the reactive half of auth handling: called when a gh invocation
+// has just failed with what looks like a bad or expired token (see
+// gh.isAuthError), it re-prompts for a token — interactively only, same as
+// authIfNeeded — so the failing command can retry once instead of leaving a
+// dead credential to fail every command after it too.
+func ReAuth(ctx context.Context) error {
+	if !ui.Interactive() {
+		return fmt.Errorf("gh authentication failed — run any ghpm command interactively to re-authenticate")
+	}
+	path, err := VendorPath()
+	if err != nil {
+		return err
+	}
+	cfgDir, err := ConfigDir()
+	if err != nil {
+		return err
+	}
+	env := append(os.Environ(), "GH_CONFIG_DIR="+cfgDir)
+	return login(ctx, path, env)
 }
 
 func bootstrap(ctx context.Context, dest string) error {

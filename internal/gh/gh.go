@@ -3,6 +3,7 @@ package gh
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -245,7 +246,22 @@ func viewRelease(ctx context.Context, owner, repo, tag string) (Release, error) 
 	return sanitizeRelease(rel)
 }
 
+// runCmd retries exactly once on an auth failure from the vendored gh: it
+// re-prompts for a token (ghbin.ReAuth, interactive only) and, if that
+// succeeds, runs the exact same command again rather than leaving one dead
+// credential to fail every command after it too.
 func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
+	out, err := runCmdOnce(ctx, name, args...)
+	if err == nil || name != "gh" || !errors.Is(err, ErrAuthFailed) {
+		return out, err
+	}
+	if reauthErr := ghbin.ReAuth(ctx); reauthErr != nil {
+		return nil, err
+	}
+	return runCmdOnce(ctx, name, args...)
+}
+
+func runCmdOnce(ctx context.Context, name string, args ...string) ([]byte, error) {
 	var cmd *exec.Cmd
 	if name == "gh" {
 		c, err := ghbin.Command(args...)
@@ -263,6 +279,9 @@ func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
 			stderr := strings.TrimSpace(string(ee.Stderr))
 			if strings.Contains(strings.ToLower(stderr), "rate limit") {
 				return nil, fmt.Errorf("%w: %s", ErrRateLimited, stderr)
+			}
+			if isAuthError(stderr) {
+				return nil, fmt.Errorf("%w: %s", ErrAuthFailed, stderr)
 			}
 			return nil, fmt.Errorf("%s: %s", name, stderr)
 		}
