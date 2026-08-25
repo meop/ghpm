@@ -19,6 +19,18 @@ func capture(t *testing.T, input string) *bytes.Buffer {
 	return buf
 }
 
+func TestReadSecret_UsesSubstitutedReaderWhenOverridden(t *testing.T) {
+	capture(t, "sekret-token\n")
+
+	got, err := ReadSecret("token: ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "sekret-token" {
+		t.Errorf("got %q, want %q", got, "sekret-token")
+	}
+}
+
 func TestInteractive_ForcedNonInteractiveOverridesTestInputOverride(t *testing.T) {
 	capture(t, "") // SetInput makes interactiveOverride true
 	SetNonInteractive(true)

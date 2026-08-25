@@ -11,7 +11,8 @@ require (
 	github.com/mattn/go-isatty v0.0.22
 	github.com/spf13/cobra v1.10.2
 	github.com/ulikunitz/xz v0.5.15
-	golang.org/x/sys v0.45.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
 )
 
 require (

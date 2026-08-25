@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/mattn/go-isatty"
+	"golang.org/x/term"
 )
 
 // ErrSkip signals the user declined a selection prompt.
@@ -152,6 +153,29 @@ func ReadLine(prompt string) string {
 	mu.Unlock()
 	s, _ := in.ReadString('\n')
 	return strings.TrimSpace(s)
+}
+
+// ReadSecret reads a single line without echoing it to the terminal — for a
+// token or password, where relying on the caller to send a clean EOF (as a
+// raw stdin pipe requires) is exactly the kind of thing that hangs when they
+// don't. Falls back to a plain line read when input has been redirected
+// (tests): a substituted reader isn't a real terminal, so there's nothing for
+// a raw-mode password read to attach to.
+func ReadSecret(prompt string) (string, error) {
+	mu.Lock()
+	flush()
+	ws(prompt)
+	started = true
+	mu.Unlock()
+
+	if interactiveOverride {
+		s, _ := in.ReadString('\n')
+		return strings.TrimSpace(s), nil
+	}
+
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	wln()
+	return string(b), err
 }
 
 // ReadSingle reads a single-item selection. Empty input selects item 1;

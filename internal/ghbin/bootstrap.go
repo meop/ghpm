@@ -78,12 +78,18 @@ func authIfNeeded(ctx context.Context, ghPath string) error {
 // login prompts for a personal access token rather than the browser device
 // flow: ghpm's vendored gh is meant for unattended use, and a device flow's
 // short-lived token has no way to silently renew itself once nothing is
-// watching for the prompt that would refresh it.
+// watching for the prompt that would refresh it. Reads the token itself
+// (ui.ReadSecret) rather than handing gh the raw terminal — piping os.Stdin
+// straight through relies on the person typing to send a clean EOF
+// themselves, which is exactly the kind of thing that just hangs.
 func login(ctx context.Context, ghPath string, env []string) error {
-	ui.Out("ghpm's gh needs a token (fine-grained PAT, Contents: Read-only) — paste one, then press enter:")
+	token, err := ui.ReadSecret("ghpm's gh needs a token (fine-grained PAT, Contents: Read-only) — paste one, then press enter: ")
+	if err != nil {
+		return err
+	}
 	cmd := exec.CommandContext(ctx, ghPath, "auth", "login", "--insecure-storage", "--with-token")
 	cmd.Env = env
-	cmd.Stdin = os.Stdin
+	cmd.Stdin = strings.NewReader(token)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
