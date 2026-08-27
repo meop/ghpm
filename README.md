@@ -7,13 +7,13 @@ A package manager that installs portable apps from GitHub Releases, using `gh` a
 **Linux / macOS:**
 
 ```sh
-curl --fail-with-body --location --no-progress-meter --url https://raw.githubusercontent.com/meop/ghpm/main/install.sh | sh
+curl --fail-with-body --location --url https://raw.githubusercontent.com/meop/ghpm/main/install.sh | sh
 ```
 
 **Windows:**
 
 ```powershell
-irm -ErrorAction Stop -ProgressAction SilentlyContinue -Uri https://raw.githubusercontent.com/meop/ghpm/main/install.ps1 | iex
+irm -ErrorAction Stop -Uri https://raw.githubusercontent.com/meop/ghpm/main/install.ps1 | iex
 ```
 
 **From source:**

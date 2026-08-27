@@ -71,11 +71,6 @@ Write-Host "Fetching latest ghpm release: github.com/$GhpmRepo"
 $GhpmRelease = Get-LatestRelease $GhpmRepo
 Write-Host "  version: $($GhpmRelease.tag_name)"
 Install-Binary $GhpmRelease "ghpm-.*-windows-$GoArch\.zip$" 'ghpm.exe' $GhpmBin
-$env:PATH = "$GhpmBin;$env:PATH"
-
-Write-Host ''
-Write-Host 'Refreshing repo sources...'
-& "$GhpmBin\ghpm.exe" refresh
 
 Write-Host ''
 Write-Host 'Refer to the project README for how to activate ghpm in your shell.'

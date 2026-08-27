@@ -106,11 +106,6 @@ fetch_release "$GHPM_REPO"
 GHPM_TAG=$(release_tag)
 echo "  version: $GHPM_TAG"
 install_from_release "ghpm-.*-${OS}-${ARCH_GO}.tar.gz" 'ghpm' "$GHPM_BIN"
-export PATH="$GHPM_BIN:$PATH"
-
-echo ''
-echo 'Refreshing repo sources...'
-ghpm refresh
 
 echo ''
 echo 'Refer to the project README for how to activate ghpm in your shell.'
