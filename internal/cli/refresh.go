@@ -19,7 +19,7 @@ func newRefreshCmd() *cobra.Command {
 }
 
 func runRefresh(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(context.Background(), cmdOptions{Lock: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Lock: true, GH: true})
 	if err != nil {
 		return err
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/ui"
 )
@@ -90,11 +91,32 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		if authErr == nil {
 			pass("gh", "authenticated")
 		} else {
-			msg := "not authenticated"
-			if lines := strings.Split(string(out), "\n"); len(lines) > 0 && strings.TrimSpace(lines[0]) != "" {
-				msg = strings.TrimSpace(lines[0])
+			fail("gh", authStatusFailureDetail(out))
+		}
+	}
+
+	// ghpm never runs the system gh above — only its own vendored copy (see
+	// ghbin.Find) — so that copy's presence and auth are what actually
+	// determines whether commands needing gh will work.
+	vendoredGh, vendorErr := ghbin.VendorPath()
+	if vendorErr != nil {
+		fail("gh (vendored)", vendorErr.Error())
+	} else if _, statErr := os.Stat(vendoredGh); statErr != nil {
+		warn("gh (vendored)", "not present — run any command that needs gh (e.g. 'ghpm refresh') to vendor it")
+	} else {
+		pass("gh (vendored)", "present — "+vendoredGh)
+		cfgDir, cfgErr := ghbin.ConfigDir()
+		if cfgErr != nil {
+			fail("gh (vendored)", cfgErr.Error())
+		} else {
+			cmd := exec.Command(vendoredGh, "auth", "status")
+			cmd.Env = append(os.Environ(), "GH_CONFIG_DIR="+cfgDir)
+			out, authErr := cmd.CombinedOutput()
+			if authErr == nil {
+				pass("gh (vendored)", "authenticated")
+			} else {
+				fail("gh (vendored)", authStatusFailureDetail(out))
 			}
-			fail("gh", msg)
 		}
 	}
 
@@ -205,6 +227,13 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func authStatusFailureDetail(out []byte) string {
+	if lines := strings.Split(string(out), "\n"); len(lines) > 0 && strings.TrimSpace(lines[0]) != "" {
+		return strings.TrimSpace(lines[0])
+	}
+	return "not authenticated"
 }
 
 func dirSize(path string) int64 {
