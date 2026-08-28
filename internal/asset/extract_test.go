@@ -374,7 +374,7 @@ func TestZipEntry_Dir(t *testing.T) {
 }
 
 func TestSevenZipEntry(t *testing.T) {
-	e := sevenZipEntry(&sevenzip.File{FileHeader: sevenzip.FileHeader{Name: "bin/tool"}})
+	e := sevenZipEntry(&sevenzip.File{Name: "bin/tool"})
 	if e.name != "bin/tool" {
 		t.Errorf("name = %q, want %q", e.name, "bin/tool")
 	}
