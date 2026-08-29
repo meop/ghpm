@@ -139,6 +139,10 @@ func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) 
 	if err != nil {
 		return Release{}, err
 	}
+	rel, err = selectLatestRelease(ctx, owner, repo, rel)
+	if err != nil {
+		return Release{}, err
+	}
 	return resolvePointerRelease(ctx, owner, repo, rel)
 }
 

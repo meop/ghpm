@@ -158,6 +158,48 @@ func TestGetLatestRelease_MockGH(t *testing.T) {
 	}
 }
 
+func TestGetLatestRelease_PrefersNormalVSemverStream(t *testing.T) {
+	fakeGH(t, `
+		case "$1 $2 $3" in
+			"release view -R") echo '{"tagName":"dua-core-v3.3.0","assets":[]}' ;;
+			"release list -R") echo '[{"tagName":"dua-core-v3.3.0","isPrerelease":false},{"tagName":"v2.43.0","isPrerelease":false},{"tagName":"v2.44.0-rc.1","isPrerelease":true},{"tagName":"v2.42.1","isPrerelease":false}]' ;;
+			"release view v2.43.0") echo '{"tagName":"v2.43.0","assets":[{"name":"dua-v2.43.0-x86_64-pc-windows-msvc.zip","size":123,"url":"https://x.com/a"}]}' ;;
+			*) echo "unexpected gh invocation: $*" >&2; exit 1 ;;
+		esac
+	`)
+
+	rel, err := GetLatestRelease(context.Background(), "any", "repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "v2.43.0" {
+		t.Errorf("expected normal v<semver> tag v2.43.0, got %s", rel.TagName)
+	}
+	if len(rel.Assets) != 1 {
+		t.Errorf("expected selected release assets, got %v", rel.Assets)
+	}
+}
+
+func TestReleaseStreamRank(t *testing.T) {
+	cases := []struct {
+		tag        string
+		prerelease bool
+		wantRank   int
+	}{
+		{"v2.43.0", false, 0},
+		{"dua-core-v3.3.0", false, 1},
+		{"bun-v1.3.13", false, 1},
+		{"b1234", false, 2},
+		{"v2.44.0-rc.1", true, 4},
+		{"2.43.0", false, 3},
+	}
+	for _, c := range cases {
+		if got := releaseStreamRank(Release{TagName: c.tag, IsPrerelease: c.prerelease}); got != c.wantRank {
+			t.Errorf("releaseStreamRank(%q, prerelease=%v) = %d, want %d", c.tag, c.prerelease, got, c.wantRank)
+		}
+	}
+}
+
 func TestCandidateTags(t *testing.T) {
 	got := candidateTags("bun", "v1.2.3.4")
 	want := []string{"1.2.3.4", "v1.2.3.4", "bun-v1.2.3.4", "b1.2.3.4", "bun-b1.2.3.4"}
