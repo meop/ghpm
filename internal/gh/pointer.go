@@ -22,7 +22,9 @@ var pointerAssetNames = []string{
 // resolvePointerRelease is the single choke point every Release passes
 // through before a caller sees it (see GetLatestRelease and getReleaseView).
 // rel's own TagName is preserved; only its Assets are replaced, with the
-// pointed-to release's, when a pointer asset is present.
+// pointed-to release's, when a pointer asset is present. AssetTag records the
+// tag those assets actually hang off, since that — not TagName — is the tag a
+// download of them has to name.
 func resolvePointerRelease(ctx context.Context, owner, repo string, rel Release) (Release, error) {
 	var pointer string
 	for _, a := range rel.Assets {
@@ -57,6 +59,7 @@ func resolvePointerRelease(ctx context.Context, owner, repo string, rel Release)
 	if err != nil {
 		return Release{}, fmt.Errorf("release %s points at %q, which could not be fetched: %w", rel.TagName, tag, err)
 	}
+	hopped.AssetTag = hopped.TagName
 	hopped.TagName = rel.TagName
 	return hopped, nil
 }

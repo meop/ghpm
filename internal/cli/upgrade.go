@@ -355,7 +355,7 @@ func fetchSelected(ctx context.Context, cfg *config.Settings, ghClient gh.Client
 	if err != nil {
 		return gh.Asset{}, "", nil, err
 	}
-	if err := downloadAsset(ctx, ghClient, repo.Owner, repo.Repo, rel.TagName, chosen.Name, cacheDir, pkgName); err != nil {
+	if err := downloadAsset(ctx, ghClient, repo.Owner, repo.Repo, rel.DownloadTag(), chosen.Name, cacheDir, pkgName); err != nil {
 		return gh.Asset{}, "", nil, err
 	}
 	if !skipHashCheck && chosen.Digest != "" {

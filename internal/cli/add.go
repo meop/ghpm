@@ -206,7 +206,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	for _, r := range resolved {
 		introRows = append(introRows, []string{r.job.key(), config.NormalizeVersion(r.release.TagName), r.job.pin(), r.job.source})
 	}
-	if !gate([]string{"name", "version", "pin", "repo"}, introRows, []func(string) string{nil, colorfn(cfg, "new"), nil, nil}, fmt.Sprintf("add %d package(s)", len(resolved))) {
+	if !gate([]string{"name", "version", "pin", "uri"}, introRows, []func(string) string{nil, colorfn(cfg, "new"), nil, nil}, fmt.Sprintf("add %d package(s)", len(resolved))) {
 		return nil
 	}
 
@@ -267,7 +267,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		cacheDirs[i] = cacheDir
 		for _, a := range r.chosens {
 			downloads = append(downloads, assetDownload{
-				pkgIdx: i, owner: owner, repo: repo, tagName: r.release.TagName,
+				pkgIdx: i, owner: owner, repo: repo, tagName: r.release.DownloadTag(),
 				cacheDir: cacheDir, displayName: r.job.name, asset: a,
 			})
 		}

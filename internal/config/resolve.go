@@ -18,12 +18,49 @@ import (
 	"github.com/meop/ghpm/internal/ui"
 )
 
+// RepoEntry is one registry entry: where a package lives, plus a one-sentence
+// description of it for find and info to show.
+type RepoEntry struct {
+	URI   string
+	Descr string
+}
+
+// parseRepoTable decodes one repo.toml. Both entry shapes are accepted:
+//
+//	fzf = "github.com/junegunn/fzf"                       # legacy, uri only
+//	[fzf]                                                 # current
+//	uri = "github.com/junegunn/fzf"
+//	descr = "Command-line fuzzy finder."
+//
+// Unknown keys inside an entry are ignored rather than rejected, so a registry
+// that starts publishing a new field does not break the ghpm versions that
+// predate it. path only names the file in error messages.
+func parseRepoTable(data []byte, path string) (map[string]RepoEntry, error) {
+	var raw map[string]any
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("malformed %s: %w", path, err)
+	}
+	entries := make(map[string]RepoEntry, len(raw))
+	for name, v := range raw {
+		switch t := v.(type) {
+		case string:
+			entries[name] = RepoEntry{URI: t}
+		case map[string]any:
+			uri, _ := t["uri"].(string)
+			descr, _ := t["descr"].(string)
+			entries[name] = RepoEntry{URI: uri, Descr: descr}
+		default:
+			return nil, fmt.Errorf("malformed %s: entry %q must be a uri string or a table", path, name)
+		}
+	}
+	return entries, nil
+}
+
 // LoadRepos globs ~/.ghpm/repo recursively for repo.toml files, processes them
 // in alphabetical path order (later files overwrite earlier on key conflicts),
-// and returns the merged map. Each file is a flat table of name = "source"
-// pairs (no top-level key). Returns an empty map if the directory doesn't
+// and returns the merged map. Returns an empty map if the directory doesn't
 // exist. Returns an error if any repo.toml is unreadable or invalid TOML.
-func LoadRepos() (map[string]string, error) {
+func LoadRepos() (map[string]RepoEntry, error) {
 	base, err := store.ReposBaseDir()
 	if err != nil {
 		return nil, err
@@ -45,18 +82,18 @@ func LoadRepos() (map[string]string, error) {
 		return nil, err
 	}
 	sort.Strings(paths)
-	merged := map[string]string{}
+	merged := map[string]RepoEntry{}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
-		var m map[string]string
-		if err := toml.Unmarshal(data, &m); err != nil {
-			return nil, fmt.Errorf("malformed %s: %w", path, err)
+		entries, err := parseRepoTable(data, path)
+		if err != nil {
+			return nil, err
 		}
-		for k, v := range m {
-			if k == "" || v == "" {
+		for k, v := range entries {
+			if k == "" || v.URI == "" {
 				continue
 			}
 			merged[k] = v
@@ -132,9 +169,9 @@ func fetchAndCacheRepos(source string) (int, error) {
 		}
 		return 0, err
 	}
-	var m map[string]string
-	if err := toml.Unmarshal(data, &m); err != nil {
-		return 0, fmt.Errorf("parsing repo.toml from %s: %w", source, err)
+	entries, err := parseRepoTable(data, "repo.toml from "+source)
+	if err != nil {
+		return 0, err
 	}
 	dir, err := store.RepoDir(source)
 	if err != nil {
@@ -149,7 +186,7 @@ func fetchAndCacheRepos(source string) (int, error) {
 		_ = os.Remove(tmp)
 		return 0, err
 	}
-	return len(m), nil
+	return len(entries), nil
 }
 
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).
@@ -179,7 +216,7 @@ var builtinRepos = map[string]string{
 
 // LookupSource resolves a name from non-interactive sources only.
 // Returns the source and true if found; empty string and false if not.
-func LookupSource(name string, manifest *Manifest, repos map[string]string) (string, bool) {
+func LookupSource(name string, manifest *Manifest, repos map[string]RepoEntry) (string, bool) {
 	if src, ok := manifest.Repos[name]; ok {
 		return src, true
 	}
@@ -187,8 +224,8 @@ func LookupSource(name string, manifest *Manifest, repos map[string]string) (str
 		return src, true
 	}
 	if repos != nil {
-		if src, ok := repos[name]; ok {
-			return normalizeSource(src), true
+		if entry, ok := repos[name]; ok && entry.URI != "" {
+			return normalizeSource(entry.URI), true
 		}
 	}
 	return "", false
@@ -197,7 +234,7 @@ func LookupSource(name string, manifest *Manifest, repos map[string]string) (str
 // ResolveSource resolves a simple name to a full GitHub URI (github.com/owner/repo).
 // Resolution order: manifest repos → builtin repos → user repos → gh search fallback.
 // name must have already been validated by ValidateName.
-func ResolveSource(name, version string, manifest *Manifest, repos map[string]string) (string, error) {
+func ResolveSource(name, version string, manifest *Manifest, repos map[string]RepoEntry) (string, error) {
 	if src, found := LookupSource(name, manifest, repos); found {
 		return src, nil
 	}

@@ -63,13 +63,13 @@ func TestRunList_NameFilter(t *testing.T) {
 	}
 }
 
-// TestRunList_ShowsRepoTypeAndTarget guards list's table columns: asset and
+// TestRunList_ShowsUriTypeAndTarget guards list's table columns: asset and
 // artifact were tried and dropped (asset can't be shown correctly per-row for
 // a multi-asset package — bins/fonts are discovered from the combined overlay
-// tree with no per-asset attribution kept). repo/type/target remain: where
+// tree with no per-asset attribution kept). uri/type/target remain: where
 // the package comes from, what kind of thing this is, and the name the user
 // actually invokes it by.
-func TestRunList_ShowsRepoTypeAndTarget(t *testing.T) {
+func TestRunList_ShowsUriTypeAndTarget(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 	writeManifest(t, &config.Manifest{
@@ -86,11 +86,11 @@ func TestRunList_ShowsRepoTypeAndTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "repo") || !strings.Contains(out, "type") || !strings.Contains(out, "target") {
-		t.Errorf("expected \"repo\"/\"type\"/\"target\" column headers:\n%s", out)
+	if !strings.Contains(out, "uri") || !strings.Contains(out, "type") || !strings.Contains(out, "target") {
+		t.Errorf("expected \"uri\"/\"type\"/\"target\" column headers:\n%s", out)
 	}
 	if !strings.Contains(out, "bin") || !strings.Contains(out, "fzf") || !strings.Contains(out, "junegunn") {
-		t.Errorf("expected the bin's type, shim name, and repo in the table:\n%s", out)
+		t.Errorf("expected the bin's type, shim name, and uri in the table:\n%s", out)
 	}
 	if strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") || strings.Contains(out, "bin/fzf") {
 		t.Errorf("asset/artifact should not appear in the table:\n%s", out)

@@ -78,7 +78,7 @@ func printFailedTable(cfg *config.Settings, noun string, items []failedItem) {
 type cmdInit struct {
 	cfg      *config.Settings
 	manifest *config.Manifest
-	repos    map[string]string
+	repos    map[string]config.RepoEntry
 	unlock   func()
 	gh       gh.Client
 	dirs     store.Dirs

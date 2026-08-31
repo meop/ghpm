@@ -129,7 +129,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	for _, p := range pending {
 		introRows = append(introRows, []string{p.job.name, config.NormalizeVersion(p.job.release.TagName), p.job.source})
 	}
-	if !gate([]string{"name", "version", "repo"}, introRows, []func(string) string{nil, colorfn(cfg, "new"), nil}, fmt.Sprintf("download %d asset(s)", len(pending))) {
+	if !gate([]string{"name", "version", "uri"}, introRows, []func(string) string{nil, colorfn(cfg, "new"), nil}, fmt.Sprintf("download %d asset(s)", len(pending))) {
 		return nil
 	}
 
@@ -181,7 +181,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		}
 		dests[i] = dest
 		downloads = append(downloads, assetDownload{
-			pkgIdx: i, owner: owner, repo: repo, tagName: r.release.TagName,
+			pkgIdx: i, owner: owner, repo: repo, tagName: r.release.DownloadTag(),
 			cacheDir: dest, displayName: r.name, asset: r.chosen,
 		})
 	}

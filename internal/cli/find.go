@@ -23,6 +23,7 @@ func newFindCmd() *cobra.Command {
 type repoMatch struct {
 	name   string
 	source string
+	descr  string
 }
 
 func runFind(cmd *cobra.Command, args []string) error {
@@ -38,8 +39,8 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	if len(args) == 0 {
 		var all []repoMatch
-		for name, source := range repos {
-			all = append(all, repoMatch{name: name, source: source})
+		for name, entry := range repos {
+			all = append(all, repoMatch{name: name, source: entry.URI, descr: entry.Descr})
 		}
 		slices.SortFunc(all, func(a, b repoMatch) int {
 			return cmp.Compare(a.name, b.name)
@@ -51,11 +52,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		if printNameList(names) {
 			return nil
 		}
-		rows := make([][]string, len(all))
-		for i, m := range all {
-			rows[i] = []string{m.name, m.source}
-		}
-		printTable([]string{"name", "repo"}, rows, nil)
+		printMatchTable(all)
 		return nil
 	}
 
@@ -67,10 +64,11 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 		lower := strings.ToLower(term)
 		var matches []repoMatch
-		for name, source := range repos {
+		for name, entry := range repos {
 			if strings.Contains(strings.ToLower(name), lower) ||
-				strings.Contains(strings.ToLower(source), lower) {
-				matches = append(matches, repoMatch{name: name, source: source})
+				strings.Contains(strings.ToLower(entry.URI), lower) ||
+				strings.Contains(strings.ToLower(entry.Descr), lower) {
+				matches = append(matches, repoMatch{name: name, source: entry.URI, descr: entry.Descr})
 			}
 		}
 
@@ -90,11 +88,27 @@ func runFind(cmd *cobra.Command, args []string) error {
 		if printNameList(names) {
 			continue
 		}
-		rows := make([][]string, len(matches))
-		for i, m := range matches {
-			rows[i] = []string{m.name, m.source}
-		}
-		printTable([]string{"name", "repo"}, rows, nil)
+		printMatchTable(matches)
 	}
 	return nil
+}
+
+// printMatchTable renders the repo table, dropping the descr column entirely
+// when no matched entry has one — a registry predating descr, or a user's own
+// repo.toml written in the legacy uri-only form, should not print a column of
+// blanks.
+func printMatchTable(matches []repoMatch) {
+	headers := []string{"name", "uri"}
+	withDescr := slices.ContainsFunc(matches, func(m repoMatch) bool { return m.descr != "" })
+	if withDescr {
+		headers = append(headers, "descr")
+	}
+	rows := make([][]string, len(matches))
+	for i, m := range matches {
+		rows[i] = []string{m.name, m.source}
+		if withDescr {
+			rows[i] = append(rows[i], m.descr)
+		}
+	}
+	printTable(headers, rows, nil)
 }

@@ -67,6 +67,19 @@ type Release struct {
 	TagName      string  `json:"tagName"`
 	IsPrerelease bool    `json:"isPrerelease"`
 	Assets       []Asset `json:"assets"`
+	// AssetTag is the tag the assets are actually attached to, set only when
+	// they came from a pointer hop (see resolvePointerRelease). Empty means
+	// they hang off TagName like they normally do.
+	AssetTag string `json:"-"`
+}
+
+// DownloadTag is the tag to fetch this release's assets from, which is not
+// TagName once a pointer hop has moved the assets to another release.
+func (r Release) DownloadTag() string {
+	if r.AssetTag != "" {
+		return r.AssetTag
+	}
+	return r.TagName
 }
 
 // validAssetName reports whether name is a plain filename: no path

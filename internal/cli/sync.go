@@ -149,7 +149,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	for _, o := range outdated {
 		gateRows = append(gateRows, []string{o.key, o.pkg.Version, config.NormalizeVersion(o.latestTag), o.pkg.Pin, o.source})
 	}
-	if !gate([]string{"name", "version", "update", "pin", "repo"}, gateRows, updateColors, fmt.Sprintf("update %d package(s)", len(outdated))) {
+	if !gate([]string{"name", "version", "update", "pin", "uri"}, gateRows, updateColors, fmt.Sprintf("update %d package(s)", len(outdated))) {
 		return nil
 	}
 
@@ -170,7 +170,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 			failedItems = append(failedItems, failedItem{name: o.key, reason: err.Error()})
 			continue
 		}
-		chosens, clean := resolvePriorAssets(rel.Assets, o.pkg.Assets, config.NormalizeVersion(o.latestTag))
+		// The hint match keys off the version embedded in asset filenames, which
+		// belongs to the tag the assets hang off — not the tag being installed,
+		// once a pointer hop has separated the two.
+		chosens, clean := resolvePriorAssets(rel.Assets, o.pkg.Assets, config.NormalizeVersion(rel.DownloadTag()))
 		if !clean {
 			pkgName, _, _ := config.ParseVersionSuffix(o.key)
 			ac, acErr := asset.SelectAssetAuto(rel.Assets, cfg, "", pkgName)
@@ -223,7 +226,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		cacheDirs[i] = cacheDir
 		for _, a := range r.chosens {
 			downloads = append(downloads, assetDownload{
-				pkgIdx: i, owner: owner, repo: repo, tagName: r.release.TagName,
+				pkgIdx: i, owner: owner, repo: repo, tagName: r.release.DownloadTag(),
 				cacheDir: cacheDir, displayName: r.key, asset: a,
 			})
 		}

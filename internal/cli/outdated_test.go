@@ -10,10 +10,10 @@ import (
 	"github.com/meop/ghpm/internal/ui"
 )
 
-// TestRunOutdated_ShowsRepoTypeAndTarget guards outdated's table columns
-// (see list_test.go's TestRunList_ShowsRepoTypeAndTarget for why asset/
-// artifact were dropped) — name/version/update/pin/repo/type/target.
-func TestRunOutdated_ShowsRepoTypeAndTarget(t *testing.T) {
+// TestRunOutdated_ShowsUriTypeAndTarget guards outdated's table columns
+// (see list_test.go's TestRunList_ShowsUriTypeAndTarget for why asset/
+// artifact were dropped) — name/version/update/pin/uri/type/target.
+func TestRunOutdated_ShowsUriTypeAndTarget(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
 	writeManifest(t, &config.Manifest{
@@ -32,11 +32,11 @@ func TestRunOutdated_ShowsRepoTypeAndTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "repo") || !strings.Contains(out, "type") || !strings.Contains(out, "target") {
-		t.Errorf("expected \"repo\"/\"type\"/\"target\" column headers:\n%s", out)
+	if !strings.Contains(out, "uri") || !strings.Contains(out, "type") || !strings.Contains(out, "target") {
+		t.Errorf("expected \"uri\"/\"type\"/\"target\" column headers:\n%s", out)
 	}
 	if !strings.Contains(out, "bin") || !strings.Contains(out, "junegunn") {
-		t.Errorf("expected the bin's type and repo in the table:\n%s", out)
+		t.Errorf("expected the bin's type and uri in the table:\n%s", out)
 	}
 	if strings.Contains(out, "fzf-0.58.0-linux_amd64.tar.gz") || strings.Contains(out, "bin/fzf") {
 		t.Errorf("asset/artifact should not appear in the table:\n%s", out)

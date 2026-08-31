@@ -62,7 +62,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		rows = append(rows, []string{t.key, t.pkg.Version, t.pkg.Pin, repo, strings.Join(t.pkg.Assets, ", ")})
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "info"), nil, nil, nil}
-	if !gate([]string{"name", "version", "pin", "repo", "assets"}, rows, colors, fmt.Sprintf("uninstall %d package(s)", len(targets))) {
+	if !gate([]string{"name", "version", "pin", "uri", "assets"}, rows, colors, fmt.Sprintf("uninstall %d package(s)", len(targets))) {
 		return nil
 	}
 

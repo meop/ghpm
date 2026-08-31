@@ -128,12 +128,15 @@ warn = "yellow"
 
 ### Repo map
 
-Package names like `fzf` are resolved to GitHub repos via `~/.ghpm/repo/`. Any `repo.toml` file anywhere in that directory tree contributes to the map — files are merged alphabetically by path, with later files taking precedence on conflicts. Invalid TOML is a fatal error. Each file is a flat table of `name = "source"` pairs (no top-level key):
+Package names like `fzf` are resolved to GitHub repos via `~/.ghpm/repo/`. Any `repo.toml` file anywhere in that directory tree contributes to the map — files are merged alphabetically by path, with later files taking precedence on conflicts. Invalid TOML is a fatal error. Each file is one section per package:
 
 ```toml
-fzf = "github.com/junegunn/fzf"
-rg = "github.com/BurntSushi/ripgrep"
+[fzf]
+uri = "github.com/junegunn/fzf"
+descr = "Command-line fuzzy finder."
 ```
+
+`uri` is the `github.com/owner/repo` path. `descr` is optional — one sentence about the tool, shown as a column by `ghpm find` and under the header by `ghpm info`. The older flat form (`fzf = "github.com/junegunn/fzf"`) is still read, so an existing personal `repo.toml` keeps working as is.
 
 `ghpm refresh` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
 

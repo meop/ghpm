@@ -56,6 +56,9 @@ func TestGetLatestRelease_PointerHop(t *testing.T) {
 	if len(rel.Assets) != 1 || rel.Assets[0].Name != "llama-b1234-bin-linux-x64.tar.gz" {
 		t.Errorf("expected the hopped-to release's real asset, got %v", rel.Assets)
 	}
+	if rel.DownloadTag() != "b1234" {
+		t.Errorf("expected assets to be downloaded from b1234, got %s", rel.DownloadTag())
+	}
 }
 
 func TestGetLatestRelease_PointerHop_DownloadFails(t *testing.T) {

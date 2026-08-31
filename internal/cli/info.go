@@ -132,6 +132,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 
 		sep()
 		print("%s (%s)", o.arg, o.source)
+		if descr := repos[o.pkgName].Descr; descr != "" {
+			print("%s", descr)
+		}
 		print("%s", strings.Repeat("─", 60))
 
 		if o.fetchErr != nil {

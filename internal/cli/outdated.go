@@ -122,7 +122,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		tableRows = appendEntryRows(tableRows, prefix, o.pkg)
 	}
 	colors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil, nil, nil}
-	printTable([]string{"name", "version", "update", "pin", "repo", "type", "target"}, tableRows, colors)
+	printTable([]string{"name", "version", "update", "pin", "uri", "type", "target"}, tableRows, colors)
 
 	if hadErrors {
 		return errSilent

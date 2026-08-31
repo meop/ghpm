@@ -90,7 +90,7 @@ func TestLoadRepos_Single(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if repos["fzf"] != "github.com/junegunn/fzf" {
+	if repos["fzf"].URI != "github.com/junegunn/fzf" {
 		t.Errorf("got %v", repos)
 	}
 }
@@ -107,8 +107,8 @@ func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if repos["tool"] != "github.com/owner/b" {
-		t.Errorf("expected later file to win, got %q", repos["tool"])
+	if repos["tool"].URI != "github.com/owner/b" {
+		t.Errorf("expected later file to win, got %q", repos["tool"].URI)
 	}
 }
 
@@ -246,9 +246,9 @@ func TestResolveSource_ManifestAndRepos(t *testing.T) {
 		},
 		Extracts: map[string]PackageEntry{},
 	}
-	repos := map[string]string{
-		"fzf": "github.com/junegunn/fzf",
-		"rg":  "github.com/BurntSushi/ripgrep",
+	repos := map[string]RepoEntry{
+		"fzf": {URI: "github.com/junegunn/fzf"},
+		"rg":  {URI: "github.com/BurntSushi/ripgrep"},
 	}
 
 	cases := []struct {
@@ -332,5 +332,76 @@ func TestSearchGitHub_ForcedNonInteractiveOverridesInteractiveInput(t *testing.T
 	_, err := SearchGitHub("some-nonexistent-name")
 	if err == nil {
 		t.Fatal("expected forced non-interactive to override an interactive-looking input reader")
+	}
+}
+
+// TestLoadRepos_TableForm covers the registry's current entry shape, where a
+// package is a table carrying uri and descr, alongside the legacy uri-only
+// string form that user-authored repo.toml files may still use.
+func TestLoadRepos_TableForm(t *testing.T) {
+	withHome(t)
+	base, err := store.ReposBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The legacy string entry has to precede every section header: TOML would
+	// otherwise read it as a key of the section above it, not a package.
+	writeRepoTOML(t, filepath.Join(base, "a"), `
+rg = "github.com/BurntSushi/ripgrep"
+
+[fzf]
+uri = "github.com/junegunn/fzf"
+descr = "Command-line fuzzy finder."
+
+[bat]
+uri = "github.com/sharkdp/bat"
+`)
+	repos, err := LoadRepos()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repos["fzf"].URI != "github.com/junegunn/fzf" || repos["fzf"].Descr != "Command-line fuzzy finder." {
+		t.Errorf("table entry: got %+v", repos["fzf"])
+	}
+	if repos["bat"].URI != "github.com/sharkdp/bat" || repos["bat"].Descr != "" {
+		t.Errorf("descr-less table entry: got %+v", repos["bat"])
+	}
+	if repos["rg"].URI != "github.com/BurntSushi/ripgrep" {
+		t.Errorf("legacy string entry: got %+v", repos["rg"])
+	}
+}
+
+// TestLoadRepos_UnknownFieldIgnored is what lets the registry publish a new
+// per-entry field without breaking every ghpm release that predates it.
+func TestLoadRepos_UnknownFieldIgnored(t *testing.T) {
+	withHome(t)
+	base, err := store.ReposBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoTOML(t, filepath.Join(base, "a"), `
+[sometool]
+uri = "github.com/owner/sometool"
+descr = "Does something."
+os = ["linux"]
+`)
+	repos, err := LoadRepos()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repos["sometool"].URI != "github.com/owner/sometool" {
+		t.Errorf("got %+v", repos["sometool"])
+	}
+}
+
+func TestLoadRepos_MalformedEntry(t *testing.T) {
+	withHome(t)
+	base, err := store.ReposBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoTOML(t, filepath.Join(base, "a"), "fzf = 42\n")
+	if _, err := LoadRepos(); err == nil {
+		t.Error("expected an error for a non-string, non-table entry")
 	}
 }
