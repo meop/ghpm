@@ -48,3 +48,32 @@ func TestSplitJunk(t *testing.T) {
 		}
 	}
 }
+
+func TestIsVersionToken(t *testing.T) {
+	cases := []struct {
+		token string
+		want  bool
+	}{
+		{"0.1.6", true},
+		{"v1.2.3", true},
+		{"V2.0.0", true},
+		{"0.56.0", true},
+		{"14", true},
+		{"v14", true},
+		{"bun", false},
+		{"linux", false},
+		{"amd64.tar.gz", false},
+		{"x64.zip", false},
+		{"darwin", false},
+		{"gnu", false},
+		{"tar.gz", false},
+		{"sha256", false},
+		{"win32", false},
+	}
+	for _, c := range cases {
+		got := IsVersionToken(c.token)
+		if got != c.want {
+			t.Errorf("IsVersionToken(%q) = %v, want %v", c.token, got, c.want)
+		}
+	}
+}

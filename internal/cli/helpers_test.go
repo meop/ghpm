@@ -16,6 +16,7 @@ import (
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/ghpm/internal/toolchain"
 	"github.com/meop/ghpm/internal/ui"
 )
 
@@ -49,7 +50,11 @@ func fakeGHBin(t *testing.T, script string) {
 	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
+	// The vendored gh is version-pinned (ghbin.Ensure), so every fake must
+	// answer --version with the pin or the first gh-using command re-vendors
+	// it for real, over the network.
+	preamble := "case \"$*\" in --version) echo 'gh version " + toolchain.GhVersion + " (2026-01-01)'; exit 0 ;; esac\n"
+	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"+preamble+script+"\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 }

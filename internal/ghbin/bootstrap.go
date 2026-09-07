@@ -15,12 +15,14 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/meop/ghpm/internal/toolchain"
 	"github.com/meop/ghpm/internal/ui"
 )
 
-// ghReleaseAPI is a var, not a const, so a test can point it at a local
-// server instead of the real GitHub API.
-var ghReleaseAPI = "https://api.github.com/repos/cli/cli/releases/latest"
+// ghReleaseAPI addresses the one pinned gh release ghpm vendors, never
+// "latest" — see toolchain.GhVersion. It is a var, not a const, so a test can
+// point it at a local server instead of the real GitHub API.
+var ghReleaseAPI = "https://api.github.com/repos/cli/cli/releases/tags/v" + toolchain.GhVersion
 
 type ghRelease struct {
 	Assets []struct {
@@ -29,21 +31,23 @@ type ghRelease struct {
 	} `json:"assets"`
 }
 
-// Ensure makes sure ghpm has its own vendored gh, downloading the latest
-// release directly — gh is obviously not available yet to fetch gh with —
-// when nothing is vendored yet. Never skipped just because something is on
-// PATH: ghpm's own gh use doesn't depend on it. A no-op once a vendored copy
-// exists; staying current after that is `ghpm upgrade`'s job, not every
-// invocation's. Staying *authenticated* is a separate concern handled
-// reactively — see ReAuth — rather than checked here on every invocation:
-// that would mean a network round trip before every single gh call, on top
-// of the one the call itself is about to make.
+// Ensure makes sure ghpm has its own vendored gh at exactly toolchain.GhVersion,
+// downloading that release directly — gh is obviously not available yet to
+// fetch gh with. Never skipped just because something is on PATH: ghpm's own
+// gh use doesn't depend on it. The check is the vendored copy's *version*,
+// not merely its presence, so a copy left behind by an older or newer ghpm is
+// replaced rather than run; an upgrade and a downgrade are the same
+// operation. It costs one local `gh --version` per invocation and no network
+// at all while the pin holds. Staying *authenticated* is a separate concern
+// handled reactively — see ReAuth — rather than checked here on every
+// invocation: that would mean a network round trip before every single gh
+// call, on top of the one the call itself is about to make.
 func Ensure(ctx context.Context) error {
 	path, err := VendorPath()
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(path); err == nil {
+	if toolchain.Installed(path) == toolchain.GhVersion {
 		return nil
 	}
 	if err := bootstrap(ctx, path); err != nil {
@@ -124,7 +128,7 @@ func bootstrap(ctx context.Context, dest string) error {
 
 	var rel ghRelease
 	if err := fetchJSON(ctx, ghReleaseAPI, &rel); err != nil {
-		return fmt.Errorf("fetching latest gh release: %w", err)
+		return fmt.Errorf("fetching gh %s release: %w", toolchain.GhVersion, err)
 	}
 	var assetURL, assetName string
 	for _, a := range rel.Assets {
@@ -156,6 +160,9 @@ func bootstrap(ctx context.Context, dest string) error {
 	if err != nil {
 		return err
 	}
+	// dest may already hold a differently-versioned gh; drop it first so the
+	// rename isn't replacing a file another process may still hold open.
+	_ = os.Remove(dest)
 	if err := os.Rename(extracted, dest); err != nil {
 		return err
 	}

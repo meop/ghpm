@@ -219,7 +219,7 @@ func isKnownAliasToken(t string) bool {
 
 // isStrictVersionToken reports whether t, in its entirety, looks like a bare
 // version/build token — optional leading "v"/"V", then nothing but digits
-// and "." for the rest. Stricter than isVersionToken (which only checks the
+// and "." for the rest. Stricter than version.IsVersionToken (which only checks the
 // first character — fine for a token Tokenize has already cleanly bounded on
 // "-"/space, but not safe here: looseTokenize's greedy search tries much
 // longer candidate spans, and a loose check would let "1.0-darwin-amd64"
@@ -816,14 +816,4 @@ func isVersionBump(oldTok, newTok, newVersion string) bool {
 		return false
 	}
 	return newVer == newVersion
-}
-
-func IsVersionToken(t string) bool { return isVersionToken(t) }
-
-func isVersionToken(t string) bool {
-	s := t
-	if strings.HasPrefix(s, "v") || strings.HasPrefix(s, "V") {
-		s = s[1:]
-	}
-	return len(s) > 0 && s[0] >= '0' && s[0] <= '9'
 }

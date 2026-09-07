@@ -22,11 +22,14 @@ type fakeGHClient struct {
 	downloaded []string
 	failAssets map[string]bool
 
-	// latestRelease/latestReleaseErr control GetLatestRelease's response,
-	// for callers (e.g. ensureSheesh) that act on it rather than just
-	// downloading assets by name.
+	// latestRelease/latestReleaseErr control GetLatestRelease's response, and
+	// tagRelease/tagReleaseErr GetReleaseByTag's, for callers (e.g.
+	// syncSheesh) that act on a release rather than just downloading assets
+	// by name.
 	latestRelease    gh.Release
 	latestReleaseErr error
+	tagRelease       gh.Release
+	tagReleaseErr    error
 	// downloadContent, when set, makes DownloadAsset write real bytes to
 	// dest/pattern instead of just recording the call — needed by callers
 	// that go on to extract what was "downloaded".
@@ -37,7 +40,7 @@ func (f *fakeGHClient) GetLatestRelease(context.Context, string, string) (gh.Rel
 	return f.latestRelease, f.latestReleaseErr
 }
 func (f *fakeGHClient) GetReleaseByTag(context.Context, string, string, string) (gh.Release, error) {
-	return gh.Release{}, nil
+	return f.tagRelease, f.tagReleaseErr
 }
 func (f *fakeGHClient) FindLatestMatching(context.Context, string, string, config.Constraint) (gh.Release, error) {
 	return gh.Release{}, nil

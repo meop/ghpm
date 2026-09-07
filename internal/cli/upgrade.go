@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -16,8 +14,6 @@ import (
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
-	"github.com/meop/ghpm/internal/ghbin"
-	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -25,7 +21,7 @@ func newUpgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "upgrade",
 		Aliases: []string{"ug", "upg"},
-		Short:   "Upgrade ghpm and gh to their latest releases",
+		Short:   "Upgrade ghpm to its latest release",
 		Args:    cobra.NoArgs,
 		RunE:    runUpgrade,
 	}
@@ -33,6 +29,11 @@ func newUpgradeCmd() *cobra.Command {
 	return cmd
 }
 
+// runUpgrade upgrades ghpm and nothing else. The tools ghpm vendors for its
+// own use (gh, sheesh's kebab) are deliberately not components here: they are
+// pinned in internal/toolchain and synced to that pin at runtime, so "upgrade"
+// means exactly what a user reading it expects — upgrade ghpm — rather than
+// asking about internals they never chose to install.
 func runUpgrade(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	ci, err := initCommand(ctx, cmdOptions{Lock: true, GH: true, SkipHashCheck: true})
@@ -41,175 +42,45 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	}
 	defer ci.close()
 	cfg := ci.cfg
-	ghClient := ci.gh
 
-	// Phase 1: check each component's version (no install). Up-to-date ones are
-	// silently dropped; outdated ones are collected for the gate. Like sync, the
-	// no-op outcome is a single summary line (below), not one line per component.
-	hadErrors := false
-	var failedItems []failedItem
-	var items []upgradeItem
-	checks := []struct {
-		name string
-		fn   func(context.Context, *config.Settings, gh.Client) (*upgradeItem, error)
-	}{
-		{binGh, checkGh},
-		{binGhpm, checkSelf},
-		{binSheesh, checkShim},
-	}
-	for _, c := range checks {
-		item, err := c.fn(ctx, cfg, ghClient)
-		if err != nil {
-			printFail(cfg, "%s: %v", c.name, err)
-			hadErrors = true
-			failedItems = append(failedItems, failedItem{name: c.name, reason: err.Error()})
-			continue
-		}
-		if item != nil {
-			items = append(items, *item)
-		}
-	}
-	printFailedTable(cfg, "component", failedItems)
-
-	if len(items) == 0 {
-		if hadErrors {
-			return errSilent
-		}
-		print(msgAllComponentsUpToDate)
-		return nil
-	}
-
-	// Gate: one table + one confirm for everything that will be upgraded.
-	rows := make([][]string, 0, len(items))
-	for _, it := range items {
-		rows = append(rows, []string{it.name, it.current, it.latest})
-	}
-	if !gate([]string{"name", "version", "update"}, rows, []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new")}, fmt.Sprintf("upgrade %d component(s)", len(items))) {
-		return nil
-	}
-
-	// Phase 2: install each, prompting for assets only where ambiguous. Mirrors
-	// add/sync: a bounded parallel pool and one aggregate ✓ N line, not a ✓ per
-	// component.
-	if installUpgradeItems(ctx, cfg, items) {
-		hadErrors = true
-	}
-
-	if hadErrors {
+	item, err := checkSelf(ctx, cfg, ci.gh)
+	if err != nil {
+		printFail(cfg, "%s: %v", binGhpm, err)
+		printFailedTable(cfg, "component", []failedItem{{name: binGhpm, reason: err.Error()}})
 		return errSilent
 	}
+	if item == nil {
+		print(msgGhpmUpToDate)
+		return nil
+	}
+
+	if !gate(
+		[]string{"name", "version", "update"},
+		[][]string{{item.name, item.current, item.latest}},
+		[]func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new")},
+		fmt.Sprintf("upgrade %s to %s", item.name, item.latest),
+	) {
+		return nil
+	}
+
+	if err := item.install(); err != nil {
+		printFail(cfg, "%s: %v", item.name, err)
+		printFailedTable(cfg, "component", []failedItem{{name: item.name, reason: err.Error()}})
+		return errSilent
+	}
+	printPass(cfg, "upgraded %s to %s", item.name, item.latest)
 	return nil
 }
 
-// installUpgradeItems runs every item's install through a pool bounded by
-// cfg.NumParallel (mirroring add/sync's parallel install phase) and prints one
-// aggregate ✓ N line, not a ✓ per component. Returns true if any item failed.
-// Extracted from runUpgrade so the orchestration (parallel + one summary line)
-// is testable with fake install closures, independent of the real installs
-// (one of which replaces the running ghpm binary itself).
-func installUpgradeItems(ctx context.Context, cfg *config.Settings, items []upgradeItem) bool {
-	installTasks := make([]parallel.Task[struct{}], len(items))
-	for i, it := range items {
-		installTasks[i] = parallel.Task[struct{}]{
-			Name: it.name,
-			Run: func() (struct{}, error) {
-				return struct{}{}, it.install()
-			},
-		}
-	}
-
-	var hadErrors bool
-	var failedItems []failedItem
-	successCount := 0
-	for _, res := range parallel.Run(ctx, installTasks, cfg.NumParallel) {
-		if res.Err != nil {
-			printFail(cfg, "%s: %v", res.Name, res.Err)
-			hadErrors = true
-			failedItems = append(failedItems, failedItem{name: res.Name, reason: res.Err.Error()})
-		} else {
-			successCount++
-		}
-	}
-	if successCount > 0 {
-		printPass(cfg, "upgraded %d component(s)", successCount)
-	}
-	sep()
-	printFailedTable(cfg, "component", failedItems)
-	return hadErrors
-}
-
-// upgradeItem is one outdated self-managed component (gh, ghpm, sheesh): its
-// versions for the gate table and a closure that performs the actual install.
+// upgradeItem is ghpm's own outdated release: the versions for the gate table
+// and a closure that performs the actual install. The install is kept as a
+// closure so runUpgrade's orchestration is testable without ever replacing
+// the running binary.
 type upgradeItem struct {
 	name    string
 	current string
 	latest  string
 	install func() error
-}
-
-// installedBinaryVersion runs `<path> --version` and returns the first version
-// token found (without a leading "v"), or "" if the binary is absent or emits none.
-func installedBinaryVersion(path string) string {
-	out, err := exec.Command(path, "--version").Output()
-	if err != nil {
-		return ""
-	}
-	for tok := range strings.FieldsSeq(string(out)) {
-		if asset.IsVersionToken(tok) {
-			return strings.TrimPrefix(tok, "v")
-		}
-	}
-	return ""
-}
-
-func checkGh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*upgradeItem, error) {
-	ghPath, err := ghbin.VendorPath()
-	if err != nil {
-		return nil, err
-	}
-	binDir := filepath.Dir(ghPath)
-
-	if _, err := os.Stat(ghPath); err != nil {
-		return nil, nil
-	}
-
-	currentVer := installedBinaryVersion(ghPath)
-
-	rel, err := ghClient.GetLatestRelease(ctx, config.RepoGh.Owner, config.RepoGh.Repo)
-	if err != nil {
-		return nil, err
-	}
-	latestVer := config.NormalizeVersion(rel.TagName)
-
-	if currentVer == latestVer {
-		return nil, nil
-	}
-
-	install := func() error {
-		_, ghBin, cleanup, err := fetchBinary(ctx, cfg, ghClient, config.RepoGh, rel, binGh)
-		if err != nil {
-			return err
-		}
-		if cleanup == nil {
-			return nil
-		}
-		defer cleanup()
-
-		if err := os.MkdirAll(binDir, 0755); err != nil {
-			return err
-		}
-		// See installFont: FILE_SHARE_DELETE lets Remove succeed on the running binary.
-		_ = os.Remove(ghPath)
-		if err := copyFile(ghBin, ghPath); err != nil {
-			return err
-		}
-		if err := os.Chmod(ghPath, 0755); err != nil {
-			return err
-		}
-
-		return nil
-	}
-	return &upgradeItem{name: binGh, current: currentVer, latest: latestVer, install: install}, nil
 }
 
 func checkSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*upgradeItem, error) {
@@ -256,79 +127,6 @@ func checkSelf(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*
 		return nil
 	}
 	return &upgradeItem{name: binGhpm, current: version, latest: latestVer, install: install}, nil
-}
-
-func checkShim(ctx context.Context, cfg *config.Settings, ghClient gh.Client) (*upgradeItem, error) {
-	shimDir, err := store.ShimDir()
-	if err != nil {
-		return nil, err
-	}
-	kebabPath := filepath.Join(shimDir, exeName("kebab"))
-
-	currentVer := ""
-	if _, err := os.Stat(kebabPath); err == nil {
-		currentVer = installedBinaryVersion(kebabPath)
-	}
-
-	rel, err := ghClient.GetLatestRelease(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo)
-	if err != nil {
-		return nil, err
-	}
-	latestVer := config.NormalizeVersion(rel.TagName)
-
-	if currentVer == latestVer {
-		return nil, nil
-	}
-
-	install := func() error {
-		_, tmpDir, cleanup, err := fetchSelected(ctx, cfg, ghClient, config.RepoSheesh, rel, binSheesh)
-		if err != nil {
-			return err
-		}
-		if cleanup == nil {
-			return nil
-		}
-		defer cleanup()
-
-		if err := copyExecutablesToDir(tmpDir, shimDir); err != nil {
-			return err
-		}
-
-		return nil
-	}
-	return &upgradeItem{name: binSheesh, current: currentVer, latest: latestVer, install: install}, nil
-}
-
-// ensureSheesh makes sure ghpm has its own vendored kebab, fetching and
-// vendoring the latest sheesh release when nothing is there yet — gh's
-// vendor bootstrap can talk raw HTTP because gh isn't there yet to help;
-// kebab has no such bootstrap problem, since anything that needs it already
-// required gh first. Staying current after that is `ghpm upgrade`'s job
-// (checkShim), not every invocation's.
-func ensureSheesh(ctx context.Context, cfg *config.Settings, ghClient gh.Client) error {
-	shimDir, err := store.ShimDir()
-	if err != nil {
-		return err
-	}
-	kebabPath := filepath.Join(shimDir, exeName("kebab"))
-	if _, err := os.Stat(kebabPath); err == nil {
-		return nil
-	}
-
-	rel, err := ghClient.GetLatestRelease(ctx, config.RepoSheesh.Owner, config.RepoSheesh.Repo)
-	if err != nil {
-		return err
-	}
-	_, tmpDir, cleanup, err := fetchSelected(ctx, cfg, ghClient, config.RepoSheesh, rel, binSheesh)
-	if err != nil {
-		return err
-	}
-	if cleanup == nil {
-		return fmt.Errorf("no sheesh release asset found for this platform")
-	}
-	defer cleanup()
-
-	return copyExecutablesToDir(tmpDir, shimDir)
 }
 
 // fetchSelected selects an asset for pkgName, downloads, verifies, and extracts
@@ -391,36 +189,6 @@ func fetchBinary(ctx context.Context, cfg *config.Settings, ghClient gh.Client, 
 	}
 	binPath := filepath.Join(tmpDir, filepath.FromSlash(candidates[0].Key()))
 	return tmpDir, binPath, cleanup, nil
-}
-
-// copyExecutablesToDir walks srcDir recursively and copies all executable files
-// (Unix: executable bit set; Windows: .exe suffix) to destDir flat.
-func copyExecutablesToDir(srcDir, destDir string) error {
-	return filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		name := d.Name()
-		if runtime.GOOS == "windows" {
-			if !strings.HasSuffix(strings.ToLower(name), ".exe") {
-				return nil
-			}
-		} else {
-			info, err := d.Info()
-			if err != nil {
-				return err
-			}
-			if info.Mode()&0111 == 0 {
-				return nil
-			}
-		}
-		dest := filepath.Join(destDir, name)
-		_ = os.Remove(dest)
-		if err := copyFile(path, dest); err != nil {
-			return err
-		}
-		return os.Chmod(dest, 0755)
-	})
 }
 
 func copyFile(src, dst string) error {

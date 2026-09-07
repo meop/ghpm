@@ -14,7 +14,24 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/meop/ghpm/internal/toolchain"
 )
+
+// writeFakeGh writes an executable at path that reports ver the way real gh
+// does, so Ensure's version probe has something to read.
+func writeFakeGh(t *testing.T, path, ver string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the version probe needs a runnable script; not worth a .cmd shim here")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\necho 'gh version "+ver+" (2026-01-01)'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func fakePathGH(t *testing.T) {
 	t.Helper()
@@ -51,7 +68,7 @@ func serveGhRelease(t *testing.T, binName, content string) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	mux.HandleFunc("/repos/cli/cli/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/cli/cli/releases/tags/v"+toolchain.GhVersion, func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"assets": []map[string]string{
 				{"name": assetName, "browser_download_url": srv.URL + "/download/" + assetName},
@@ -59,26 +76,47 @@ func serveGhRelease(t *testing.T, binName, content string) {
 		})
 	})
 	orig := ghReleaseAPI
-	ghReleaseAPI = srv.URL + "/repos/cli/cli/releases/latest"
+	ghReleaseAPI = srv.URL + "/repos/cli/cli/releases/tags/v" + toolchain.GhVersion
 	t.Cleanup(func() { ghReleaseAPI = orig })
 }
 
-func TestEnsure_NoOpWhenVendoredAlreadyExists(t *testing.T) {
+func TestEnsure_NoOpWhenVendoredIsAtPin(t *testing.T) {
 	withHome(t)
 	unreachableAPI(t)
 	vendored, err := VendorPath()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
+	writeFakeGh(t, vendored, toolchain.GhVersion)
+
+	if err := Ensure(context.Background()); err != nil {
+		t.Errorf("expected no error (and no network call) when already at the pin, got %v", err)
+	}
+}
+
+// TestEnsure_ReplacesVendoredAtWrongVersion is the point of pinning: what is
+// already vendored is only kept when it is the pinned version, and a copy at
+// any other version is replaced — the newer version here proves the sync is
+// not a one-way "upgrade if older" check.
+func TestEnsure_ReplacesVendoredAtWrongVersion(t *testing.T) {
+	withHome(t)
+	vendored, err := VendorPath()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"), 0755); err != nil {
+	writeFakeGh(t, vendored, "99.99.99")
+	serveGhRelease(t, vendorName(), "fake gh binary")
+
+	if err := Ensure(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := Ensure(context.Background()); err != nil {
-		t.Errorf("expected no error (and no network call) when already vendored, got %v", err)
+	got, err := os.ReadFile(vendored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "fake gh binary" {
+		t.Errorf("expected the off-pin gh to be replaced, got %q", got)
 	}
 }
 

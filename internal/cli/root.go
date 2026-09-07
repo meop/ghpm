@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	binGh     = "gh"
 	binGhpm   = "ghpm"
 	binSheesh = "sheesh"
 )

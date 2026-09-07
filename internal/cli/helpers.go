@@ -25,7 +25,7 @@ var skipHashCheck bool
 
 const msgAllUpToDate = "all packages are up to date"
 
-const msgAllComponentsUpToDate = "all components are up to date"
+const msgGhpmUpToDate = "ghpm is up to date"
 
 // msgDryRun is printed at every dry-run bail point (gate's preview table, and
 // tidy's per-category previews) so the run doesn't just show a table and then
@@ -150,7 +150,7 @@ func initCommand(ctx context.Context, opts cmdOptions) (*cmdInit, error) {
 	}
 
 	if opts.Shim {
-		if err := ensureSheesh(ctx, cfg, ci.gh); err != nil {
+		if err := syncSheesh(ctx, cfg, ci.gh); err != nil {
 			printFail(cfg, "%v", err)
 			return nil, ci.fail()
 		}

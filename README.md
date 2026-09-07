@@ -26,6 +26,8 @@ After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a s
 
 `~/.ghpm/vendor/` holds the tools ghpm needs to work rather than the ones it installs for you: `gh` (with its own `GH_CONFIG_DIR` beside it) under `vendor/gh/`, and sheesh's `kebab` stamper under `vendor/sheesh/`. Nothing there belongs on PATH — ghpm invokes each by absolute path, and never falls back to whatever the system happens to have on PATH instead. A vendored copy can be older, newer, or differently authenticated than the same tool elsewhere on the system without either one disturbing the other. Vendoring `gh` this way also frees the name, so `ghpm add gh` installs gh like any other package.
 
+Each vendored tool is pinned to an exact version that ghpm keeps in sync for you. Commands that need one check what the vendored copy reports and quietly re-fetch it if that isn't the pinned version — whether it's older or newer — so ghpm always runs the toolchain it was built against. There's nothing to maintain: they're ghpm's internals, they never appear in `ghpm upgrade` (which upgrades ghpm, and only ghpm), and they move only when a new ghpm release moves them.
+
 ghpm doesn't require `gh` or sheesh to already be on your system: the first command that needs either vendors it itself (fetching `gh` directly, since `gh` obviously isn't available yet to fetch `gh` with), and prompts you for a personal access token if that copy isn't authenticated yet — not the browser device flow, since ghpm's own gh is meant to keep working unattended, and a device-flow token has no way to silently renew itself once nobody's watching for the prompt. If a stored token stops working later (revoked, expired), the next command that hits it re-prompts and retries automatically rather than leaving every later command to fail the same way.
 
 ## Usage
@@ -57,7 +59,7 @@ ghpm remove fzf           # remove package
 ghpm tidy                 # remove unused cached assets and orphaned package dirs
 ghpm tidy --all           # remove all cached assets
 
-ghpm upgrade              # upgrade ghpm itself and managed gh
+ghpm upgrade              # upgrade ghpm itself
 ghpm refresh              # refresh repo sources to latest versions
 ghpm doctor               # check system health
 ```

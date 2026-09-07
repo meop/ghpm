@@ -39,3 +39,15 @@ func Normalize(v string) string {
 	}
 	return ver + trailing
 }
+
+// IsVersionToken reports whether t looks like a version/build token: an
+// optional leading "v"/"V" followed by a digit. Only the first character is
+// checked, so it is safe only for a token something else has already cleanly
+// bounded — see asset.isStrictVersionToken for the whole-token form.
+func IsVersionToken(t string) bool {
+	s := t
+	if strings.HasPrefix(s, "v") || strings.HasPrefix(s, "V") {
+		s = s[1:]
+	}
+	return len(s) > 0 && s[0] >= '0' && s[0] <= '9'
+}

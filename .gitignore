@@ -17,4 +17,4 @@ Thumbs.db
 *.swo
 
 # Dependencies (go.sum is tracked)
-vendor/
+/vendor/
