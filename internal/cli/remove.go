@@ -69,12 +69,43 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	var hadErrors bool
 	var failedItems []failedItem
 	successCount := 0
+	// Shims and fonts first, extract dir last, manifest entry last of all: every
+	// step here destroys something, so nothing can be rolled back — what keeps
+	// the state consistent instead is ordering plus a strict commit. A shim that
+	// will not delete (a binary the running shell holds open) leaves the package
+	// fully described in the manifest, extract dir and all, so the retry that
+	// finishes the job has everything it needs. Dropping the entry there would
+	// strand the shim as an orphan only tidy could name.
 	for _, t := range targets {
-		pkgPath := filepath.Join(pkgsDir, t.key, t.pkg.Version)
-		if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
-			printFail(cfg, "%s: could not remove extract dir: %v", t.key, err)
+		failReason := ""
+		for shimName := range t.pkg.AllBins() {
+			if err := shim.Remove(shimName); err != nil {
+				printFail(cfg, "%s: %s: could not remove shim: %v", t.key, shimName, err)
+				if failReason == "" {
+					failReason = fmt.Sprintf("%s: could not remove shim: %v", shimName, err)
+				}
+			}
+		}
+		if fontsDir, err := userFontDir(); err == nil {
+			for fontName, fontPath := range t.pkg.AllFonts() {
+				if err := uninstallFont(fontPath, fontsDir); err != nil {
+					printFail(cfg, "%s: %s: could not remove font: %v", t.key, fontName, err)
+					if failReason == "" {
+						failReason = fmt.Sprintf("%s: could not remove font: %v", fontName, err)
+					}
+				}
+			}
+		}
+		if failReason == "" {
+			pkgPath := filepath.Join(pkgsDir, t.key, t.pkg.Version)
+			if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
+				failReason = fmt.Sprintf("could not remove extract dir: %v", err)
+				printFail(cfg, "%s: %s", t.key, failReason)
+			}
+		}
+		if failReason != "" {
 			hadErrors = true
-			failedItems = append(failedItems, failedItem{name: t.key, reason: fmt.Sprintf("could not remove extract dir: %v", err)})
+			failedItems = append(failedItems, failedItem{name: t.key, reason: failReason})
 			continue
 		}
 		baseDir := filepath.Join(pkgsDir, t.key)
@@ -82,18 +113,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 			_ = os.Remove(baseDir)
 		}
 		manifest.RemoveExtract(t.key)
-		for shimName := range t.pkg.AllBins() {
-			if err := shim.Remove(shimName); err != nil {
-				printWarn(cfg, "%s: could not remove shim: %v", shimName, err)
-			}
-		}
-		if fontsDir, err := userFontDir(); err == nil {
-			for fontName, fontPath := range t.pkg.AllFonts() {
-				if err := uninstallFont(fontPath, fontsDir); err != nil {
-					printWarn(cfg, "%s: could not remove font: %v", fontName, err)
-				}
-			}
-		}
 		successCount++
 	}
 

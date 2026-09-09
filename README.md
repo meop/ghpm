@@ -154,6 +154,7 @@ If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a rep
 - State is tracked in `~/.ghpm/manifest.json`, including the binaries and fonts you *declined* at install time — so `sync` knows the exact set a release offered last time
 - On `sync`, a package carries its prior choices (which binaries to shim, what to name them) silently as long as the release offers the same set of binaries and fonts. If that set changes — a new helper binary appears, one is dropped — the package is re-prompted from scratch, including any renames; nothing is reused silently once you're asked again
 - SHA256 of each downloaded asset is verified against the digest returned by the GitHub API; mismatch is a hard error (bypass with `--skip-hash-check`)
+- The manifest is only written for work that fully succeeded. If a package fails partway — a shim that can't be replaced because the binary is running, say — ghpm rolls that package back to the version you had and leaves its manifest entry alone, so nothing is left half-updated and re-running the command simply retries it. Other packages in the same run are unaffected
 
 ## Verifying releases
 

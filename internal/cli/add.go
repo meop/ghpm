@@ -446,47 +446,63 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	successCount := 0
 	for _, p := range shimPlans {
-		if forceInstall {
-			if existing, ok := manifest.Extracts[p.key]; ok {
-				for shimName := range existing.AllBins() {
-					_ = shim.Remove(shimName)
+		existing := manifest.Extracts[p.key]
+		oldPkgDir := ""
+		if existing.Version != "" {
+			if oldBase, err := ci.dirs.ExtractBaseDir(p.key); err == nil {
+				oldPkgDir = filepath.Join(oldBase, existing.Version)
+			}
+		}
+
+		// Journalled like sync's: the manifest entry is the commit, and a package
+		// that fails anywhere below is put back to whatever was installed before
+		// (nothing, for a first add) rather than recorded half-created.
+		jrn := &journal{}
+		jrn.did("extract "+p.version, extractUndo(p.pkgDir, existing.Version, p.version))
+
+		if forceInstall && existing.Version != "" {
+			for shimName, oldKey := range existing.AllBins() {
+				if err := shim.Remove(shimName); err != nil {
+					printWarn(cfg, "%s: could not remove stale shim: %v", shimName, err)
+					continue
 				}
-				if oldFonts := existing.AllFonts(); len(oldFonts) > 0 {
-					var newPaths []string
-					for _, fontPath := range p.font {
-						newPaths = append(newPaths, fontPath)
-					}
-					if fontsDir, err := userFontDir(); err == nil {
-						for _, fontPath := range staleFontPaths(oldFonts, newPaths) {
-							if err := uninstallFont(fontPath, fontsDir); err != nil {
-								printWarn(cfg, "%s: could not remove stale font: %v", filepath.Base(fontPath), err)
-							}
+				jrn.did("stale shim "+shimName, shimUndo(shimName, oldKey, oldPkgDir))
+			}
+			if oldFonts := existing.AllFonts(); len(oldFonts) > 0 {
+				var newPaths []string
+				for _, fontPath := range p.font {
+					newPaths = append(newPaths, fontPath)
+				}
+				if fontsDir, err := userFontDir(); err == nil {
+					for _, fontPath := range staleFontPaths(oldFonts, newPaths) {
+						if err := uninstallFont(fontPath, fontsDir); err != nil {
+							printWarn(cfg, "%s: could not remove stale font: %v", filepath.Base(fontPath), err)
+							continue
 						}
+						jrn.did("stale font "+filepath.Base(fontPath), fontUndo("", fontPath, oldPkgDir, fontsDir))
 					}
 				}
 			}
 		}
-		installedBin, installedFont, failed, failReason := applyShimPlan(p, forceInstall, shim.Create, ensureFontDir, installFont)
+
+		installedBin, installedFont, failed, failReason := applyShimPlan(p, forceInstall, jrn, existing, oldPkgDir, shim.Create, ensureFontDir, installFont)
 		if failed {
 			hadErrors = true
-		}
-		if len(installedBin) > 0 || len(installedFont) > 0 {
-			manifest.Repos[p.jobName] = p.source
-			manifest.Extracts[p.key] = config.PackageEntry{
-				Pin:          p.pin,
-				Version:      p.version,
-				Assets:       p.assets,
-				Bin:          installedBin,
-				Font:         installedFont,
-				BinDeclined:  p.binDeclined,
-				FontDeclined: p.fontDeclined,
-			}
-		}
-		if !failed {
-			successCount++
-		} else {
 			failedItems = append(failedItems, failedItem{name: p.jobName, reason: failReason})
+			rollbackPkg(cfg, jrn, p.jobName)
+			continue
 		}
+		manifest.Repos[p.jobName] = p.source
+		manifest.Extracts[p.key] = config.PackageEntry{
+			Pin:          p.pin,
+			Version:      p.version,
+			Assets:       p.assets,
+			Bin:          installedBin,
+			Font:         installedFont,
+			BinDeclined:  p.binDeclined,
+			FontDeclined: p.fontDeclined,
+		}
+		successCount++
 	}
 	if successCount > 0 {
 		printPass(cfg, "installed %d package(s)", successCount)
@@ -507,6 +523,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 func applyShimPlan(
 	p shimPlan,
 	forceInstall bool,
+	jrn *journal,
+	prev config.PackageEntry,
+	oldPkgDir string,
 	createShim func(shimName, binaryName, pkgDir, binSubdir string, force bool) error,
 	ensureFontDirFn func() (string, error),
 	installFontFn func(srcPath, fontsDir string) error,
@@ -514,6 +533,7 @@ func applyShimPlan(
 	installedBin = make(map[string]string, len(p.bin))
 	for shimName, binsKey := range p.bin {
 		binDir, binName := parseBinPath(binsKey)
+		jrn.did("shim "+shimName, shimUndo(shimName, prev.Bin[shimName], oldPkgDir))
 		if err := createShim(shimName, binName, p.pkgDir, binDir, forceInstall); err != nil {
 			printFail(nil, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
 			failed = true
@@ -542,6 +562,7 @@ func applyShimPlan(
 			slices.Sort(fontNames)
 			for _, fontName := range fontNames {
 				srcPath := filepath.Join(p.pkgDir, filepath.FromSlash(p.font[fontName]))
+				jrn.did("font "+fontName, fontUndo(p.font[fontName], prev.Font[fontName], oldPkgDir, fontsDir))
 				if err := installFontFn(srcPath, fontsDir); err != nil {
 					printFail(nil, "%s: %s: could not install font: %v", p.jobName, fontName, err)
 					failed = true

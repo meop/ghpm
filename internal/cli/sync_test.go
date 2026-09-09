@@ -160,7 +160,7 @@ func TestSyncBinShims_RemovesStaleWhenAllBinsGone(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	installed, errs := syncBinShims(&config.Settings{}, t.TempDir(), map[string]string{"old": "bin/old"}, nil)
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, nil)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -182,7 +182,7 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	installed, errs := syncBinShims(&config.Settings{}, t.TempDir(), map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"})
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"})
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -214,7 +214,7 @@ func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No fakeKebab staged, so shim.Create fails for every entry in newBin.
-	installed, errs := syncBinShims(&config.Settings{}, t.TempDir(), map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"})
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"})
 	if len(errs) == 0 {
 		t.Fatal("expected an error when kebab is not staged")
 	}
@@ -236,7 +236,7 @@ func TestSyncPkgFonts_UninstallsStaleWhenAllFontsGone(t *testing.T) {
 	fontsDir := filepath.Join(home, "xdg-data", "fonts")
 	makeFontFile(t, fontsDir, "Hack-Regular.ttf")
 
-	installed, errs, err := syncPkgFonts(&config.Settings{}, t.TempDir(), map[string]string{"hack": "Hack-Regular.ttf"}, nil)
+	installed, errs, err := syncPkgFonts(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"hack": "Hack-Regular.ttf"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestSyncPkgFonts_NoOpWhenBothEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, errs, err := syncPkgFonts(&config.Settings{}, t.TempDir(), nil, nil)
+	_, errs, err := syncPkgFonts(&config.Settings{}, &journal{}, t.TempDir(), "", nil, nil)
 	if err != nil || len(errs) != 0 {
 		t.Fatalf("expected a clean no-op, got errs=%v err=%v", errs, err)
 	}
@@ -274,7 +274,7 @@ func TestSyncPkgFonts_FailedInstallNotRecorded(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "xdg-data"))
 
 	// No source file exists at pkgDir/Missing.ttf, so installFont's copy fails.
-	installed, errs, err := syncPkgFonts(&config.Settings{}, t.TempDir(), nil, map[string]string{"missing": "Missing.ttf"})
+	installed, errs, err := syncPkgFonts(&config.Settings{}, &journal{}, t.TempDir(), "", nil, map[string]string{"missing": "Missing.ttf"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

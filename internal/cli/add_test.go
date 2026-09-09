@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ui"
 )
 
@@ -29,7 +30,7 @@ func TestApplyShimPlan_FailedShimNotRecorded(t *testing.T) {
 	unusedEnsureFontDir := func() (string, error) { return "", nil }
 	unusedInstallFont := func(srcPath, fontsDir string) error { return nil }
 
-	installedBin, installedFont, failed, failReason := applyShimPlan(p, false, failingCreate, unusedEnsureFontDir, unusedInstallFont)
+	installedBin, installedFont, failed, failReason := applyShimPlan(p, false, &journal{}, config.PackageEntry{}, "", failingCreate, unusedEnsureFontDir, unusedInstallFont)
 
 	if !failed {
 		t.Fatal("expected failed=true when shim.Create fails")
@@ -69,7 +70,7 @@ func TestApplyShimPlan_PartialSuccessOnlyRecordsWhatSucceeded(t *testing.T) {
 	unusedEnsureFontDir := func() (string, error) { return "", nil }
 	unusedInstallFont := func(srcPath, fontsDir string) error { return nil }
 
-	installedBin, _, failed, failReason := applyShimPlan(p, false, create, unusedEnsureFontDir, unusedInstallFont)
+	installedBin, _, failed, failReason := applyShimPlan(p, false, &journal{}, config.PackageEntry{}, "", create, unusedEnsureFontDir, unusedInstallFont)
 
 	if !failed {
 		t.Fatal("expected failed=true when one of two shims fails")
@@ -105,7 +106,7 @@ func TestApplyShimPlan_AllSucceed(t *testing.T) {
 	ensureFontDir := func() (string, error) { return "/fake/fonts", nil }
 	installFont := func(srcPath, fontsDir string) error { return nil }
 
-	installedBin, installedFont, failed, failReason := applyShimPlan(p, false, create, ensureFontDir, installFont)
+	installedBin, installedFont, failed, failReason := applyShimPlan(p, false, &journal{}, config.PackageEntry{}, "", create, ensureFontDir, installFont)
 
 	if failed {
 		t.Fatalf("expected failed=false, got failReason=%q", failReason)

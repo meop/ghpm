@@ -207,8 +207,19 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 
 	manifestTouched := false
 	for _, it := range items {
+		// A shim that will not delete keeps its manifest entry: dropping the
+		// entry anyway would turn a file ghpm still owns into an orphan only
+		// the *next* tidy could name, and only for bins — the font sweep does
+		// not scan for untracked files at all.
+		stuck := false
 		for _, sp := range it.shimPaths {
-			_ = os.Remove(sp)
+			if err := os.Remove(sp); err != nil && !os.IsNotExist(err) {
+				printFail(cfg, "%s: could not remove shim: %v", filepath.Base(sp), err)
+				stuck = true
+			}
+		}
+		if stuck {
+			continue
 		}
 		if it.extractPath != "" {
 			_ = pruneExtract(it.extractPath, pkgsDir)
@@ -305,7 +316,10 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 
 	manifestTouched := false
 	for _, it := range items {
-		_ = os.Remove(filepath.Join(fontsDir, it.fontFile))
+		if err := os.Remove(filepath.Join(fontsDir, it.fontFile)); err != nil && !os.IsNotExist(err) {
+			printFail(cfg, "%s: could not remove font: %v", it.fontFile, err)
+			continue
+		}
 		unregisterFont(it.fontFile)
 
 		entry, ok := manifest.Extracts[it.manifestKey]
