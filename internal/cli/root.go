@@ -88,11 +88,11 @@ func hasReservedConflict(proposed []string, reserved map[string]string) bool {
 }
 
 func parseBinPath(key string) (binDir, binName string) {
-	i := strings.LastIndex(key, "/")
-	if i < 0 {
+	binDir, binName, found := strings.CutLast(key, "/")
+	if !found {
 		return "", key
 	}
-	return key[:i], key[i+1:]
+	return binDir, binName
 }
 
 // proposedShimNames returns the default shim name for each selected binary.
@@ -119,11 +119,11 @@ func proposedShimNames(manifestKey string, selected []asset.BinCandidate) []stri
 }
 
 func lastPathSegment(p string) string {
-	i := strings.LastIndex(p, "/")
-	if i < 0 {
+	_, last, found := strings.CutLast(p, "/")
+	if !found {
 		return p
 	}
-	return p[i+1:]
+	return last
 }
 
 func shimNameWithSuffix(name, suffix string) string {

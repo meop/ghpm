@@ -192,8 +192,8 @@ func fetchAndCacheRepos(source string) (int, error) {
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).
 // If no "@", returns (name, "", false).
 func ParseVersionSuffix(arg string) (name, version string, pinned bool) {
-	if idx := strings.LastIndex(arg, "@"); idx >= 0 {
-		return arg[:idx], arg[idx+1:], true
+	if before, after, found := strings.CutLast(arg, "@"); found {
+		return before, after, true
 	}
 	return arg, "", false
 }
