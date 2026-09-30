@@ -22,13 +22,7 @@ irm -ErrorAction Stop -Uri https://raw.githubusercontent.com/meop/ghpm/main/inst
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, add `~/.ghpm/bin` to your PATH. Each installed binary gets a shim there — a symlink on Linux/macOS, an `.exe` shim on Windows.
-
-`~/.ghpm/vendor/` holds the tools ghpm needs to work rather than the ones it installs for you: `gh` (with its own `GH_CONFIG_DIR` beside it) under `vendor/gh/`, and sheesh's `kebab` stamper under `vendor/sheesh/`. Nothing there belongs on PATH — ghpm invokes each by absolute path, and never falls back to whatever the system happens to have on PATH instead. A vendored copy can be older, newer, or differently authenticated than the same tool elsewhere on the system without either one disturbing the other. Vendoring `gh` this way also frees the name, so `ghpm add gh` installs gh like any other package.
-
-Each vendored tool is pinned to an exact version that ghpm keeps in sync for you. Commands that need one check what the vendored copy reports and quietly re-fetch it if that isn't the pinned version — whether it's older or newer — so ghpm always runs the toolchain it was built against. There's nothing to maintain: they're ghpm's internals, they never appear in `ghpm upgrade` (which upgrades ghpm, and only ghpm), and they move only when a new ghpm release moves them.
-
-ghpm doesn't require `gh` or sheesh to already be on your system: the first command that needs either vendors it itself (fetching `gh` directly, since `gh` obviously isn't available yet to fetch `gh` with), and prompts you for a personal access token if that copy isn't authenticated yet — not the browser device flow, since ghpm's own gh is meant to keep working unattended, and a device-flow token has no way to silently renew itself once nobody's watching for the prompt. If a stored token stops working later (revoked, expired), the next command that hits it re-prompts and retries automatically rather than leaving every later command to fail the same way.
+After installing, add `~/.ghpm/bin` to your PATH.
 
 ## Usage
 
@@ -86,18 +80,18 @@ ghpm doctor               # check system health
 
 | Syntax | Meaning | Updates |
 |---|---|---|
-| `fzf` | Latest version | Yes — `ghpm update` fetches newest release |
+| `fzf` | Latest version | Yes — `ghpm sync` fetches newest release |
 | `fzf@14` | Latest 14.x | Yes — within major only |
 | `fzf@14.1` | Latest 14.1.x | Yes — within major.minor only |
 | `fzf@14.1.0` | Exact version | Never — static pin |
 
-Manifest key and directory name both use the constraint as written (e.g., `fzf@14`, not `fzf@14.2.1`). The actual installed version is recorded in the manifest.
+A pinned package keeps the constraint as its name (e.g., `fzf@14`, not `fzf@14.2.1`); `ghpm list` shows the version installed.
 
 ### Portable app support
 
-ghpm extracts archives into `~/.ghpm/extract/<key>/<version>/` and discovers the binary automatically. A shim is created in `~/.ghpm/bin/` pointing at the real binary inside the extract dir — a symlink on Linux/macOS, an `.exe` shim on Windows. GitHub releases are portable apps — binaries locate their own resources via paths relative to the executable, so no other env vars are needed.
+ghpm finds the binaries in a release's archive on its own, and puts each on your PATH through `~/.ghpm/bin`. GitHub releases are portable apps, so nothing else needs setting up.
 
-You can select **multiple assets** from a single release; they are overlaid into one extract dir in selection order (a later asset overwrites a colliding path), then binaries and fonts are discovered across the combined tree. This handles releases split across assets — e.g. a build whose shared libraries ship in a separate archive that must sit beside the executables.
+You can select **multiple assets** from a single release, for builds split across assets — e.g. one whose shared libraries ship in a separate archive that must sit beside the executables. Later selections win where files collide.
 
 ### Configuration
 
@@ -144,17 +138,11 @@ descr = "Command-line fuzzy finder."
 
 If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a repo.
 
-## How it works
+## Behavior
 
-- All GitHub interaction goes through the `gh` CLI — no GitHub SDK
-- Release assets are cached in `~/.ghpm/download/github.com/<owner>/<repo>/<version>/`
-- Packages are extracted to `~/.ghpm/extract/<key>/<version>/` with full directory structure
-- A shim in `~/.ghpm/bin/` points at the binary in each package's extract dir
-- ghpm's own `gh` and sheesh's `kebab` live under `~/.ghpm/vendor/`, off PATH, and each vendors itself on first use if it isn't there yet — `gh` also authenticates itself separately from the system `gh`, if any
-- State is tracked in `~/.ghpm/manifest.json`, including the binaries and fonts you *declined* at install time — so `sync` knows the exact set a release offered last time
-- On `sync`, a package carries its prior choices (which binaries to shim, what to name them) silently as long as the release offers the same set of binaries and fonts. If that set changes — a new helper binary appears, one is dropped — the package is re-prompted from scratch, including any renames; nothing is reused silently once you're asked again
-- SHA256 of each downloaded asset is verified against the digest returned by the GitHub API; mismatch is a hard error (bypass with `--skip-hash-check`)
-- The manifest is only written for work that fully succeeded. If a package fails partway — a shim that can't be replaced because the binary is running, say — ghpm rolls that package back to the version you had and leaves its manifest entry alone, so nothing is left half-updated and re-running the command simply retries it. Other packages in the same run are unaffected
+- Each downloaded asset's SHA256 is checked against the digest GitHub reports; a mismatch fails the install (bypass with `--skip-hash-check`)
+- `sync` keeps the choices you made at install time — which binaries to add, what to name them — as long as a release offers the same binaries and fonts; if that set changes, it asks again from scratch
+- A package that fails partway is rolled back to the version you had, so re-running the command simply retries it; other packages in the same run are unaffected
 
 ## Verifying releases
 
