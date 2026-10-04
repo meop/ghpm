@@ -33,8 +33,10 @@ Today it mainly serves people who need the MinGW ABI, such as MSYS2 users.
 
 On Windows ARM64 the GNU-family build is `aarch64-pc-windows-gnullvm`. Rust has
 no `aarch64-pc-windows-gnu`, because the GCC-based MinGW toolchain has no
-complete Windows on Arm support; the LLVM-based llvm-mingw does. `gnullvm`
-does not match the `gnu` preference token, so it ranks neutral, behind MSVC.
+complete Windows on Arm support; the LLVM-based llvm-mingw does. ghpm treats
+`gnullvm` as a spelling of `gnu` (`toolSpellings`), so it ranks with the GNU
+family, behind MSVC. A release could ship both `x86_64-pc-windows-gnu` and
+`x86_64-pc-windows-gnullvm`; they would then tie and be listed side by side.
 
 ## Linux: GNU before musl
 

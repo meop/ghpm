@@ -843,6 +843,8 @@ func TestIsKnownAliasToken(t *testing.T) {
 		{"amd64", true},
 		{"x86_64", true},
 		{"musl", true},
+		// gnullvm is the GNU family's LLVM-built Windows target.
+		{"gnullvm", true},
 		// win32/win64 sanitize to "win" once digits are stripped — not a
 		// substring or boundary check, an exact match against the stripped form.
 		{"win32", true},
@@ -975,6 +977,28 @@ func TestSelectAssetAuto_CompatibleAlphabeticalOrder(t *testing.T) {
 	for i, a := range ac.Compatible {
 		if a.Name != want[i] {
 			t.Errorf("Compatible[%d] = %q, want %q", i, a.Name, want[i])
+		}
+	}
+}
+
+func TestToolMentioned(t *testing.T) {
+	cases := []struct {
+		name, pref string
+		want       bool
+	}{
+		{"tool-x86_64-pc-windows-gnu.zip", "gnu", true},
+		// gnullvm counts as the GNU family, under either delimiter.
+		{"tool-aarch64-pc-windows-gnullvm.zip", "gnu", true},
+		{"tool_aarch64_pc_windows_gnullvm.zip", "gnu", true},
+		{"tool-aarch64-pc-windows-gnullvm.zip", "msvc", false},
+		{"tool-aarch64-pc-windows-msvc.zip", "msvc", true},
+		// A bare substring is still not a mention.
+		{"tool-magnum-amd64.tar.gz", "gnu", false},
+		{"tool-linux-musl-amd64.tar.gz", "musl", true},
+	}
+	for _, c := range cases {
+		if got := toolMentioned(strings.ToLower(c.name), c.pref); got != c.want {
+			t.Errorf("toolMentioned(%q, %q) = %v, want %v", c.name, c.pref, got, c.want)
 		}
 	}
 }

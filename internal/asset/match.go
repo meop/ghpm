@@ -34,6 +34,30 @@ var toolPrefs = map[string][]string{
 	"windows": {"msvc", "gnu"},
 }
 
+// toolSpellings lists every name a toolPrefs entry goes by in asset names.
+// "gnullvm" is the GNU family built with LLVM's MinGW rather than GCC's, and
+// the only GNU-family target for Windows ARM64 (aarch64-pc-windows-gnullvm;
+// Rust has no aarch64-pc-windows-gnu), so it ranks as "gnu" instead of
+// counting as an unknown word.
+var toolSpellings = map[string][]string{
+	"gnu": {"gnu", "gnullvm"},
+}
+
+// toolMentioned reports whether lower names the toolchain pref under any of
+// its spellings, as a delimited segment.
+func toolMentioned(lower, pref string) bool {
+	spellings, ok := toolSpellings[pref]
+	if !ok {
+		spellings = []string{pref}
+	}
+	for _, s := range spellings {
+		if hasDelimitedSubstring(lower, s) {
+			return true
+		}
+	}
+	return false
+}
+
 // extValues is every archive/compression suffix ghpm recognizes, in
 // unix-preference order: tar formats first (native there), 7z/zip last
 // (native on Windows instead — see extPrefs).
@@ -113,7 +137,7 @@ func secondaryScore(name string) int {
 	if prefs, ok := toolPrefs[goos]; ok {
 		n := len(prefs)
 		for i := n - 1; i >= 0; i-- {
-			if p := prefs[i]; p != "" && hasDelimitedSubstring(lower, p) {
+			if p := prefs[i]; p != "" && toolMentioned(lower, p) {
 				total += 1 + (n - 1 - i)
 			}
 		}
@@ -212,6 +236,9 @@ func isKnownAliasToken(t string) bool {
 		return true
 	}
 	if _, _, ok := matchAlias(t, toolPrefs); ok {
+		return true
+	}
+	if _, _, ok := matchAlias(t, toolSpellings); ok {
 		return true
 	}
 	return false
