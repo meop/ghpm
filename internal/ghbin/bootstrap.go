@@ -82,7 +82,10 @@ func authIfNeeded(ctx context.Context, ghPath string) error {
 // login prompts for a personal access token rather than the browser device
 // flow: ghpm's vendored gh is meant for unattended use, and a device flow's
 // short-lived token has no way to silently renew itself once nothing is
-// watching for the prompt that would refresh it. Reads the token itself
+// watching for the prompt that would refresh it. --insecure-storage keeps the
+// token in ghpm's own GH_CONFIG_DIR instead of the OS credential store: ghpm
+// is often run over SSH, where the keyring paths gh otherwise uses (a desktop
+// session's credential helper) are unavailable or locked. Reads the token itself
 // (ui.ReadSecret) rather than handing gh the raw terminal — piping os.Stdin
 // straight through relies on the person typing to send a clean EOF
 // themselves, which is exactly the kind of thing that just hangs.
