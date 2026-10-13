@@ -150,7 +150,7 @@ func initCommand(ctx context.Context, opts cmdOptions) (*cmdInit, error) {
 	}
 
 	if opts.Shim {
-		if err := syncSheesh(ctx, cfg, ci.gh); err != nil {
+		if err := syncSheesh(ctx); err != nil {
 			printFail(cfg, "%v", err)
 			return nil, ci.fail()
 		}

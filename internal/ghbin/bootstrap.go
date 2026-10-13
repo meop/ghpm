@@ -1,35 +1,25 @@
 package ghbin
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 
+	"github.com/meop/ghpm/internal/fetch"
 	"github.com/meop/ghpm/internal/toolchain"
 	"github.com/meop/ghpm/internal/ui"
 )
 
-// ghReleaseAPI addresses the one pinned gh release ghpm vendors, never
-// "latest" — see toolchain.GhVersion. It is a var, not a const, so a test can
-// point it at a local server instead of the real GitHub API.
-var ghReleaseAPI = "https://api.github.com/repos/cli/cli/releases/tags/v" + toolchain.GhVersion
-
-type ghRelease struct {
-	Assets []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
-}
+// ghReleaseBase is where gh's releases are downloaded from: a plain release
+// download addressed by the pinned version, never "latest" and never the
+// GitHub API, so there is no token involved and no API rate limit to meet
+// before gh exists to carry one. It is a var, not a const, so a test can
+// point it at a local server.
+var ghReleaseBase = "https://github.com/cli/cli/releases/download/"
 
 // Ensure makes sure ghpm has its own vendored gh at exactly toolchain.GhVersion,
 // downloading that release directly — gh is obviously not available yet to
@@ -123,25 +113,16 @@ func ReAuth(ctx context.Context) error {
 	return login(ctx, path, env)
 }
 
+// bootstrap fetches the pinned gh release for this platform, checks it
+// against the digest pinned with the version, and puts its gh at dest. The
+// archive is unpacked in a work dir beside dest that is removed whatever
+// happens, and the old binary is dropped before the new one moves in, so the
+// vendor dir ends up holding exactly one gh and nothing left over from the
+// last one. gh's config dir beside it — ghpm's token — is never touched.
 func bootstrap(ctx context.Context, dest string) error {
-	pattern, ext := ghAssetPattern()
-	if pattern == "" {
+	name, sha256, ok := toolchain.GhAsset(runtime.GOOS, runtime.GOARCH)
+	if !ok {
 		return fmt.Errorf("no gh release available for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-
-	var rel ghRelease
-	if err := fetchJSON(ctx, ghReleaseAPI, &rel); err != nil {
-		return fmt.Errorf("fetching gh %s release: %w", toolchain.GhVersion, err)
-	}
-	var assetURL, assetName string
-	for _, a := range rel.Assets {
-		if strings.Contains(a.Name, pattern) && strings.HasSuffix(a.Name, ext) {
-			assetURL, assetName = a.BrowserDownloadURL, a.Name
-			break
-		}
-	}
-	if assetURL == "" {
-		return fmt.Errorf("no gh release asset matches %q", pattern+"*"+ext)
 	}
 
 	vendorDir := filepath.Dir(dest)
@@ -154,15 +135,19 @@ func bootstrap(ctx context.Context, dest string) error {
 	}
 	defer func() { _ = os.RemoveAll(work) }()
 
-	archivePath := filepath.Join(work, assetName)
-	if err := downloadFile(ctx, assetURL, archivePath); err != nil {
-		return fmt.Errorf("downloading %s: %w", assetName, err)
+	archive := filepath.Join(work, name)
+	if err := fetch.Download(ctx, ghReleaseBase+"v"+toolchain.GhVersion+"/"+name, archive, sha256); err != nil {
+		return fmt.Errorf("fetching gh %s: %w", toolchain.GhVersion, err)
 	}
-
-	extracted, err := extractOne(archivePath, vendorName())
-	if err != nil {
+	unpacked := filepath.Join(work, "unpacked")
+	if err := fetch.Extract(archive, unpacked, 0); err != nil {
 		return err
 	}
+	extracted, err := findFile(unpacked, vendorName())
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+
 	// dest may already hold a differently-versioned gh; drop it first so the
 	// rename isn't replacing a file another process may still hold open.
 	_ = os.Remove(dest)
@@ -172,126 +157,24 @@ func bootstrap(ctx context.Context, dest string) error {
 	return os.Chmod(dest, 0755)
 }
 
-func ghAssetPattern() (pattern, ext string) {
-	switch runtime.GOOS {
-	case "linux":
-		return "linux_" + runtime.GOARCH, ".tar.gz"
-	case "darwin":
-		return "macOS_" + runtime.GOARCH, ".zip"
-	case "windows":
-		return "windows_" + runtime.GOARCH, ".zip"
-	default:
-		return "", ""
-	}
-}
-
-func fetchJSON(ctx context.Context, url string, v any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: %s", url, resp.Status)
-	}
-	return json.NewDecoder(resp.Body).Decode(v)
-}
-
-func downloadFile(ctx context.Context, url, dest string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: %s", url, resp.Status)
-	}
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = out.Close() }()
-	_, err = io.Copy(out, resp.Body)
-	return err
-}
-
-// extractOne pulls a single named file out of archivePath (.tar.gz or .zip —
-// the only two formats gh ships) and writes it alongside the archive.
-func extractOne(archivePath, wantName string) (string, error) {
-	out := filepath.Join(filepath.Dir(archivePath), wantName)
-	switch lower := strings.ToLower(archivePath); {
-	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
-		return out, extractOneFromTarGz(archivePath, wantName, out)
-	case strings.HasSuffix(lower, ".zip"):
-		return out, extractOneFromZip(archivePath, wantName, out)
-	default:
-		return "", fmt.Errorf("unsupported archive format: %s", archivePath)
-	}
-}
-
-func extractOneFromTarGz(archivePath, wantName, dest string) error {
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = gz.Close() }()
-
-	tr := tar.NewReader(gz)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
+// findFile returns the path of the file called name somewhere under dir.
+func findFile(dir, name string) (string, error) {
+	var found string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if hdr.Typeflag == tar.TypeReg && filepath.Base(hdr.Name) == wantName {
-			return streamToFile(tr, dest)
+		if !d.IsDir() && d.Name() == name {
+			found = path
+			return filepath.SkipAll
 		}
-	}
-	return fmt.Errorf("%s not found in %s", wantName, filepath.Base(archivePath))
-}
-
-func extractOneFromZip(archivePath, wantName, dest string) error {
-	zr, err := zip.OpenReader(archivePath)
+		return nil
+	})
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer func() { _ = zr.Close() }()
-
-	for _, f := range zr.File {
-		if f.FileInfo().IsDir() || filepath.Base(f.Name) != wantName {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return err
-		}
-		defer func() { _ = rc.Close() }()
-		return streamToFile(rc, dest)
+	if found == "" {
+		return "", fmt.Errorf("%s not found in the archive", name)
 	}
-	return fmt.Errorf("%s not found in %s", wantName, filepath.Base(archivePath))
-}
-
-func streamToFile(r io.Reader, dest string) error {
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = out.Close() }()
-	_, err = io.Copy(out, r)
-	return err
+	return found, nil
 }

@@ -6,14 +6,17 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
-	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/toolchain"
 )
@@ -103,42 +106,83 @@ func kebabPathForTest(t *testing.T) string {
 	return filepath.Join(shimDir, exeName("kebab"))
 }
 
-func TestSyncSheesh_NoOpWhenKebabIsAtPin(t *testing.T) {
-	withHome(t)
-	writeFakeKebab(t, kebabPathForTest(t), toolchain.SheeshVersion)
+// unreachableSheesh points sheeshReleaseBase at a closed local port, so a
+// test that hits it proves syncSheesh attempted a fetch it should have skipped.
+func unreachableSheesh(t *testing.T) {
+	t.Helper()
+	srv := httptest.NewServer(nil)
+	url := srv.URL
+	srv.Close()
+	orig := sheeshReleaseBase
+	sheeshReleaseBase = url + "/"
+	t.Cleanup(func() { sheeshReleaseBase = orig })
+}
 
-	client := &fakeGHClient{tagReleaseErr: fmt.Errorf("should not be called")}
-	if err := syncSheesh(context.Background(), &config.Settings{}, client); err != nil {
-		t.Errorf("expected a no-op (and no gh call) when kebab is already at the pin, got %v", err)
+// pinSheeshDigest makes sum the digest pinned for this platform's sheesh
+// asset for the length of the test.
+func pinSheeshDigest(t *testing.T, sum string) {
+	t.Helper()
+	_, pinned, ok := toolchain.SheeshAsset(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("no sheesh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	for key, value := range toolchain.SheeshDigests {
+		if value == pinned {
+			toolchain.SheeshDigests[key] = sum
+			t.Cleanup(func() { toolchain.SheeshDigests[key] = pinned })
+			return
+		}
 	}
 }
 
-func TestSyncSheesh_PropagatesReleaseLookupError(t *testing.T) {
-	withHome(t)
-	client := &fakeGHClient{tagReleaseErr: fmt.Errorf("network down")}
+// serveSheeshRelease stands up a local server offering the pinned release's
+// asset for the current platform at the path a release download has, points
+// sheeshReleaseBase at it, and pins the asset's digest.
+func serveSheeshRelease(t *testing.T) {
+	t.Helper()
+	assetName, content := fakeSheeshAsset(t)
+	sum := sha256.Sum256(content)
+	pinSheeshDigest(t, hex.EncodeToString(sum[:]))
 
-	err := syncSheesh(context.Background(), &config.Settings{}, client)
-	if err == nil {
-		t.Fatal("expected the release-fetch error to propagate")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v"+toolchain.SheeshVersion+"/"+assetName, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(content)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	orig := sheeshReleaseBase
+	sheeshReleaseBase = srv.URL + "/"
+	t.Cleanup(func() { sheeshReleaseBase = orig })
+}
+
+func TestSyncSheesh_NoOpWhenKebabIsAtPin(t *testing.T) {
+	withHome(t)
+	unreachableSheesh(t)
+	writeFakeKebab(t, kebabPathForTest(t), toolchain.SheeshVersion)
+
+	if err := syncSheesh(context.Background()); err != nil {
+		t.Errorf("expected a no-op (and no fetch) when kebab is already at the pin, got %v", err)
+	}
+}
+
+func TestSyncSheesh_PropagatesFetchError(t *testing.T) {
+	withHome(t)
+	unreachableSheesh(t)
+
+	if err := syncSheesh(context.Background()); err == nil {
+		t.Fatal("expected the fetch error to propagate")
 	}
 }
 
 // TestSyncSheesh_VendorsFromPinnedRelease covers the real path: no kebab yet,
-// so syncSheesh downloads and extracts the platform-matching sheesh asset
+// so syncSheesh downloads the pinned asset for this platform and unpacks it
 // into ShimDir.
 func TestSyncSheesh_VendorsFromPinnedRelease(t *testing.T) {
 	withHome(t)
-	assetName, content := fakeSheeshAsset(t)
+	serveSheeshRelease(t)
 
-	client := &fakeGHClient{
-		tagRelease: gh.Release{
-			TagName: "v" + toolchain.SheeshVersion,
-			Assets:  []gh.Asset{{Name: assetName, Size: int64(len(content))}},
-		},
-		downloadContent: content,
-	}
-
-	if err := syncSheesh(context.Background(), &config.Settings{}, client); err != nil {
+	if err := syncSheesh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,22 +199,20 @@ func TestSyncSheesh_VendorsFromPinnedRelease(t *testing.T) {
 // TestSyncSheesh_ReplacesKebabAtWrongVersion is the point of pinning: a kebab
 // that merely exists isn't enough, and one at a *newer* version is replaced
 // too — the sync corrects drift in either direction rather than only
-// upgrading.
+// upgrading. The directory is replaced whole, so a file an older release
+// shipped and the pinned one does not is gone afterwards, and nothing of the
+// fetch is left beside it.
 func TestSyncSheesh_ReplacesKebabAtWrongVersion(t *testing.T) {
 	withHome(t)
 	kebabPath := kebabPathForTest(t)
 	writeFakeKebab(t, kebabPath, "99.99.99")
-
-	assetName, content := fakeSheeshAsset(t)
-	client := &fakeGHClient{
-		tagRelease: gh.Release{
-			TagName: "v" + toolchain.SheeshVersion,
-			Assets:  []gh.Asset{{Name: assetName, Size: int64(len(content))}},
-		},
-		downloadContent: content,
+	stale := filepath.Join(filepath.Dir(kebabPath), "shipped-by-an-older-release")
+	if err := os.WriteFile(stale, []byte("x"), 0755); err != nil {
+		t.Fatal(err)
 	}
+	serveSheeshRelease(t)
 
-	if err := syncSheesh(context.Background(), &config.Settings{}, client); err != nil {
+	if err := syncSheesh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -181,17 +223,48 @@ func TestSyncSheesh_ReplacesKebabAtWrongVersion(t *testing.T) {
 	if string(got) == "#!/bin/sh\necho '99.99.99'\n" {
 		t.Error("expected the off-pin kebab to be replaced")
 	}
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("a file the pinned release does not ship was left in the vendored dir")
+	}
+	entries, err := os.ReadDir(filepath.Dir(filepath.Dir(kebabPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "sheesh" {
+			t.Errorf("the sync left %s behind in the vendor dir", e.Name())
+		}
+	}
+}
+
+// TestSyncSheesh_RefusesAnAssetThatDoesNotMatchItsPin: the pin names exact
+// contents, so a release serving anything else is not vendored and what was
+// there stays.
+func TestSyncSheesh_RefusesAnAssetThatDoesNotMatchItsPin(t *testing.T) {
+	withHome(t)
+	kebabPath := kebabPathForTest(t)
+	writeFakeKebab(t, kebabPath, "99.99.99")
+	serveSheeshRelease(t)
+	pinSheeshDigest(t, strings.Repeat("0", 64))
+
+	if err := syncSheesh(context.Background()); err == nil {
+		t.Fatal("expected an asset that does not match its pinned digest to be refused")
+	}
+	got, err := os.ReadFile(kebabPath)
+	if err != nil || string(got) != "#!/bin/sh\necho '99.99.99'\n" {
+		t.Errorf("the vendored kebab was disturbed by an asset that failed its check: %q, %v", got, err)
+	}
 }
 
 // TestSyncSheesh_DryRunWritesNothing: a dry run is about the command the user
 // asked for, and vendoring the toolchain to preview it would be a real write.
 func TestSyncSheesh_DryRunWritesNothing(t *testing.T) {
 	withHome(t)
+	unreachableSheesh(t)
 	dryRun = true
 	defer func() { dryRun = false }()
 
-	client := &fakeGHClient{tagReleaseErr: fmt.Errorf("should not be called")}
-	if err := syncSheesh(context.Background(), &config.Settings{}, client); err != nil {
+	if err := syncSheesh(context.Background()); err != nil {
 		t.Fatalf("expected a dry run to be a silent no-op, got %v", err)
 	}
 	if _, err := os.Stat(kebabPathForTest(t)); err == nil {

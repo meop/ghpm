@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,41 +45,55 @@ func fakePathGH(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// unreachableAPI points ghReleaseAPI at a closed local port, so a test that
+// unreachableAPI points ghReleaseBase at a closed local port, so a test that
 // hits it proves Ensure attempted a network call it should have skipped.
 func unreachableAPI(t *testing.T) {
 	t.Helper()
 	srv := httptest.NewServer(nil)
 	url := srv.URL
 	srv.Close()
-	orig := ghReleaseAPI
-	ghReleaseAPI = url
-	t.Cleanup(func() { ghReleaseAPI = orig })
+	orig := ghReleaseBase
+	ghReleaseBase = url + "/"
+	t.Cleanup(func() { ghReleaseBase = orig })
 }
 
-// serveGhRelease stands up a local server offering a single asset (built by
-// fakeGhAsset for the current platform) and points ghReleaseAPI at it.
+// pinDigest makes sum the digest pinned for this platform's gh asset for the
+// length of the test: what a fake release serves is not what the real pin
+// names.
+func pinDigest(t *testing.T, sum string) {
+	t.Helper()
+	_, pinned, ok := toolchain.GhAsset(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("no gh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	for key, value := range toolchain.GhDigests {
+		if value == pinned {
+			toolchain.GhDigests[key] = sum
+			t.Cleanup(func() { toolchain.GhDigests[key] = pinned })
+			return
+		}
+	}
+}
+
+// serveGhRelease stands up a local server offering the pinned release's asset
+// for the current platform (built by fakeGhAsset) at the path a release
+// download has, points ghReleaseBase at it, and pins the asset's digest.
 func serveGhRelease(t *testing.T, binName, content string) {
 	t.Helper()
 	assetName, archive := fakeGhAsset(t, binName, content)
+	sum := sha256.Sum256(archive)
+	pinDigest(t, hex.EncodeToString(sum[:]))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/download/"+assetName, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v"+toolchain.GhVersion+"/"+assetName, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(archive)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	mux.HandleFunc("/repos/cli/cli/releases/tags/v"+toolchain.GhVersion, func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"assets": []map[string]string{
-				{"name": assetName, "browser_download_url": srv.URL + "/download/" + assetName},
-			},
-		})
-	})
-	orig := ghReleaseAPI
-	ghReleaseAPI = srv.URL + "/repos/cli/cli/releases/tags/v" + toolchain.GhVersion
-	t.Cleanup(func() { ghReleaseAPI = orig })
+	orig := ghReleaseBase
+	ghReleaseBase = srv.URL + "/"
+	t.Cleanup(func() { ghReleaseBase = orig })
 }
 
 func TestEnsure_NoOpWhenVendoredIsAtPin(t *testing.T) {
@@ -199,16 +215,84 @@ func TestEnsure_BootstrapsWhenNothingFound(t *testing.T) {
 	}
 }
 
+// TestEnsure_RefusesAnAssetThatDoesNotMatchItsPin: the pin names exact
+// contents, so a release that serves anything else is not vendored, and what
+// was vendored before stays.
+func TestEnsure_RefusesAnAssetThatDoesNotMatchItsPin(t *testing.T) {
+	withHome(t)
+	vendored, err := VendorPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFakeGh(t, vendored, "99.99.99")
+	before, err := os.ReadFile(vendored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveGhRelease(t, vendorName(), "fake gh binary")
+	pinDigest(t, strings.Repeat("0", 64))
+
+	if err := Ensure(context.Background()); err == nil {
+		t.Fatal("expected an asset that does not match its pinned digest to be refused")
+	}
+	if got, _ := os.ReadFile(vendored); string(got) != string(before) {
+		t.Error("the vendored gh was replaced by an asset that failed its check")
+	}
+}
+
+// TestEnsure_ReplacesCleanly: a replace leaves the vendor dir holding the new
+// gh and gh's own config, and nothing else — no archive, no work dir.
+func TestEnsure_ReplacesCleanly(t *testing.T) {
+	withHome(t)
+	vendored, err := VendorPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFakeGh(t, vendored, "99.99.99")
+	cfgDir, err := ConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfgDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "hosts.yml"), []byte("token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	serveGhRelease(t, vendorName(), "fake gh binary")
+
+	if err := Ensure(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(vendored))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 2 {
+		t.Errorf("vendor dir holds %v, want only gh and its config dir", names)
+	}
+	if got, _ := os.ReadFile(filepath.Join(cfgDir, "hosts.yml")); string(got) != "token" {
+		t.Error("gh's config was disturbed by replacing gh")
+	}
+}
+
 // fakeGhAsset builds a release asset in the archive format and naming
-// convention this platform's ghAssetPattern expects, containing a single file
+// convention the pinned gh release uses for this platform, containing a single file
 // named binName.
 func fakeGhAsset(t *testing.T, binName, content string) (assetName string, archive []byte) {
 	t.Helper()
-	pattern, ext := ghAssetPattern()
-	if pattern == "" {
+	assetName, _, ok := toolchain.GhAsset(runtime.GOOS, runtime.GOARCH)
+	if !ok {
 		t.Skipf("no gh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	assetName = "gh_9.9.9_" + pattern + ext
+	ext := ".zip"
+	if strings.HasSuffix(assetName, ".tar.gz") {
+		ext = ".tar.gz"
+	}
 
 	switch ext {
 	case ".tar.gz":
