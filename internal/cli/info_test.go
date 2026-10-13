@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 // TestRunInfo_OrderPreservedAcrossFailureModes exercises info's three phases

@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/meop/ghpm/internal/cli"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 var version = "dev"

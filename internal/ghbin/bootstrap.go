@@ -5,42 +5,51 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
-	"github.com/meop/ghpm/internal/fetch"
+	"github.com/meop/golie/pinned"
+	"github.com/meop/golie/ui"
+
 	"github.com/meop/ghpm/internal/toolchain"
-	"github.com/meop/ghpm/internal/ui"
 )
 
-// ghReleaseBase is where gh's releases are downloaded from: a plain release
-// download addressed by the pinned version, never "latest" and never the
-// GitHub API, so there is no token involved and no API rate limit to meet
-// before gh exists to carry one. It is a var, not a const, so a test can
-// point it at a local server.
-var ghReleaseBase = "https://github.com/cli/cli/releases/download/"
-
-// Ensure makes sure ghpm has its own vendored gh at exactly toolchain.GhVersion,
-// downloading that release directly — gh is obviously not available yet to
-// fetch gh with. Never skipped just because something is on PATH: ghpm's own
-// gh use doesn't depend on it. The check is the vendored copy's *version*,
-// not merely its presence, so a copy left behind by an older or newer ghpm is
-// replaced rather than run; an upgrade and a downgrade are the same
-// operation. It costs one local `gh --version` per invocation and no network
-// at all while the pin holds. Staying *authenticated* is a separate concern
-// handled reactively — see ReAuth — rather than checked here on every
-// invocation: that would mean a network round trip before every single gh
-// call, on top of the one the call itself is about to make.
+// Ensure makes sure ghpm has its own vendored gh, and that it is exactly the
+// release toolchain pins: not merely a gh at that version, but the pinned
+// binary, checked by its sha256 on every call. Never skipped just because
+// something is on PATH: ghpm's own gh use doesn't depend on it. A copy from
+// another version, a damaged one and one something else put there all fail
+// the same check and are replaced the same way — a plain download of the
+// pinned release, checked before it is installed (see golie's pinned
+// package). It costs one hash of gh per invocation, which is less than
+// asking gh its version was, and no network at all while the pin holds.
+// Staying *authenticated* is a separate concern handled reactively — see
+// ReAuth — rather than checked here on every invocation: that would mean a
+// network round trip before every single gh call, on top of the one the call
+// itself is about to make.
 func Ensure(ctx context.Context) error {
-	path, err := VendorPath()
+	dir, err := vendorSubDir()
 	if err != nil {
 		return err
 	}
-	if toolchain.Installed(path) == toolchain.GhVersion {
+	tool, ok := toolchain.Gh(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		return fmt.Errorf("no gh release available for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if tool.Verified(dir) {
 		return nil
 	}
-	if err := bootstrap(ctx, path); err != nil {
+	// gh's config dir sits beside it and holds ghpm's token: it is kept, and
+	// everything else that is not the pinned gh is cleared out
+	err = pinned.Ensure(ctx, tool, dir, pinned.Options{
+		Keep:      []string{configDirName},
+		Replacing: func(file string) { ui.Warn("gh: %s does not match its pin, replacing", file) },
+	})
+	if err != nil {
+		return err
+	}
+	path, err := VendorPath()
+	if err != nil {
 		return err
 	}
 	return authIfNeeded(ctx, path)
@@ -111,70 +120,4 @@ func ReAuth(ctx context.Context) error {
 	}
 	env := append(os.Environ(), "GH_CONFIG_DIR="+cfgDir)
 	return login(ctx, path, env)
-}
-
-// bootstrap fetches the pinned gh release for this platform, checks it
-// against the digest pinned with the version, and puts its gh at dest. The
-// archive is unpacked in a work dir beside dest that is removed whatever
-// happens, and the old binary is dropped before the new one moves in, so the
-// vendor dir ends up holding exactly one gh and nothing left over from the
-// last one. gh's config dir beside it — ghpm's token — is never touched.
-func bootstrap(ctx context.Context, dest string) error {
-	name, sha256, ok := toolchain.GhAsset(runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		return fmt.Errorf("no gh release available for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-
-	vendorDir := filepath.Dir(dest)
-	if err := os.MkdirAll(vendorDir, 0755); err != nil {
-		return err
-	}
-	work, err := os.MkdirTemp(vendorDir, ".gh-bootstrap-*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(work) }()
-
-	archive := filepath.Join(work, name)
-	if err := fetch.Download(ctx, ghReleaseBase+"v"+toolchain.GhVersion+"/"+name, archive, sha256); err != nil {
-		return fmt.Errorf("fetching gh %s: %w", toolchain.GhVersion, err)
-	}
-	unpacked := filepath.Join(work, "unpacked")
-	if err := fetch.Extract(archive, unpacked, 0); err != nil {
-		return err
-	}
-	extracted, err := findFile(unpacked, vendorName())
-	if err != nil {
-		return fmt.Errorf("%s: %w", name, err)
-	}
-
-	// dest may already hold a differently-versioned gh; drop it first so the
-	// rename isn't replacing a file another process may still hold open.
-	_ = os.Remove(dest)
-	if err := os.Rename(extracted, dest); err != nil {
-		return err
-	}
-	return os.Chmod(dest, 0755)
-}
-
-// findFile returns the path of the file called name somewhere under dir.
-func findFile(dir, name string) (string, error) {
-	var found string
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && d.Name() == name {
-			found = path
-			return filepath.SkipAll
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	if found == "" {
-		return "", fmt.Errorf("%s not found in the archive", name)
-	}
-	return found, nil
 }

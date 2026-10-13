@@ -75,7 +75,7 @@ ghpm doctor               # check system health
 | `--all` | `tidy` | Remove all cached assets regardless of installation status |
 | `--long-names`, `-l` | `list`, `find`, `outdated` | Print names only, one per line |
 | `--short-names`, `-s` | `list`, `find`, `outdated` | Print names only, space-separated on one line |
-| `--skip-hash-check` | `add`, `sync`, `download`, `upgrade` | Skip SHA256 hash verification of downloaded assets |
+| `--skip-hash-check` | `add`, `sync`, `download` | Skip SHA256 hash verification of downloaded assets |
 
 ### Version pinning
 

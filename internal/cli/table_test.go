@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 // TestGate_DryRun_PrintsMessage locks in the fix for a dry run that rendered

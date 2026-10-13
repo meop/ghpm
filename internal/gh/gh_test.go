@@ -12,7 +12,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 // withTestHome isolates ~/.ghpm (and anywhere else HOME-derived) to a temp

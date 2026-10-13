@@ -7,7 +7,7 @@ import (
 
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 	"github.com/spf13/cobra"
 )
 

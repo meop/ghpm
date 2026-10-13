@@ -9,8 +9,8 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
-	"github.com/meop/ghpm/internal/ui"
-	"github.com/meop/ghpm/internal/version"
+	"github.com/meop/golie/ui"
+	"github.com/meop/golie/vers"
 )
 
 var ErrSkip = ui.ErrSkip
@@ -246,7 +246,7 @@ func isKnownAliasToken(t string) bool {
 
 // isStrictVersionToken reports whether t, in its entirety, looks like a bare
 // version/build token — optional leading "v"/"V", then nothing but digits
-// and "." for the rest. Stricter than version.IsVersionToken (which only checks the
+// and "." for the rest. Stricter than vers.IsVersionToken (which only checks the
 // first character — fine for a token Tokenize has already cleanly bounded on
 // "-"/space, but not safe here: looseTokenize's greedy search tries much
 // longer candidate spans, and a loose check would let "1.0-darwin-amd64"
@@ -824,18 +824,18 @@ func multisetDiff(a, b []string) (leftoverA, leftoverB []string) {
 }
 
 // isVersionBump reports whether oldTok and newTok are the same version/build
-// marker (equal leading and trailing junk per version.SplitJunk — e.g. both
+// marker (equal leading and trailing junk per vers.SplitJunk — e.g. both
 // "b" or both "v"/".zip") with a different embedded version — and that new
 // embedded version is actually newVersion, the release being resolved. A
 // differing number that *isn't* the release's own version is a packaging
 // inconsistency (the asset wasn't bumped to match its release), not a bump
 // ghpm should paper over by guessing.
 func isVersionBump(oldTok, newTok, newVersion string) bool {
-	oldJunkA, oldVer, oldJunkB, ok := version.SplitJunk(oldTok)
+	oldJunkA, oldVer, oldJunkB, ok := vers.SplitJunk(oldTok)
 	if !ok {
 		return false
 	}
-	newJunkA, newVer, newJunkB, ok := version.SplitJunk(newTok)
+	newJunkA, newVer, newJunkB, ok := vers.SplitJunk(newTok)
 	if !ok {
 		return false
 	}

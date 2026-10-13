@@ -15,7 +15,7 @@ import (
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 func newDoctorCmd() *cobra.Command {

@@ -1,13 +1,12 @@
 package store
 
 import (
-	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/meop/ghpm/internal/version"
+	"github.com/meop/golie/home"
+	"github.com/meop/golie/vers"
 )
 
 // Dirs abstracts the ~/.ghpm directory layout so commands can be tested with a
@@ -51,30 +50,13 @@ func (*LocalDirs) ReposBaseDir() (string, error) { return ReposBaseDir() }
 // UserHomeDir returns the user's real home in production and an explicitly
 // isolated home in tests. Test binaries refuse to fall back to the real home:
 // a missed test setup must fail before it can modify ~/.ghpm or user fonts.
-func UserHomeDir() (string, error) {
-	if home := os.Getenv(testHomeEnv); home != "" {
-		return filepath.Clean(home), nil
-	}
-	if runningUnderGoTest() {
-		return "", fmt.Errorf("refusing to use the real user home during tests: set %s", testHomeEnv)
-	}
-	return os.UserHomeDir()
-}
+// The guard itself is golie's.
+func UserHomeDir() (string, error) { return home.Dir(testHomeEnv) }
 
 // UsingTestHome reports whether filesystem access is redirected to a test
 // home. Callers with OS-specific paths, such as LOCALAPPDATA, use this to keep
 // every derived path under the same isolated root.
-func UsingTestHome() bool {
-	return os.Getenv(testHomeEnv) != ""
-}
-
-func runningUnderGoTest() bool {
-	if flag.Lookup("test.v") != nil {
-		return true
-	}
-	name := strings.ToLower(filepath.Base(os.Args[0]))
-	return strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".test.exe")
-}
+func UsingTestHome() bool { return home.UsingTest(testHomeEnv) }
 
 func ghpmDir() (string, error) {
 	home, err := UserHomeDir()
@@ -171,7 +153,7 @@ func ReleaseDir(source, ver string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, SourceToRelPath(source), version.Normalize(ver))
+	dir := filepath.Join(base, SourceToRelPath(source), vers.Normalize(ver))
 	return dir, os.MkdirAll(dir, 0755)
 }
 

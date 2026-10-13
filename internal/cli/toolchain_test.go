@@ -8,93 +8,112 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/meop/golie/pinned"
+	"github.com/meop/golie/sheesh"
+
 	"github.com/meop/ghpm/internal/store"
-	"github.com/meop/ghpm/internal/toolchain"
 )
 
-// sheeshArchTag maps runtime.GOARCH to the Rust-style token sheesh's own
-// release assets use (see install.sh's ARCH normalization).
-func sheeshArchTag() string {
-	switch runtime.GOARCH {
-	case "arm64":
-		return "aarch64"
-	case "amd64":
-		return "x86_64"
-	default:
-		return ""
-	}
+const pinnedKebab = "#!/bin/sh\necho the pinned kebab\n"
+
+func sha(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
 }
 
-// fakeSheeshAsset builds a release asset for the current platform in
-// sheesh's own naming convention (sheesh-<ver>-<os>-<arch>.<ext>),
-// containing a single executable file named "kebab".
-func fakeSheeshAsset(t *testing.T) (assetName string, content []byte) {
+// sheeshKey finds this platform's entry in golie's pin table.
+func sheeshKey(t *testing.T) string {
 	t.Helper()
-	arch := sheeshArchTag()
-	if arch == "" {
-		t.Skipf("no sheesh release convention known for %s", runtime.GOARCH)
+	tool, ok := sheesh.Tool(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("no sheesh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	ext := "tar.gz"
-	if runtime.GOOS == "windows" {
-		ext = "zip"
+	for key, asset := range sheesh.Assets {
+		if asset.SHA256 == tool.Asset.SHA256 {
+			return key
+		}
 	}
-	assetName = fmt.Sprintf("sheesh-%s-%s-%s.%s", toolchain.SheeshVersion, runtime.GOOS, arch, ext)
-	kebabName := exeName("kebab")
+	t.Fatal("this platform's sheesh asset is not in the pin table")
+	return ""
+}
 
-	if ext == "zip" {
-		var buf bytes.Buffer
+// pinSheesh makes asset what golie pins for this platform, for the length of
+// the test: what a fake release serves is not what the real pin names.
+func pinSheesh(t *testing.T, asset pinned.Asset) {
+	t.Helper()
+	key := sheeshKey(t)
+	orig := sheesh.Assets[key]
+	sheesh.Assets[key] = asset
+	t.Cleanup(func() { sheesh.Assets[key] = orig })
+}
+
+// fakeSheeshArchive builds a release archive for the current platform
+// holding one executable, kebab.
+func fakeSheeshArchive(t *testing.T) []byte {
+	t.Helper()
+	name := exeName("kebab")
+	var buf bytes.Buffer
+	if runtime.GOOS == "windows" {
 		zw := zip.NewWriter(&buf)
-		f, err := zw.Create(kebabName)
+		f, err := zw.Create(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.Write([]byte("#!/bin/sh\n")); err != nil {
-			t.Fatal(err)
-		}
+		_, _ = f.Write([]byte(pinnedKebab))
 		if err := zw.Close(); err != nil {
 			t.Fatal(err)
 		}
-		return assetName, buf.Bytes()
+		return buf.Bytes()
 	}
-
-	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	body := []byte("#!/bin/sh\n")
-	if err := tw.WriteHeader(&tar.Header{Name: kebabName, Mode: 0755, Size: int64(len(body))}); err != nil {
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(pinnedKebab)), Typeflag: tar.TypeReg}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tw.Write(body); err != nil {
-		t.Fatal(err)
-	}
+	_, _ = tw.Write([]byte(pinnedKebab))
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := gz.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return assetName, buf.Bytes()
+	return buf.Bytes()
 }
 
-// writeFakeKebab writes an executable at path that reports ver, so
-// syncSheesh's version probe has something to read.
-func writeFakeKebab(t *testing.T, path, ver string) {
+// unreachableSheesh points golie's release base at a closed local port, so a
+// test that hits it proves syncSheesh attempted a fetch it should have skipped.
+func unreachableSheesh(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the version probe needs a runnable script; not worth a .cmd shim here")
-	}
-	if err := os.WriteFile(path, []byte("#!/bin/sh\necho '"+ver+"'\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	srv := httptest.NewServer(nil)
+	url := srv.URL
+	srv.Close()
+	orig := sheesh.ReleaseBase
+	sheesh.ReleaseBase = url + "/"
+	t.Cleanup(func() { sheesh.ReleaseBase = orig })
+}
+
+// serveSheeshRelease stands up a local server offering a fake release for
+// the current platform, points golie at it, and pins it.
+func serveSheeshRelease(t *testing.T) {
+	t.Helper()
+	archive := fakeSheeshArchive(t)
+	pinSheesh(t, pinned.Asset{SHA256: sha(archive), Files: map[string]string{exeName("kebab"): sha([]byte(pinnedKebab))}})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	t.Cleanup(srv.Close)
+	orig := sheesh.ReleaseBase
+	sheesh.ReleaseBase = srv.URL + "/"
+	t.Cleanup(func() { sheesh.ReleaseBase = orig })
 }
 
 func kebabPathForTest(t *testing.T) string {
@@ -106,63 +125,16 @@ func kebabPathForTest(t *testing.T) string {
 	return filepath.Join(shimDir, exeName("kebab"))
 }
 
-// unreachableSheesh points sheeshReleaseBase at a closed local port, so a
-// test that hits it proves syncSheesh attempted a fetch it should have skipped.
-func unreachableSheesh(t *testing.T) {
-	t.Helper()
-	srv := httptest.NewServer(nil)
-	url := srv.URL
-	srv.Close()
-	orig := sheeshReleaseBase
-	sheeshReleaseBase = url + "/"
-	t.Cleanup(func() { sheeshReleaseBase = orig })
-}
-
-// pinSheeshDigest makes sum the digest pinned for this platform's sheesh
-// asset for the length of the test.
-func pinSheeshDigest(t *testing.T, sum string) {
-	t.Helper()
-	_, pinned, ok := toolchain.SheeshAsset(runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("no sheesh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-	for key, value := range toolchain.SheeshDigests {
-		if value == pinned {
-			toolchain.SheeshDigests[key] = sum
-			t.Cleanup(func() { toolchain.SheeshDigests[key] = pinned })
-			return
-		}
-	}
-}
-
-// serveSheeshRelease stands up a local server offering the pinned release's
-// asset for the current platform at the path a release download has, points
-// sheeshReleaseBase at it, and pins the asset's digest.
-func serveSheeshRelease(t *testing.T) {
-	t.Helper()
-	assetName, content := fakeSheeshAsset(t)
-	sum := sha256.Sum256(content)
-	pinSheeshDigest(t, hex.EncodeToString(sum[:]))
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v"+toolchain.SheeshVersion+"/"+assetName, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(content)
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-
-	orig := sheeshReleaseBase
-	sheeshReleaseBase = srv.URL + "/"
-	t.Cleanup(func() { sheeshReleaseBase = orig })
-}
-
-func TestSyncSheesh_NoOpWhenKebabIsAtPin(t *testing.T) {
+func TestSyncSheesh_NoOpWhenKebabMatchesItsPin(t *testing.T) {
 	withHome(t)
 	unreachableSheesh(t)
-	writeFakeKebab(t, kebabPathForTest(t), toolchain.SheeshVersion)
+	if err := os.WriteFile(kebabPathForTest(t), []byte(pinnedKebab), 0755); err != nil {
+		t.Fatal(err)
+	}
+	pinSheesh(t, pinned.Asset{Files: map[string]string{exeName("kebab"): sha([]byte(pinnedKebab))}})
 
 	if err := syncSheesh(context.Background()); err != nil {
-		t.Errorf("expected a no-op (and no fetch) when kebab is already at the pin, got %v", err)
+		t.Errorf("expected a no-op (and no fetch) when kebab already matches its pin, got %v", err)
 	}
 }
 
@@ -185,27 +157,26 @@ func TestSyncSheesh_VendorsFromPinnedRelease(t *testing.T) {
 	if err := syncSheesh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	kebabPath := kebabPathForTest(t)
-	info, err := os.Stat(kebabPath)
+	info, err := os.Stat(kebabPathForTest(t))
 	if err != nil {
-		t.Fatalf("expected kebab to be vendored at %s: %v", kebabPath, err)
+		t.Fatalf("expected kebab to be vendored: %v", err)
 	}
 	if runtime.GOOS != "windows" && info.Mode()&0111 == 0 {
 		t.Error("vendored kebab should be executable")
 	}
 }
 
-// TestSyncSheesh_ReplacesKebabAtWrongVersion is the point of pinning: a kebab
-// that merely exists isn't enough, and one at a *newer* version is replaced
-// too — the sync corrects drift in either direction rather than only
-// upgrading. The directory is replaced whole, so a file an older release
-// shipped and the pinned one does not is gone afterwards, and nothing of the
-// fetch is left beside it.
-func TestSyncSheesh_ReplacesKebabAtWrongVersion(t *testing.T) {
+// TestSyncSheesh_ReplacesAKebabThatDoesNotMatch is the point of pinning by
+// content: a kebab that merely exists is not enough, and neither is one that
+// would report the right version. Whatever is not the pinned file is
+// replaced, and the directory ends up holding the pinned release and nothing
+// else — no file an older release shipped, nothing left of the fetch.
+func TestSyncSheesh_ReplacesAKebabThatDoesNotMatch(t *testing.T) {
 	withHome(t)
 	kebabPath := kebabPathForTest(t)
-	writeFakeKebab(t, kebabPath, "99.99.99")
+	if err := os.WriteFile(kebabPath, []byte("#!/bin/sh\necho "+sheesh.Version+"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	stale := filepath.Join(filepath.Dir(kebabPath), "shipped-by-an-older-release")
 	if err := os.WriteFile(stale, []byte("x"), 0755); err != nil {
 		t.Fatal(err)
@@ -215,13 +186,8 @@ func TestSyncSheesh_ReplacesKebabAtWrongVersion(t *testing.T) {
 	if err := syncSheesh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	got, err := os.ReadFile(kebabPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) == "#!/bin/sh\necho '99.99.99'\n" {
-		t.Error("expected the off-pin kebab to be replaced")
+	if got, _ := os.ReadFile(kebabPath); string(got) != pinnedKebab {
+		t.Errorf("expected the kebab that does not match its pin to be replaced, got %q", got)
 	}
 	if _, err := os.Stat(stale); err == nil {
 		t.Error("a file the pinned release does not ship was left in the vendored dir")
@@ -230,29 +196,32 @@ func TestSyncSheesh_ReplacesKebabAtWrongVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var names []string
 	for _, e := range entries {
-		if e.Name() != "sheesh" {
-			t.Errorf("the sync left %s behind in the vendor dir", e.Name())
-		}
+		names = append(names, e.Name())
+	}
+	if !slices.Equal(names, []string{"sheesh"}) {
+		t.Errorf("the sync left %v in the vendor dir, want only sheesh", names)
 	}
 }
 
-// TestSyncSheesh_RefusesAnAssetThatDoesNotMatchItsPin: the pin names exact
+// TestSyncSheesh_RefusesAReleaseThatDoesNotMatchItsPin: the pin names exact
 // contents, so a release serving anything else is not vendored and what was
 // there stays.
-func TestSyncSheesh_RefusesAnAssetThatDoesNotMatchItsPin(t *testing.T) {
+func TestSyncSheesh_RefusesAReleaseThatDoesNotMatchItsPin(t *testing.T) {
 	withHome(t)
 	kebabPath := kebabPathForTest(t)
-	writeFakeKebab(t, kebabPath, "99.99.99")
+	if err := os.WriteFile(kebabPath, []byte("the old kebab"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	serveSheeshRelease(t)
-	pinSheeshDigest(t, strings.Repeat("0", 64))
+	pinSheesh(t, pinned.Asset{SHA256: strings.Repeat("0", 64), Files: map[string]string{exeName("kebab"): sha([]byte(pinnedKebab))}})
 
 	if err := syncSheesh(context.Background()); err == nil {
-		t.Fatal("expected an asset that does not match its pinned digest to be refused")
+		t.Fatal("expected a release that does not match its pinned digest to be refused")
 	}
-	got, err := os.ReadFile(kebabPath)
-	if err != nil || string(got) != "#!/bin/sh\necho '99.99.99'\n" {
-		t.Errorf("the vendored kebab was disturbed by an asset that failed its check: %q, %v", got, err)
+	if got, _ := os.ReadFile(kebabPath); string(got) != "the old kebab" {
+		t.Errorf("the vendored kebab was disturbed by a release that failed its check: %q", got)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,8 @@ import (
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/toolchain"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/pinned"
+	"github.com/meop/golie/ui"
 )
 
 func writeSettings(t *testing.T, s *config.Settings) {
@@ -50,13 +52,31 @@ func fakeGHBin(t *testing.T, script string) {
 	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
 		t.Fatal(err)
 	}
-	// The vendored gh is version-pinned (ghbin.Ensure), so every fake must
-	// answer --version with the pin or the first gh-using command re-vendors
-	// it for real, over the network.
-	preamble := "case \"$*\" in --version) echo 'gh version " + toolchain.GhVersion + " (2026-01-01)'; exit 0 ;; esac\n"
-	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"+preamble+script+"\n"), 0755); err != nil {
+	// The vendored gh is pinned by content (ghbin.Ensure), so every fake is
+	// pinned as what it is, or the first gh-using command re-vendors it for
+	// real, over the network.
+	body := []byte("#!/bin/sh\n" + script + "\n")
+	if err := os.WriteFile(vendored, body, 0755); err != nil {
 		t.Fatal(err)
 	}
+	pinFakeGh(t, filepath.Base(vendored), body)
+}
+
+// pinFakeGh makes body the gh this platform's pin names, for the length of
+// the test.
+func pinFakeGh(t *testing.T, name string, body []byte) {
+	t.Helper()
+	key := toolchain.GhKey(runtime.GOOS, runtime.GOARCH)
+	orig, had := toolchain.GhAssets[key]
+	sum := sha256.Sum256(body)
+	toolchain.GhAssets[key] = pinned.Asset{SHA256: orig.SHA256, Files: map[string]string{name: hex.EncodeToString(sum[:])}}
+	t.Cleanup(func() {
+		if had {
+			toolchain.GhAssets[key] = orig
+		} else {
+			delete(toolchain.GhAssets, key)
+		}
+	})
 }
 
 func TestReservedShimNames_ExcludesOwner(t *testing.T) {

@@ -18,7 +18,7 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 var skipHashCheck bool
@@ -227,8 +227,6 @@ func saveManifest(cfg *config.Settings, manifest *config.Manifest) error {
 	}
 	return nil
 }
-
-const msgNoBinaryFound = "no binary found in %s"
 
 func printRateLimited(cfg *config.Settings, key string) {
 	printWarn(cfg, "%s: rate limited", key)

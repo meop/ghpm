@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 func writeFakeBinary(t *testing.T, dir, name string) {

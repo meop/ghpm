@@ -1,6 +1,8 @@
 package shim
 
 import (
+	golie "github.com/meop/golie/shim"
+
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +11,9 @@ import (
 
 	"github.com/meop/ghpm/internal/store"
 )
+
+// sheeshMarker is what every kebab template carries; golie looks for it.
+const sheeshMarker = "use kebab to stamp a source path"
 
 func withHome(t *testing.T) string {
 	t.Helper()
@@ -49,7 +54,7 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 	fakeKebab(t, shimDir)
 
 	pkgDir := t.TempDir()
-	srcBin := filepath.Join(pkgDir, exeName("fzf"))
+	srcBin := filepath.Join(pkgDir, golie.ExeName("fzf"))
 	if err := os.WriteFile(srcBin, []byte{}, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +71,7 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 	got := strings.TrimSpace(string(data))
 
 	wantSource := srcBin
-	wantTarget := filepath.Join(home, ".ghpm", "bin", exeName("fzf"))
+	wantTarget := filepath.Join(home, ".ghpm", "bin", golie.ExeName("fzf"))
 	if !strings.Contains(got, wantSource) {
 		t.Errorf("args %q missing source path %q", got, wantSource)
 	}
@@ -93,7 +98,7 @@ func TestRemove_RemovesShim(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	shimPath := filepath.Join(binDir, exeName("fzf"))
+	shimPath := filepath.Join(binDir, golie.ExeName("fzf"))
 	writeFakeShim(t, shimPath)
 
 	if err := Remove("fzf"); err != nil {
@@ -162,7 +167,7 @@ func TestRemove_LeavesForeignBinaryAlone(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	theirs := filepath.Join(binDir, exeName("fzf"))
+	theirs := filepath.Join(binDir, golie.ExeName("fzf"))
 	if err := os.WriteFile(theirs, []byte("not a shim"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +186,7 @@ func TestCreate_RefusesToReplaceForeignBinaryWithoutForce(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	theirs := filepath.Join(binDir, exeName("fzf"))
+	theirs := filepath.Join(binDir, golie.ExeName("fzf"))
 	if err := os.WriteFile(theirs, []byte("not a shim"), 0755); err != nil {
 		t.Fatal(err)
 	}

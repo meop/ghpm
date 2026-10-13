@@ -6,7 +6,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 var errSilent = errors.New("")

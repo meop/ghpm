@@ -1,136 +1,27 @@
 package config
 
-import (
-	"fmt"
-	"strconv"
-	"strings"
+import "github.com/meop/golie/vers"
 
-	"github.com/meop/ghpm/internal/version"
+// Version pins and comparison are golie's, shared with every tool built on
+// it; these names are how the rest of ghpm has always spelled them.
+
+type (
+	PinLevel   = vers.PinLevel
+	Constraint = vers.Constraint
 )
-
-type PinLevel int
 
 const (
-	PinMajor PinLevel = 1 // "14"     — updates within same major
-	PinMinor PinLevel = 2 // "14.1"   — updates within same major.minor
-	PinExact PinLevel = 3 // "14.1.0" — static, no updates
+	PinMajor = vers.PinMajor
+	PinMinor = vers.PinMinor
+	PinExact = vers.PinExact
 )
 
-// Constraint represents a parsed version pin from user input.
-type Constraint struct {
-	Major int
-	Minor int      // -1 if not specified
-	Level PinLevel // 1, 2, or 3
-	Raw   string   // normalised string, v stripped (e.g. "14", "14.1", "14.1.0")
-}
-
-func (l PinLevel) String() string {
-	switch l {
-	case PinMajor:
-		return "major"
-	case PinMinor:
-		return "minor"
-	case PinExact:
-		return "fixed"
-	}
-	return "latest"
-}
-
-// ParseConstraint parses a version string into a Constraint. Any leading
-// junk is stripped via version.SplitJunk — not just a "v" prefix — so a full
-// literal release tag (e.g. bun's "bun-v1.2.3.4", llama.cpp's "b1234") works
-// as a pin input too, not just a bare version.
-func ParseConstraint(s string) (Constraint, error) {
-	_, ver, trailing, ok := version.SplitJunk(s)
-	if !ok {
-		return Constraint{}, fmt.Errorf("invalid version %q: expected numeric major version", s)
-	}
-	s = ver + trailing
-	parts := strings.Split(s, ".")
-	c := Constraint{Raw: s, Minor: -1}
-
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return c, fmt.Errorf("invalid version %q: expected numeric major version", s)
-	}
-	c.Major = major
-	c.Level = PinMajor
-
-	if len(parts) >= 2 {
-		minor, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return c, fmt.Errorf("invalid version %q: expected numeric minor version", s)
-		}
-		c.Minor = minor
-		c.Level = PinMinor
-	}
-
-	if len(parts) >= 3 {
-		c.Level = PinExact
-	}
-
-	return c, nil
-}
-
-// Matches returns true if tag satisfies this constraint. tag may carry any
-// leading junk (a "v" prefix, a package-name prefix, llama.cpp's bare "b");
-// it's stripped via NormalizeVersion before comparison.
-func (c Constraint) Matches(tag string) bool {
-	parts := versionParts(tag)
-	if len(parts) == 0 {
-		return false
-	}
-	if parts[0] != c.Major {
-		return false
-	}
-	if c.Level >= PinMinor {
-		if len(parts) < 2 || parts[1] != c.Minor {
-			return false
-		}
-	}
-	if c.Level == PinExact {
-		return NormalizeVersion(tag) == c.Raw
-	}
-	return true
-}
+// ParseConstraint parses a version string into a Constraint. Any leading junk
+// is stripped, so a full literal release tag works as a pin input too.
+func ParseConstraint(s string) (Constraint, error) { return vers.ParseConstraint(s) }
 
 // CompareVersions returns 1 if a > b, -1 if a < b, 0 if equal.
-// Versions are compared numerically part by part; v prefix is stripped.
-func CompareVersions(a, b string) int {
-	ap := versionParts(a)
-	bp := versionParts(b)
-	for i := range 3 {
-		ai, bi := 0, 0
-		if i < len(ap) {
-			ai = ap[i]
-		}
-		if i < len(bp) {
-			bi = bp[i]
-		}
-		if ai > bi {
-			return 1
-		}
-		if ai < bi {
-			return -1
-		}
-	}
-	return 0
-}
-
-func versionParts(v string) []int {
-	v = NormalizeVersion(v)
-	raw := strings.Split(v, ".")
-	parts := make([]int, 0, len(raw))
-	for _, p := range raw {
-		n, err := strconv.Atoi(p)
-		if err != nil {
-			break
-		}
-		parts = append(parts, n)
-	}
-	return parts
-}
+func CompareVersions(a, b string) int { return vers.CompareVersions(a, b) }
 
 // NormalizeVersion strips all leading non-digit characters from a version string.
-// "bun-v1.3.13" → "1.3.13", "v0.71.0" → "0.71.0", "1.2.3" → "1.2.3".
-func NormalizeVersion(v string) string { return version.Normalize(v) }
+func NormalizeVersion(v string) string { return vers.Normalize(v) }

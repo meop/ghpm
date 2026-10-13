@@ -10,6 +10,9 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
+// configDirName is gh's own config directory, beside the binary.
+const configDirName = "gh-config"
+
 // vendorName is the vendored gh binary's filename — must match what
 // `ghpm upgrade` writes, or the vendored copy is unfindable on Windows.
 func vendorName() string {
@@ -48,7 +51,7 @@ func ConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "gh-config"), nil
+	return filepath.Join(dir, configDirName), nil
 }
 
 // Find resolves ghpm's own vendored gh — the only gh ghpm ever runs

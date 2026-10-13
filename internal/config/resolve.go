@@ -15,7 +15,7 @@ import (
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 // RepoEntry is one registry entry: where a package lives, a one-sentence

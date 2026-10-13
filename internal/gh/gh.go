@@ -12,7 +12,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
-	"github.com/meop/ghpm/internal/version"
+	"github.com/meop/golie/vers"
 )
 
 func IsRateLimited(err error) bool {
@@ -190,7 +190,7 @@ func GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, err
 // "v"-prefixed (most projects), llama.cpp's bare "b"-prefixed build numbers,
 // and bun's "<repo>-v"-prefixed tags.
 func candidateTags(repo, ver string) []string {
-	core := version.Normalize(ver)
+	core := vers.Normalize(ver)
 	return []string{
 		core,
 		"v" + core,

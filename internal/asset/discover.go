@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 // BinCandidate is a discovered executable inside an extracted package dir.

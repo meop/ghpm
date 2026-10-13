@@ -1,52 +1,28 @@
 package toolchain
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 )
 
-func writeScript(t *testing.T, body string) string {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("Installed runs the binary; a shell script stand-in is Unix-only")
+func TestGh(t *testing.T) {
+	for _, tc := range []struct{ goos, goarch, want, file string }{
+		{"linux", "amd64", "gh_" + GhVersion + "_linux_amd64.tar.gz", "gh"},
+		{"linux", "arm64", "gh_" + GhVersion + "_linux_arm64.tar.gz", "gh"},
+		{"darwin", "amd64", "gh_" + GhVersion + "_macOS_amd64.zip", "gh"},
+		{"darwin", "arm64", "gh_" + GhVersion + "_macOS_arm64.zip", "gh"},
+		{"windows", "amd64", "gh_" + GhVersion + "_windows_amd64.zip", "gh.exe"},
+		{"windows", "arm64", "gh_" + GhVersion + "_windows_arm64.zip", "gh.exe"},
+	} {
+		tool, ok := Gh(tc.goos, tc.goarch)
+		if !ok || !strings.HasSuffix(tool.Asset.URL, "/v"+GhVersion+"/"+tc.want) {
+			t.Errorf("Gh(%s, %s) = %q, %v; want %s", tc.goos, tc.goarch, tool.Asset.URL, ok, tc.want)
+		}
+		if len(tool.Asset.SHA256) != 64 || len(tool.Asset.Files) != 1 || len(tool.Asset.Files[tc.file]) != 64 {
+			t.Errorf("Gh(%s, %s) does not pin its archive and its %s", tc.goos, tc.goarch, tc.file)
+		}
 	}
-	path := filepath.Join(t.TempDir(), "tool")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestInstalled(t *testing.T) {
-	cases := []struct {
-		name string
-		body string
-		want string
-	}{
-		// gh's real shape: the version is the third word, on the first of two lines.
-		{"gh style", `echo 'gh version 2.98.0 (2026-08-20)'; echo 'https://example.com/v2.98.0'`, "2.98.0"},
-		// kebab's real shape: the bare version, nothing else.
-		{"bare version", `echo '0.1.1'`, "0.1.1"},
-		{"v prefixed", `echo 'tool v1.2.3'`, "1.2.3"},
-		{"no version printed", `echo 'no idea'`, ""},
-		{"prints nothing", `:`, ""},
-		{"exits nonzero", `echo '1.0.0'; exit 1`, ""},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := Installed(writeScript(t, c.body)); got != c.want {
-				t.Errorf("Installed() = %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
-// TestInstalled_MissingBinary covers the case that drives a first-time
-// vendor: nothing there at all reads as "" rather than blowing up.
-func TestInstalled_MissingBinary(t *testing.T) {
-	if got := Installed(filepath.Join(t.TempDir(), "nope")); got != "" {
-		t.Errorf("Installed() = %q, want %q for a missing binary", got, "")
+	if _, ok := Gh("freebsd", "amd64"); ok {
+		t.Error("no gh is pinned for freebsd, and Gh named one")
 	}
 }

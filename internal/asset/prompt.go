@@ -3,7 +3,7 @@ package asset
 import (
 	"fmt"
 
-	"github.com/meop/ghpm/internal/ui"
+	"github.com/meop/golie/ui"
 )
 
 // readSingle reads a single-item selection.

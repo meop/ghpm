@@ -13,26 +13,49 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/meop/golie/pinned"
+
 	"github.com/meop/ghpm/internal/toolchain"
 )
 
-// writeFakeGh writes an executable at path that reports ver the way real gh
-// does, so Ensure's version probe has something to read.
-func writeFakeGh(t *testing.T, path, ver string) {
+const fakeGh = "fake gh binary"
+
+func sha(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
+}
+
+// pinGh makes asset what toolchain pins for this platform, for the length of
+// the test: what a fake release serves is not what the real pin names.
+func pinGh(t *testing.T, asset pinned.Asset) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the version probe needs a runnable script; not worth a .cmd shim here")
+	key := toolchain.GhKey(runtime.GOOS, runtime.GOARCH)
+	orig, ok := toolchain.GhAssets[key]
+	if !ok {
+		t.Skipf("no gh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	toolchain.GhAssets[key] = asset
+	t.Cleanup(func() { toolchain.GhAssets[key] = orig })
+}
+
+func writeGh(t *testing.T, content string) string {
+	t.Helper()
+	vendored, err := VendorPath()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("#!/bin/sh\necho 'gh version "+ver+" (2026-01-01)'\n"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(vendored, []byte(content), 0755); err != nil {
+		t.Fatal(err)
+	}
+	return vendored
 }
 
 func fakePathGH(t *testing.T) {
@@ -45,94 +68,90 @@ func fakePathGH(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// unreachableAPI points ghReleaseBase at a closed local port, so a test that
-// hits it proves Ensure attempted a network call it should have skipped.
-func unreachableAPI(t *testing.T) {
+// unreachableRelease points the gh release base at a closed local port, so a
+// test that hits it proves Ensure attempted a fetch it should have skipped.
+func unreachableRelease(t *testing.T) {
 	t.Helper()
 	srv := httptest.NewServer(nil)
 	url := srv.URL
 	srv.Close()
-	orig := ghReleaseBase
-	ghReleaseBase = url + "/"
-	t.Cleanup(func() { ghReleaseBase = orig })
+	orig := toolchain.GhReleaseBase
+	toolchain.GhReleaseBase = url + "/"
+	t.Cleanup(func() { toolchain.GhReleaseBase = orig })
 }
 
-// pinDigest makes sum the digest pinned for this platform's gh asset for the
-// length of the test: what a fake release serves is not what the real pin
-// names.
-func pinDigest(t *testing.T, sum string) {
+// fakeGhArchive builds a release archive in the format this platform's gh
+// ships in, nesting the binary the way the real one does.
+func fakeGhArchive(t *testing.T) []byte {
 	t.Helper()
-	_, pinned, ok := toolchain.GhAsset(runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("no gh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-	for key, value := range toolchain.GhDigests {
-		if value == pinned {
-			toolchain.GhDigests[key] = sum
-			t.Cleanup(func() { toolchain.GhDigests[key] = pinned })
-			return
+	name := "gh_x/bin/" + vendorName()
+	var buf bytes.Buffer
+	if runtime.GOOS == "linux" {
+		gz := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gz)
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(fakeGh)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
 		}
+		_, _ = tw.Write([]byte(fakeGh))
+		if err := tw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := gz.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
 	}
+	zw := zip.NewWriter(&buf)
+	f, err := zw.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.Write([]byte(fakeGh))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
-// serveGhRelease stands up a local server offering the pinned release's asset
-// for the current platform (built by fakeGhAsset) at the path a release
-// download has, points ghReleaseBase at it, and pins the asset's digest.
-func serveGhRelease(t *testing.T, binName, content string) {
+// serveGhRelease stands up a local server offering a fake release for the
+// current platform, points toolchain at it, and pins it.
+func serveGhRelease(t *testing.T) {
 	t.Helper()
-	assetName, archive := fakeGhAsset(t, binName, content)
-	sum := sha256.Sum256(archive)
-	pinDigest(t, hex.EncodeToString(sum[:]))
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v"+toolchain.GhVersion+"/"+assetName, func(w http.ResponseWriter, r *http.Request) {
+	archive := fakeGhArchive(t)
+	pinGh(t, pinned.Asset{SHA256: sha(archive), Files: map[string]string{vendorName(): sha([]byte(fakeGh))}})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(archive)
-	})
-	srv := httptest.NewServer(mux)
+	}))
 	t.Cleanup(srv.Close)
-
-	orig := ghReleaseBase
-	ghReleaseBase = srv.URL + "/"
-	t.Cleanup(func() { ghReleaseBase = orig })
+	orig := toolchain.GhReleaseBase
+	toolchain.GhReleaseBase = srv.URL + "/"
+	t.Cleanup(func() { toolchain.GhReleaseBase = orig })
 }
 
-func TestEnsure_NoOpWhenVendoredIsAtPin(t *testing.T) {
+func TestEnsure_NoOpWhenVendoredMatchesItsPin(t *testing.T) {
 	withHome(t)
-	unreachableAPI(t)
-	vendored, err := VendorPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFakeGh(t, vendored, toolchain.GhVersion)
+	unreachableRelease(t)
+	writeGh(t, fakeGh)
+	pinGh(t, pinned.Asset{Files: map[string]string{vendorName(): sha([]byte(fakeGh))}})
 
 	if err := Ensure(context.Background()); err != nil {
-		t.Errorf("expected no error (and no network call) when already at the pin, got %v", err)
+		t.Errorf("expected no error (and no fetch) when gh already matches its pin, got %v", err)
 	}
 }
 
-// TestEnsure_ReplacesVendoredAtWrongVersion is the point of pinning: what is
-// already vendored is only kept when it is the pinned version, and a copy at
-// any other version is replaced — the newer version here proves the sync is
-// not a one-way "upgrade if older" check.
-func TestEnsure_ReplacesVendoredAtWrongVersion(t *testing.T) {
+// TestEnsure_ReplacesAGhThatDoesNotMatch is the point of pinning by content:
+// a gh that merely exists is not enough, and neither is one that would
+// report the pinned version — only the pinned binary passes.
+func TestEnsure_ReplacesAGhThatDoesNotMatch(t *testing.T) {
 	withHome(t)
-	vendored, err := VendorPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFakeGh(t, vendored, "99.99.99")
-	serveGhRelease(t, vendorName(), "fake gh binary")
+	vendored := writeGh(t, "#!/bin/sh\necho 'gh version "+toolchain.GhVersion+" (2026-01-01)'\n")
+	serveGhRelease(t)
 
 	if err := Ensure(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	got, err := os.ReadFile(vendored)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "fake gh binary" {
-		t.Errorf("expected the off-pin gh to be replaced, got %q", got)
+	if got, _ := os.ReadFile(vendored); string(got) != fakeGh {
+		t.Errorf("expected the gh that does not match its pin to be replaced, got %q", got)
 	}
 }
 
@@ -142,22 +161,17 @@ func TestEnsure_ReplacesVendoredAtWrongVersion(t *testing.T) {
 func TestEnsure_BootstrapsEvenWhenPathHasGh(t *testing.T) {
 	withHome(t)
 	fakePathGH(t)
-	serveGhRelease(t, vendorName(), "fake gh binary")
+	serveGhRelease(t)
 
 	if err := Ensure(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
 	vendored, err := VendorPath()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(vendored)
-	if err != nil {
-		t.Fatalf("expected a vendored gh despite PATH already having one: %v", err)
-	}
-	if string(got) != "fake gh binary" {
-		t.Errorf("vendored gh has wrong content: %q", got)
+	if got, err := os.ReadFile(vendored); err != nil || string(got) != fakeGh {
+		t.Fatalf("expected a vendored gh despite PATH already having one: %q, %v", got, err)
 	}
 }
 
@@ -179,76 +193,60 @@ func TestEnsure_ExpiredContextFailsFast(t *testing.T) {
 	defer cancel()
 
 	if err := Ensure(ctx); err == nil {
-		t.Fatal("expected an error when nothing is findable and the context is already expired")
+		t.Fatal("expected an error when nothing is vendored and the context is already expired")
 	}
 }
 
 // TestEnsure_BootstrapsWhenNothingFound covers the real path: nothing
-// vendored, nothing on PATH, so Ensure fetches the latest gh release and
+// vendored, nothing on PATH, so Ensure fetches the pinned gh release and
 // vendors the binary itself.
 func TestEnsure_BootstrapsWhenNothingFound(t *testing.T) {
 	withHome(t)
 	t.Setenv("PATH", t.TempDir())
-	serveGhRelease(t, vendorName(), "fake gh binary")
+	serveGhRelease(t)
 
 	if err := Ensure(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
 	vendored, err := VendorPath()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(vendored)
-	if err != nil {
-		t.Fatalf("vendored gh not written: %v", err)
-	}
-	if string(got) != "fake gh binary" {
-		t.Errorf("vendored gh has wrong content: %q", got)
+	if got, err := os.ReadFile(vendored); err != nil || string(got) != fakeGh {
+		t.Fatalf("vendored gh not written: %q, %v", got, err)
 	}
 	info, err := os.Stat(vendored)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode()&0111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode()&0111 == 0 {
 		t.Error("vendored gh should be executable")
 	}
 }
 
-// TestEnsure_RefusesAnAssetThatDoesNotMatchItsPin: the pin names exact
+// TestEnsure_RefusesAReleaseThatDoesNotMatchItsPin: the pin names exact
 // contents, so a release that serves anything else is not vendored, and what
 // was vendored before stays.
-func TestEnsure_RefusesAnAssetThatDoesNotMatchItsPin(t *testing.T) {
+func TestEnsure_RefusesAReleaseThatDoesNotMatchItsPin(t *testing.T) {
 	withHome(t)
-	vendored, err := VendorPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFakeGh(t, vendored, "99.99.99")
-	before, err := os.ReadFile(vendored)
-	if err != nil {
-		t.Fatal(err)
-	}
-	serveGhRelease(t, vendorName(), "fake gh binary")
-	pinDigest(t, strings.Repeat("0", 64))
+	vendored := writeGh(t, "the old gh")
+	serveGhRelease(t)
+	pinGh(t, pinned.Asset{SHA256: strings.Repeat("0", 64), Files: map[string]string{vendorName(): sha([]byte(fakeGh))}})
 
 	if err := Ensure(context.Background()); err == nil {
-		t.Fatal("expected an asset that does not match its pinned digest to be refused")
+		t.Fatal("expected a release that does not match its pinned digest to be refused")
 	}
-	if got, _ := os.ReadFile(vendored); string(got) != string(before) {
-		t.Error("the vendored gh was replaced by an asset that failed its check")
+	if got, _ := os.ReadFile(vendored); string(got) != "the old gh" {
+		t.Error("the vendored gh was replaced by a release that failed its check")
 	}
 }
 
-// TestEnsure_ReplacesCleanly: a replace leaves the vendor dir holding the new
-// gh and gh's own config, and nothing else — no archive, no work dir.
+// TestEnsure_ReplacesCleanly: a replace leaves the vendor dir holding the
+// pinned gh and gh's own config — ghpm's token, never touched — and nothing
+// else: no file an older gh left, no archive, no work dir.
 func TestEnsure_ReplacesCleanly(t *testing.T) {
 	withHome(t)
-	vendored, err := VendorPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFakeGh(t, vendored, "99.99.99")
+	vendored := writeGh(t, "the old gh")
 	cfgDir, err := ConfigDir()
 	if err != nil {
 		t.Fatal(err)
@@ -259,75 +257,33 @@ func TestEnsure_ReplacesCleanly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cfgDir, "hosts.yml"), []byte("token"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	serveGhRelease(t, vendorName(), "fake gh binary")
+	if err := os.WriteFile(filepath.Join(filepath.Dir(vendored), "left-by-an-older-gh"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	serveGhRelease(t)
 
 	if err := Ensure(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := os.ReadDir(filepath.Dir(vendored))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	if len(names) != 2 {
-		t.Errorf("vendor dir holds %v, want only gh and its config dir", names)
-	}
-	if got, _ := os.ReadFile(filepath.Join(cfgDir, "hosts.yml")); string(got) != "token" {
-		t.Error("gh's config was disturbed by replacing gh")
-	}
-}
-
-// fakeGhAsset builds a release asset in the archive format and naming
-// convention the pinned gh release uses for this platform, containing a single file
-// named binName.
-func fakeGhAsset(t *testing.T, binName, content string) (assetName string, archive []byte) {
-	t.Helper()
-	assetName, _, ok := toolchain.GhAsset(runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("no gh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-	ext := ".zip"
-	if strings.HasSuffix(assetName, ".tar.gz") {
-		ext = ".tar.gz"
-	}
-
-	switch ext {
-	case ".tar.gz":
-		var buf bytes.Buffer
-		gz := gzip.NewWriter(&buf)
-		tw := tar.NewWriter(gz)
-		if err := tw.WriteHeader(&tar.Header{Name: binName, Mode: 0755, Size: int64(len(content))}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(content)); err != nil {
-			t.Fatal(err)
-		}
-		if err := tw.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := gz.Close(); err != nil {
-			t.Fatal(err)
-		}
-		return assetName, buf.Bytes()
-	case ".zip":
-		var buf bytes.Buffer
-		zw := zip.NewWriter(&buf)
-		f, err := zw.Create(binName)
+	list := func(dir string) []string {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.Write([]byte(content)); err != nil {
-			t.Fatal(err)
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
 		}
-		if err := zw.Close(); err != nil {
-			t.Fatal(err)
-		}
-		return assetName, buf.Bytes()
-	default:
-		t.Fatalf("unhandled archive extension %q", ext)
-		return "", nil
+		slices.Sort(names)
+		return names
+	}
+	if got := list(filepath.Dir(vendored)); !slices.Equal(got, []string{".pin", vendorName(), configDirName}) && !slices.Equal(got, []string{".pin", configDirName, vendorName()}) {
+		t.Errorf("gh's vendor dir holds %v, want only gh, its config dir and the pin stamp", got)
+	}
+	if got := list(filepath.Dir(filepath.Dir(vendored))); !slices.Equal(got, []string{"gh"}) {
+		t.Errorf("the sync left %v in the vendor dir, want only gh", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(cfgDir, "hosts.yml")); string(got) != "token" {
+		t.Error("gh's config was disturbed by replacing gh")
 	}
 }
