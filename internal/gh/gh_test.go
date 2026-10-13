@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/faketool"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/golie/ui"
 )
@@ -36,12 +37,7 @@ func fakeGH(t *testing.T, script string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	faketool.Write(t, vendored, script)
 	return filepath.Dir(vendored)
 }
 

@@ -14,7 +14,13 @@ func makeFontFile(t *testing.T, dir, name string) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte("fake font"), 0644); err != nil {
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("fake font"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// installed is more than the file on windows: the font is registered too.
+	// that needs a test home, which stands in for the registry there
+	if err := registerFont(name, path); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -28,6 +34,7 @@ func fontPkg(assetName string, fonts map[string]string) config.PackageEntry {
 }
 
 func TestFontInstalled_Present(t *testing.T) {
+	withHome(t)
 	tmp := t.TempDir()
 	makeFontFile(t, tmp, "Hack-Regular.ttf")
 	if !fontInstalled("Hack-Regular.ttf", tmp) {
@@ -43,6 +50,7 @@ func TestFontInstalled_Missing(t *testing.T) {
 }
 
 func TestUninstallFont_RemovesFile(t *testing.T) {
+	withHome(t)
 	tmp := t.TempDir()
 	makeFontFile(t, tmp, "Hack-Regular.ttf")
 	if err := uninstallFont("Hack-Regular.ttf", tmp); err != nil {
@@ -61,6 +69,7 @@ func TestUninstallFont_AlreadyGoneIsNotAnError(t *testing.T) {
 }
 
 func TestFontInstalled_SubdirKey(t *testing.T) {
+	withHome(t)
 	tmp := t.TempDir()
 	makeFontFile(t, tmp, "Hack-Regular.ttf")
 	// fontKey may include a leading subdir; only the base name is checked in fontsDir
@@ -141,9 +150,14 @@ func TestCleanOrphanedFonts_FontMissing(t *testing.T) {
 
 func TestCleanOrphanedFonts_Healthy(t *testing.T) {
 	home := withHome(t)
-	xdgDir := filepath.Join(home, ".xdg")
-	t.Setenv("XDG_DATA_HOME", xdgDir)
-	makeFontFile(t, filepath.Join(xdgDir, "fonts"), "Hack-Regular.ttf")
+	// the user font dir is the host's: under XDG_DATA_HOME on linux, and where
+	// the platform keeps them elsewhere
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".xdg"))
+	fontsDir, err := userFontDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeFontFile(t, fontsDir, "Hack-Regular.ttf")
 	yes = true
 	defer func() { yes = false }()
 

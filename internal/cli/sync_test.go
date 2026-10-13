@@ -3,11 +3,11 @@ package cli
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/faketool"
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/store"
 )
@@ -21,20 +21,7 @@ func fakeKebab(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(shimDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if runtime.GOOS == "windows" {
-		script := "@echo off\necho %* >> \"%~dp0kebab-args.txt\"\n"
-		if err := os.WriteFile(filepath.Join(shimDir, "kebab.bat"), []byte(script), 0755); err != nil {
-			t.Fatal(err)
-		}
-	} else {
-		script := "#!/bin/sh\necho \"$@\" >> \"$(dirname \"$0\")/kebab-args.txt\"\n"
-		if err := os.WriteFile(filepath.Join(shimDir, "kebab"), []byte(script), 0755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	faketool.Write(t, filepath.Join(shimDir, exeName("kebab")), `echo "$@" >> "$(dirname "$0")/kebab-args.txt"`)
 }
 
 func names(assets []gh.Asset) []string {

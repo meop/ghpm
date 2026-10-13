@@ -18,6 +18,26 @@ real user home from a Go test binary when `GHPM_TEST_HOME` is absent. Never
 weaken or bypass this guard; filesystem and tidy tests can delete installed
 tools, manifests, cached assets, or user fonts if they reach a real profile.
 
+On Windows a font is installed by a registry value as well as a file, and the
+registry is the real user's whatever home ghpm was pointed at. The same guard
+therefore covers it (`fontRegistry`, `font_windows.go`): under a test home the
+registry is stood in for by a directory there, and a test with no test home
+can neither register nor unregister a font. A test that wants a font to read
+as installed makes it with `makeFontFile`, which registers it too.
+
+**The tests run on Windows as well as Linux**, in CI and wherever ghpm is
+developed, so a test must not assume Unix:
+
+- A fake executable (gh, kebab) is written with `faketool.Write`, never as a
+  `#!/bin/sh` file by hand. Windows only runs a real program from an `.exe`,
+  so there the fake is the test binary itself with the script beside it, run
+  through Git for Windows' `sh`. A package that calls `faketool.Write` calls
+  `faketool.Main()` first thing in its `TestMain` (see any `main_test.go`).
+- A binary or shim is named as it is on disk: `exeName("fzf")`, not `"fzf"`.
+  ghpm's shim names and discovered binary names carry `.exe` on Windows.
+- A path a test expects is built with `filepath`, and a directory the host
+  chooses (the user font dir) is asked for rather than spelled.
+
 ## Keeping this file current
 
 Update this file whenever you make changes in these categories — do not wait to be asked:
@@ -46,7 +66,7 @@ GOOS=windows GOARCH=amd64 go build -o ghpm-windows-amd64.exe ./cmd/ghpm
 
 To cut a release: bump the version in `VERSION` and push to `main`.
 
-The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips the rest if `v<VERSION>` already exists) → Validate (fmt + lint + test) → Release, which creates a GPG-signed tag `v<VERSION>` and runs `goreleaser release --clean` to build and publish cross-platform binaries (linux/darwin/windows, amd64/arm64) to a public GitHub release. Each archive includes `LICENSE`; GoReleaser publishes `SHA256SUMS` and its detached GPG signature. Requires `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` repository secrets. Never create the tag by hand — CI owns tagging, and pushing a `VERSION` bump is by itself enough to publish a real public release within about a minute.
+The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips the rest if `v<VERSION>` already exists) → Validate (fmt + lint + test), with the tests run again on Windows → Release, which creates a GPG-signed tag `v<VERSION>` and runs `goreleaser release --clean` to build and publish cross-platform binaries (linux/darwin/windows, amd64/arm64) to a public GitHub release. Each archive includes `LICENSE`; GoReleaser publishes `SHA256SUMS` and its detached GPG signature. Requires `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` repository secrets. Never create the tag by hand — CI owns tagging, and pushing a `VERSION` bump is by itself enough to publish a real public release within about a minute.
 
 ## Project structure
 
@@ -61,6 +81,7 @@ The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips t
 - `internal/store/` — `~/.ghpm/` path helpers; `BinDir` is what goes on PATH (ghpm itself plus package shims); `VendorDir` is what ghpm needs to work and deliberately does not — `gh` under `vendor/gh/` (see `internal/ghbin`), sheesh's `kebab` under `vendor/sheesh/` (`ShimDir`)
 - `internal/ghbin/` — resolves ghpm's own vendored gh; never falls back to PATH, so ghpm's gh use never depends on or authenticates as whatever the system otherwise has installed. Runs it against ghpm's own `GH_CONFIG_DIR`. `bootstrap.go`'s `Ensure` makes the vendored gh exactly the binary `internal/toolchain` pins, checked by sha256 on every call (`golie/pinned`), fetching the pinned release as a plain download when it is not — then logs in if that copy isn't authenticated and there's a TTY to answer it — via `login`, which prompts for a personal access token (`gh auth login --with-token`) rather than the browser device flow: ghpm's vendored gh is for unattended use, and a device-flow token is short-lived with nothing to silently refresh it once nobody's watching for the prompt. `ReAuth` is the same `login` reached later, from `internal/gh.runCmd`'s retry-on-auth-failure path rather than from `Ensure`. The parallel for sheesh's `kebab` is `internal/cli.syncSheesh` (toolchain.go), the same check against golie's own sheesh pin
 - `internal/toolchain/` — gh's pin: `GhVersion`, and `GhAssets`, the sha256 of every platform's archive of that release and of the `gh` inside it, with `Gh(goos, goarch)` turning one into the `golie/pinned.Tool` to sync. A leaf, importing only golie, so `internal/ghbin` (which `internal/config` imports) can read it without a cycle. sheesh's pin is not here: it is golie's (`golie/sheesh`), since every tool built on golie stamps with the same one. Deliberately *not* named `vendor`, despite being about `~/.ghpm/vendor` — Go reserves that directory name, and `.gitignore`'s dependency rule (now `/vendor/`, root-only) silently swallowed the package under its old name
+- `internal/faketool/` — test support only: stands a shell script in for a real executable on every platform (see **After every code change**)
 - `internal/parallel/` — bounded worker pool used for parallel download+extract
 
 ## golie

@@ -15,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/faketool"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/toolchain"
@@ -49,17 +50,10 @@ func fakeGHBin(t *testing.T, script string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
-		t.Fatal(err)
-	}
 	// The vendored gh is pinned by content (ghbin.Ensure), so every fake is
 	// pinned as what it is, or the first gh-using command re-vendors it for
 	// real, over the network.
-	body := []byte("#!/bin/sh\n" + script + "\n")
-	if err := os.WriteFile(vendored, body, 0755); err != nil {
-		t.Fatal(err)
-	}
-	pinFakeGh(t, filepath.Base(vendored), body)
+	pinFakeGh(t, filepath.Base(vendored), faketool.Write(t, vendored, script))
 }
 
 // pinFakeGh makes body the gh this platform's pin names, for the length of

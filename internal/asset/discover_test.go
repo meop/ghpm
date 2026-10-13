@@ -54,11 +54,20 @@ func fakeStdin(t *testing.T, input string) {
 	_ = w.Close()
 }
 
+// hostBin is name as a discovered binary carries it: FindBins reports the file
+// as it is on disk, so on windows it ends in .exe.
+func hostBin(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
 func TestFindBins_Root(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, dir, "mytool")
 	got := FindBins(dir)
-	if len(got) != 1 || got[0].BinDir != "" || got[0].BinName != "mytool" {
+	if len(got) != 1 || got[0].BinDir != "" || got[0].BinName != hostBin("mytool") {
 		t.Errorf("got %v, want [{BinDir:%q BinName:%q}]", got, "", "mytool")
 	}
 }
@@ -67,7 +76,7 @@ func TestFindBins_BinSubdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "bin"), "mytool")
 	got := FindBins(dir)
-	if len(got) != 1 || got[0].BinDir != "bin" || got[0].BinName != "mytool" {
+	if len(got) != 1 || got[0].BinDir != "bin" || got[0].BinName != hostBin("mytool") {
 		t.Errorf("got %v", got)
 	}
 }
@@ -76,7 +85,7 @@ func TestFindBins_Subdir(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0"), "mytool")
 	got := FindBins(dir)
-	if len(got) != 1 || got[0].BinDir != "mytool-1.0" || got[0].BinName != "mytool" {
+	if len(got) != 1 || got[0].BinDir != "mytool-1.0" || got[0].BinName != hostBin("mytool") {
 		t.Errorf("got %v", got)
 	}
 }
@@ -85,7 +94,7 @@ func TestFindBins_SubdirBin(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeBinary(t, filepath.Join(dir, "mytool-1.0", "bin"), "mytool")
 	got := FindBins(dir)
-	if len(got) != 1 || got[0].BinDir != "mytool-1.0/bin" || got[0].BinName != "mytool" {
+	if len(got) != 1 || got[0].BinDir != "mytool-1.0/bin" || got[0].BinName != hostBin("mytool") {
 		t.Errorf("got %v", got)
 	}
 }

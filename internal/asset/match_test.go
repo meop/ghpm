@@ -1049,7 +1049,9 @@ func TestSecondaryScore_Windows(t *testing.T) {
 		// than the bare "gz" entry that reversal puts earlier in the list.
 		{"tool-windows-msvc.tar.gz", 3}, // msvc(+2) + tar.gz(+1)
 		{"tool-windows-gnu.tar.gz", 2},  // gnu(+1) + tar.gz(+1)
-		{"tool-windows-msvc.tar.xz", 8}, // msvc(+2) + tar.xz(+6)
+		// the same longest-suffix rule: "tar.xz" (+4), not the bare "xz" (+6)
+		// that reversal also puts earlier in the list.
+		{"tool-windows-msvc.tar.xz", 6}, // msvc(+2) + tar.xz(+4)
 		{"tool-windows-amd64.zip", 15},  // zip(+15)
 	}
 	for _, c := range cases {

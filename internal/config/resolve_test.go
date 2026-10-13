@@ -8,6 +8,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/meop/ghpm/internal/faketool"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/golie/ui"
@@ -42,12 +43,7 @@ func fakeGHBin(t *testing.T, script string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(vendored), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(vendored, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	faketool.Write(t, vendored, script)
 }
 
 func writeConfigTOML(t *testing.T, s *Settings) {

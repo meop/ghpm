@@ -280,7 +280,7 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 	yes = true
 	defer func() { yes = false }()
 
-	binDir := makeBinDir(t, "ghpm", "orphan")
+	binDir := makeBinDir(t, exeName("ghpm"), "orphan")
 
 	manifest := &config.Manifest{
 		Repos:    map[string]string{},
@@ -290,7 +290,7 @@ func TestCleanOrphanedBinShims_KeepsSelfManaged(t *testing.T) {
 	cleanOrphanedBinShims(nil, manifest)
 
 	// gh is a package now, not machinery, so bin/ exempts only ghpm itself
-	for _, name := range []string{"ghpm"} {
+	for _, name := range []string{exeName("ghpm")} {
 		if _, err := os.Lstat(filepath.Join(binDir, name)); err != nil {
 			t.Errorf("%s was removed but should have been kept", name)
 		}
@@ -410,12 +410,7 @@ func TestCleanOrphanedFonts_OneMissingKeepsOther(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(fontsDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(fontsDir, "Hack-Regular.ttf"), []byte("font"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	makeFontFile(t, fontsDir, "Hack-Regular.ttf")
 
 	manifest := &config.Manifest{
 		Repos: map[string]string{"nerd-fonts": "github.com/ryanoasis/nerd-fonts"},

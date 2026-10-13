@@ -5,10 +5,10 @@ import (
 
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/meop/ghpm/internal/faketool"
 	"github.com/meop/ghpm/internal/store"
 )
 
@@ -25,24 +25,11 @@ func withHome(t *testing.T) string {
 	return tmp
 }
 
-// fakeKebab writes a script (or .bat on Windows) to shimDir that records its
-// args to a file alongside it, then exits 0.
+// fakeKebab stands a script in for kebab in shimDir that records its args to
+// a file alongside it, then exits 0.
 func fakeKebab(t *testing.T, shimDir string) {
 	t.Helper()
-	if err := os.MkdirAll(shimDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if runtime.GOOS == "windows" {
-		script := "@echo off\necho %* > \"%~dp0kebab-args.txt\"\n"
-		if err := os.WriteFile(filepath.Join(shimDir, "kebab.bat"), []byte(script), 0755); err != nil {
-			t.Fatal(err)
-		}
-	} else {
-		script := "#!/bin/sh\necho \"$@\" > \"$(dirname \"$0\")/kebab-args.txt\"\n"
-		if err := os.WriteFile(filepath.Join(shimDir, "kebab"), []byte(script), 0755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	faketool.Write(t, filepath.Join(shimDir, golie.ExeName("kebab")), `echo "$@" > "$(dirname "$0")/kebab-args.txt"`)
 }
 
 func TestCreate_InvokesKebabWithPaths(t *testing.T) {
@@ -59,7 +46,7 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Create("fzf", "fzf", pkgDir, "", false); err != nil {
+	if err := Create(golie.ExeName("fzf"), golie.ExeName("fzf"), pkgDir, "", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -83,7 +70,7 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 func TestCreate_KebabMissing(t *testing.T) {
 	withHome(t)
 	pkgDir := t.TempDir()
-	err := Create("fzf", "fzf", pkgDir, "", false)
+	err := Create(golie.ExeName("fzf"), golie.ExeName("fzf"), pkgDir, "", false)
 	if err == nil {
 		t.Fatal("expected error when kebab is absent")
 	}
@@ -101,7 +88,7 @@ func TestRemove_RemovesShim(t *testing.T) {
 	shimPath := filepath.Join(binDir, golie.ExeName("fzf"))
 	writeFakeShim(t, shimPath)
 
-	if err := Remove("fzf"); err != nil {
+	if err := Remove(golie.ExeName("fzf")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Lstat(shimPath); !os.IsNotExist(err) {
@@ -172,7 +159,7 @@ func TestRemove_LeavesForeignBinaryAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Remove("fzf"); err != nil {
+	if err := Remove(golie.ExeName("fzf")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(theirs); err != nil {
@@ -191,7 +178,7 @@ func TestCreate_RefusesToReplaceForeignBinaryWithoutForce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := Create("fzf", "fzf", t.TempDir(), "", false)
+	err := Create(golie.ExeName("fzf"), golie.ExeName("fzf"), t.TempDir(), "", false)
 	if err == nil {
 		t.Fatal("expected a refusal to overwrite a foreign binary")
 	}
