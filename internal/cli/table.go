@@ -14,19 +14,26 @@ var errSilent = errors.New("")
 // sep requests a deferred blank line before the next output. See internal/ui.
 func sep() { ui.Break() }
 
+// namesOnly reports whether the command was asked for names alone
+// (--long-names, --short-names). That output is for a script to read, so
+// nothing but names may be in it — not even the line saying there are none,
+// which a script would otherwise have to recognise by its wording. An empty
+// result is empty output.
+func namesOnly() bool { return longNames || shortNames }
+
 // -q ("quiet") suppresses status chatter (print, printWarn, printPass) but
 // never the substantive content: printFail (errors), and printTable (which
 // backs both gate previews and the actual result of read-only commands like
 // list/find/outdated — quiet-ing those would make the command return nothing).
 func print(format string, args ...any) {
-	if quiet {
+	if quiet || namesOnly() {
 		return
 	}
 	ui.Out(format, args...)
 }
 
 func printWarn(_ *config.Settings, format string, args ...any) {
-	if quiet {
+	if quiet || namesOnly() {
 		return
 	}
 	ui.Warn(format, args...)
@@ -35,7 +42,7 @@ func printWarn(_ *config.Settings, format string, args ...any) {
 func printFail(_ *config.Settings, format string, args ...any) { ui.Fail(format, args...) }
 
 func printPass(_ *config.Settings, format string, args ...any) {
-	if quiet {
+	if quiet || namesOnly() {
 		return
 	}
 	ui.Pass(format, args...)

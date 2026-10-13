@@ -246,6 +246,45 @@ func TestRunList_WithPackages(t *testing.T) {
 	}
 }
 
+// names mode is for a script: with nothing installed, or nothing matching, it
+// prints nothing at all rather than a sentence the script would have to know
+func TestRunList_NamesModeIsSilentWhenThereIsNothingToName(t *testing.T) {
+	withHome(t)
+	writeSettings(t, &config.Settings{})
+	var buf bytes.Buffer
+	ui.SetOutput(&buf)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+	writeManifest(t, &config.Manifest{Repos: map[string]string{}, Extracts: map[string]config.PackageEntry{}})
+	if err := runList(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "no packages installed") {
+		t.Fatalf("without the flag the empty list is said, got %q", buf.String())
+	}
+
+	for _, flag := range []*bool{&longNames, &shortNames} {
+		buf.Reset()
+		*flag = true
+		err := runList(nil, nil)
+		if err == nil {
+			writeManifest(t, &config.Manifest{
+				Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+				Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
+			})
+			err = runList(nil, []string{"nothing-by-this-name"})
+			writeManifest(t, &config.Manifest{Repos: map[string]string{}, Extracts: map[string]config.PackageEntry{}})
+		}
+		*flag = false
+		if err != nil {
+			t.Fatal(err)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("names mode printed %q", buf.String())
+		}
+	}
+}
+
 func TestRunList_LongNames(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})

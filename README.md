@@ -73,8 +73,8 @@ ghpm doctor               # check system health
 | `--force`, `-f` | `add`, `sync` | Reinstall even if already installed / already at latest version |
 | `--path` | `download` | Destination directory (default: `~/.ghpm/download/`) |
 | `--all` | `tidy` | Remove all cached assets regardless of installation status |
-| `--long-names`, `-l` | `list`, `find`, `outdated` | Print names only, one per line |
-| `--short-names`, `-s` | `list`, `find`, `outdated` | Print names only, space-separated on one line |
+| `--long-names`, `-l` | `list`, `find`, `outdated` | Print names only, one per line, and nothing when there are none |
+| `--short-names`, `-s` | `list`, `find`, `outdated` | Print names only, space-separated on one line, and nothing when there are none |
 | `--skip-hash-check` | `add`, `sync`, `download` | Skip SHA256 hash verification of downloaded assets |
 
 ### Version pinning
