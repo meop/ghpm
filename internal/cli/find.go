@@ -120,8 +120,10 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 // findOnGitHub is find's deeper search, and only ever a fallback: GitHub is
 // asked about a term nothing in the registry was found by, and only once the
-// user says so, since it is the one part of find that leaves the machine. With
-// nobody to ask, or with output shaped for a script, there is no fallback.
+// user says so, since it is the one part of find that leaves the machine. What
+// comes back is held to find's own rule (config.SearchReposFound), so the
+// fallback is as wide as find and no wider. With nobody to ask, or with output
+// shaped for a script, there is no fallback.
 func findOnGitHub(term string) {
 	if dryRun || longNames || shortNames || (!yes && !ui.Interactive()) {
 		return
@@ -133,9 +135,13 @@ func findOnGitHub(term string) {
 		printFail(nil, "%v", err)
 		return
 	}
-	hits, err := config.SearchRepos(term)
+	hits, err := config.SearchReposFound(term)
 	if err != nil {
 		printFail(nil, "%v", err)
+		return
+	}
+	if len(hits) == 0 {
+		print("no github repos matching %q", term)
 		return
 	}
 	rows := make([][]string, len(hits))

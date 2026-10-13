@@ -1,8 +1,11 @@
 package config
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -328,6 +331,97 @@ func TestSearchGitHub_ForcedNonInteractiveOverridesInteractiveInput(t *testing.T
 	_, err := SearchGitHub("some-nonexistent-name")
 	if err == nil {
 		t.Fatal("expected forced non-interactive to override an interactive-looking input reader")
+	}
+}
+
+// GitHub's search is only candidates: add and info keep the repos named exactly
+// what was typed, whoever owns them, and find keeps the ones the term starts a
+// word of. Neither keeps a repo for holding the term somewhere inside a word.
+func TestHits_HeldToTheTwoRules(t *testing.T) {
+	hits := []RepoHit{
+		{FullName: "junegunn/fzf", Descr: "A command-line fuzzy finder"},
+		{FullName: "junegunn/fzf.vim", Descr: "fzf and vim"},
+		{FullName: "someone/FZF", Descr: ""},
+		{FullName: "fzf/dotfiles", Descr: "my config"},
+		{FullName: "other/skimfzf", Descr: "nothing to do with it"},
+	}
+	full := func(hs []RepoHit) []string {
+		names := make([]string, len(hs))
+		for i, h := range hs {
+			names[i] = h.FullName
+		}
+		return names
+	}
+
+	// an owner called fzf is not a repo called fzf, and neither is fzf.vim
+	if got, want := full(HitsNamed(hits, "fzf")), []string{"junegunn/fzf", "someone/FZF"}; !slices.Equal(got, want) {
+		t.Errorf("HitsNamed(fzf) = %v, want %v", got, want)
+	}
+	if got := HitsNamed(hits, "fz"); len(got) != 0 {
+		t.Errorf("HitsNamed(fz) = %v, want none: part of a name is not the name", full(got))
+	}
+
+	// the start of a word of owner/repo or of the description, in GitHub's order
+	want := []string{"junegunn/fzf", "junegunn/fzf.vim", "someone/FZF", "fzf/dotfiles"}
+	if got := full(HitsFound(hits, "fzf")); !slices.Equal(got, want) {
+		t.Errorf("HitsFound(fzf) = %v, want %v", got, want)
+	}
+	if got, want := full(HitsFound(hits, "fuzzy")), []string{"junegunn/fzf"}; !slices.Equal(got, want) {
+		t.Errorf("HitsFound(fuzzy) = %v, want %v", got, want)
+	}
+	if got := HitsFound(hits, "inder"); len(got) != 0 {
+		t.Errorf("HitsFound(inder) = %v, want none: the end of a word is not its start", full(got))
+	}
+
+	// what is shown is capped, since a name like dotfiles is thousands of repos
+	var many []RepoHit
+	for i := range searchShow + 5 {
+		many = append(many, RepoHit{FullName: fmt.Sprintf("owner%d/dotfiles", i)})
+	}
+	if got := HitsNamed(many, "dotfiles"); len(got) != searchShow {
+		t.Errorf("HitsNamed kept %d, want the first %d", len(got), searchShow)
+	}
+}
+
+// The pick add and info offer is over repos named exactly what was typed: a
+// search that ranks fzf.vim above fzf does not get to offer it, and a term
+// GitHub has plenty to say about but no repo is named is not found.
+func TestSearchGitHub_OffersOnlyExactNames(t *testing.T) {
+	withHome(t)
+	fakeGHBin(t, `case "$*" in
+  "search repos --limit 50 --match name --json fullName,description -- fzf")
+    echo '[{"fullName":"junegunn/fzf.vim","description":"fzf and vim"},{"fullName":"junegunn/fzf","description":"A command-line fuzzy finder"}]'
+    ;;
+  "search repos --limit 50 --match name --json fullName,description -- fuzzy")
+    echo '[{"fullName":"junegunn/fzf","description":"A command-line fuzzy finder"}]'
+    ;;
+  "search repos --limit 50 --match name,description --json fullName,description -- fuzzy")
+    echo '[{"fullName":"junegunn/fzf","description":"A command-line fuzzy finder"},{"fullName":"other/unfuzzy","description":""}]'
+    ;;
+  *) exit 1 ;;
+esac`)
+	var out bytes.Buffer
+	ui.SetOutput(&out)
+	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+	ui.SetInput(strings.NewReader("1\n"))
+	got, err := SearchGitHub("fzf")
+	if err != nil || got != "github.com/junegunn/fzf" {
+		t.Errorf("SearchGitHub(fzf) = %q, %v; want the one repo named fzf", got, err)
+	}
+	if strings.Contains(out.String(), "fzf.vim") {
+		t.Errorf("fzf.vim is not named fzf and should not be offered:\n%s", out.String())
+	}
+
+	ui.SetInput(strings.NewReader("1\n"))
+	if got, err := SearchGitHub("fuzzy"); err == nil || !strings.Contains(err.Error(), "ghpm find fuzzy") {
+		t.Errorf("SearchGitHub(fuzzy) = %q, %v; want not found, pointing at find", got, err)
+	}
+
+	// find's search reads the description too, and still drops the middle of a word
+	hits, err := SearchReposFound("fuzzy")
+	if err != nil || len(hits) != 1 || hits[0].FullName != "junegunn/fzf" {
+		t.Errorf("SearchReposFound(fuzzy) = %v, %v; want junegunn/fzf alone", hits, err)
 	}
 }
 

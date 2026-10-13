@@ -142,11 +142,11 @@ A command that acts takes a name whole. `add`, `remove`, `sync` and `info` accep
 
 A command that reads takes the start of a word. `find`, `list` and `outdated` match a term against the beginning of any word, a word being whatever sits between characters that are not letters or digits: `go` finds `golangci-lint` and `go-task`, and never `cargo`. `list` and `outdated` look at installed names and their aliases; `find` also looks at each entry's `owner/repo` and `descr`. Look with `find`, then act with the name it shows.
 
-GitHub itself is only searched as a fallback. `add` and `info` offer a repo search for a name the registry does not have, and `find` offers one for a term that found nothing.
+GitHub itself is only searched as a fallback, and held to the same two rules. For a name the registry does not have, `add` and `info` offer the GitHub repos named exactly that, whoever owns them, and you pick one: `ghpm add fzf` would offer `junegunn/fzf` and never `junegunn/fzf.vim`. For a term that found nothing, `find` offers to search GitHub, and lists the repos whose name or description has a word starting with it. So a vague term goes to `find` first; `add` will not guess from it.
 
 `ghpm refresh` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
 
-If a name isn't in the map, `ghpm` searches GitHub and prompts you to pick a repo.
+If a name isn't in the map, `ghpm` looks for GitHub repos of exactly that name and prompts you to pick one.
 
 ## Behavior
 

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -315,12 +316,22 @@ type RepoHit struct {
 	Descr    string `json:"description"`
 }
 
-// SearchRepos runs `gh search repos` for name. It is the deeper search, the
-// one past the registry: GitHub itself is asked only for a name nothing in
-// repo.toml answered to, by add and info to resolve it and by find to show
-// what is out there.
-func SearchRepos(name string) ([]RepoHit, error) {
-	cmd, err := ghbin.Command("search", "repos", name, "--limit", "5", "--json", "fullName,description")
+// GitHub's search ranks by relevance and decides for itself what a term means,
+// so its answer is only ever a set of candidates: the two rules every other
+// name goes through (SameName, WordStartsWith) decide which of them count. More
+// is fetched than is shown, since most of what comes back is dropped.
+const (
+	searchFetch = 50
+	searchShow  = 10
+)
+
+// searchRepos runs `gh search repos` for term, looked for in the given fields
+// of a repository (name, description). It is the deeper search, the one past
+// the registry: GitHub is asked only about a name nothing in repo.toml
+// answered to.
+func searchRepos(term, in string) ([]RepoHit, error) {
+	cmd, err := ghbin.Command("search", "repos", "--limit", strconv.Itoa(searchFetch),
+		"--match", in, "--json", "fullName,description", "--", term)
 	if err != nil {
 		return nil, err
 	}
@@ -329,13 +340,68 @@ func SearchRepos(name string) ([]RepoHit, error) {
 		return nil, fmt.Errorf("gh search failed — is gh authenticated?")
 	}
 	var hits []RepoHit
-	if err := json.Unmarshal(out, &hits); err != nil || len(hits) == 0 {
-		return nil, fmt.Errorf("no results found for %q", name)
+	if err := json.Unmarshal(out, &hits); err != nil {
+		return nil, fmt.Errorf("gh search failed: %w", err)
 	}
 	return hits, nil
 }
 
-// SearchGitHub runs SearchRepos and prompts the user to pick a result.
+// HitsNamed keeps the repos whose own name is the term, whoever owns them: an
+// acting command's question (SameName), put to GitHub's answer. "fzf" keeps
+// junegunn/fzf and never junegunn/fzf.vim.
+func HitsNamed(hits []RepoHit, name string) []RepoHit {
+	return keepHits(hits, func(h RepoHit) bool {
+		_, repo, _ := strings.Cut(h.FullName, "/")
+		return SameName(repo, name)
+	})
+}
+
+// HitsFound keeps the repos the term starts a word of, in owner/repo or in the
+// description: a reading command's question (WordStartsWith), put to GitHub's
+// answer.
+func HitsFound(hits []RepoHit, term string) []RepoHit {
+	return keepHits(hits, func(h RepoHit) bool {
+		return WordStartsWith(h.FullName, term) || WordStartsWith(h.Descr, term)
+	})
+}
+
+func keepHits(hits []RepoHit, keep func(RepoHit) bool) []RepoHit {
+	var kept []RepoHit
+	for _, h := range hits {
+		if keep(h) && len(kept) < searchShow {
+			kept = append(kept, h)
+		}
+	}
+	return kept
+}
+
+// SearchReposNamed is add's and info's deeper search: the repos on GitHub named
+// exactly this. An acting command takes a name whole from the registry, and
+// takes it whole from GitHub too, so a vague term is find's to narrow.
+func SearchReposNamed(name string) ([]RepoHit, error) {
+	hits, err := searchRepos(name, "name")
+	if err != nil {
+		return nil, err
+	}
+	named := HitsNamed(hits, name)
+	if len(named) == 0 {
+		return nil, fmt.Errorf("no github repo named %q — ghpm find %s looks wider", name, name)
+	}
+	return named, nil
+}
+
+// SearchReposFound is find's deeper search: the repos on GitHub the term starts
+// a word of, by name or description. None is an answer, not an error.
+func SearchReposFound(term string) ([]RepoHit, error) {
+	hits, err := searchRepos(term, "name,description")
+	if err != nil {
+		return nil, err
+	}
+	return HitsFound(hits, term), nil
+}
+
+// SearchGitHub runs SearchReposNamed and prompts the user to pick a result:
+// the name was exact, and the pick says whose repo of that name is meant.
 // With nobody to ask, an unknown name is simply not found: picking a repo out
 // of a search on a script's behalf is how `info <typo>` ends up reporting on
 // somebody else's project.
@@ -343,7 +409,7 @@ func SearchGitHub(name string) (string, error) {
 	if !ui.Interactive() {
 		return "", fmt.Errorf("not found: %q", name)
 	}
-	repos, err := SearchRepos(name)
+	repos, err := SearchReposNamed(name)
 	if err != nil {
 		return "", err
 	}
