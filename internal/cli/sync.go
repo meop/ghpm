@@ -32,7 +32,7 @@ func newSyncCmd() *cobra.Command {
 func runSync(cmd *cobra.Command, args []string) error {
 	forceSync, _ := cmd.Flags().GetBool("force")
 	ctx := cmd.Context()
-	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Shim: true, SkipHashCheck: true})
+	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Shim: true, Repos: true, SkipHashCheck: true})
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		for _, name := range args {
-			matched := filterExtracts(manifest.Extracts, []string{name})
+			matched := filterExtracts(manifest.Extracts, []string{canonicalKey(name, manifest, ci.repos)})
 			if len(matched) == 0 {
 				print("%s: not installed", name)
 				continue

@@ -24,7 +24,7 @@ func newOutdatedCmd() *cobra.Command {
 
 func runOutdated(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	ci, err := initCommand(ctx, cmdOptions{Manifest: true, GH: true})
+	ci, err := initCommand(ctx, cmdOptions{Manifest: true, GH: true, Repos: true})
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func runOutdated(cmd *cobra.Command, args []string) error {
 		source    string
 	}
 
-	matched := filterExtracts(manifest.Extracts, args)
+	matched := findExtracts(manifest.Extracts, args, ci.repos)
 	if len(args) > 0 && len(matched) == 0 {
 		print(msgNoMatch)
 		return nil

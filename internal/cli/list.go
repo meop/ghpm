@@ -24,7 +24,7 @@ func newListCmd() *cobra.Command {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(context.Background(), cmdOptions{Manifest: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Manifest: true, Repos: true})
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	extracts := filterExtracts(manifest.Extracts, args)
+	extracts := findExtracts(manifest.Extracts, args, ci.repos)
 	if len(extracts) == 0 {
 		print(msgNoMatch)
 		return nil

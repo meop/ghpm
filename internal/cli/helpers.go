@@ -551,11 +551,25 @@ func buildBatchItems(extracts map[string]config.PackageEntry, repos map[string]s
 	return items
 }
 
-// filterExtracts returns the subset of extracts whose key matches one of names.
-// A name matches either the full manifest key (the name shown by list/outdated,
-// e.g. "fzf@14") or its base name ("fzf"). With no names it returns extracts
-// unchanged, so commands list everything by default. Used by list, outdated, and
-// sync so a trailing "[name...]" filters their output the same way everywhere.
+// canonicalKey turns a typed "name" or "name@pin" into the manifest's own
+// spelling of it, resolving an alias (or a difference of case) to the name the
+// package is installed under and leaving the pin as typed. remove and sync both
+// act on what they are given, so they take a name whole — see
+// config.CanonicalName.
+func canonicalKey(arg string, manifest *config.Manifest, repos map[string]config.RepoEntry) string {
+	base, pin, pinned := config.ParseVersionSuffix(arg)
+	base = config.CanonicalName(base, manifest, repos)
+	if pinned {
+		return base + "@" + pin
+	}
+	return base
+}
+
+// filterExtracts returns the subset of extracts named by one of names: the full
+// manifest key (the name shown by list/outdated, e.g. "fzf@14") or its base name
+// ("fzf"), whole. With no names it returns extracts unchanged. This is the
+// acting commands' filter — sync updates exactly what it is told to — so a name
+// is expected to have been through canonicalKey first.
 func filterExtracts(extracts map[string]config.PackageEntry, names []string) map[string]config.PackageEntry {
 	if len(names) == 0 {
 		return extracts
@@ -572,6 +586,29 @@ func filterExtracts(extracts map[string]config.PackageEntry, names []string) map
 		}
 	}
 	return filtered
+}
+
+// findExtracts is the reading commands' filter, for list and outdated: an
+// installed package is kept when some term starts a word of its key or of an
+// alias the registry gives it (config.WordStartsWith), so "rip" and "ripgrep"
+// both list rg. With no terms it returns extracts unchanged, so those commands
+// list everything by default. Reading is wider than acting on purpose: this is
+// where a half remembered name becomes the one to hand remove or sync.
+func findExtracts(extracts map[string]config.PackageEntry, terms []string, repos map[string]config.RepoEntry) map[string]config.PackageEntry {
+	if len(terms) == 0 {
+		return extracts
+	}
+	found := make(map[string]config.PackageEntry)
+	for k, p := range extracts {
+		base, _, _ := config.ParseVersionSuffix(k)
+		names := append([]string{k}, repos[base].Aliases...)
+		if slices.ContainsFunc(terms, func(term string) bool {
+			return slices.ContainsFunc(names, func(name string) bool { return config.WordStartsWith(name, term) })
+		}) {
+			found[k] = p
+		}
+	}
+	return found
 }
 
 // printNameList prints names in long or short format. Returns true if either flag was set.

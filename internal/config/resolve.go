@@ -18,19 +18,23 @@ import (
 	"github.com/meop/ghpm/internal/ui"
 )
 
-// RepoEntry is one registry entry: where a package lives, plus a one-sentence
-// description of it for find and info to show.
+// RepoEntry is one registry entry: where a package lives, a one-sentence
+// description of it for find and info to show, and any other names it goes by.
+// The entry's key is the name ghpm installs it under; an alias is a second way
+// to say that name (ripgrep for rg), never a second name to install it as.
 type RepoEntry struct {
-	URI   string
-	Descr string
+	URI     string
+	Descr   string
+	Aliases []string
 }
 
 // parseRepoTable decodes one repo.toml. Both entry shapes are accepted:
 //
 //	fzf = "github.com/junegunn/fzf"                       # legacy, uri only
-//	[fzf]                                                 # current
-//	uri = "github.com/junegunn/fzf"
-//	descr = "Command-line fuzzy finder."
+//	[rg]                                                  # current
+//	uri = "github.com/BurntSushi/ripgrep"
+//	descr = "Line-oriented regex search tool."
+//	aliases = ["ripgrep"]
 //
 // Unknown keys inside an entry are ignored rather than rejected, so a registry
 // that starts publishing a new field does not break the ghpm versions that
@@ -48,7 +52,15 @@ func parseRepoTable(data []byte, path string) (map[string]RepoEntry, error) {
 		case map[string]any:
 			uri, _ := t["uri"].(string)
 			descr, _ := t["descr"].(string)
-			entries[name] = RepoEntry{URI: uri, Descr: descr}
+			var aliases []string
+			if list, ok := t["aliases"].([]any); ok {
+				for _, a := range list {
+					if alias, ok := a.(string); ok && alias != "" {
+						aliases = append(aliases, alias)
+					}
+				}
+			}
+			entries[name] = RepoEntry{URI: uri, Descr: descr, Aliases: aliases}
 		default:
 			return nil, fmt.Errorf("malformed %s: entry %q must be a uri string or a table", path, name)
 		}
@@ -214,6 +226,52 @@ var builtinRepos = map[string]string{
 	"gh": RepoGh.URI,
 }
 
+// CanonicalName turns what was typed into the name ghpm knows the package by:
+// the manifest's or the registry's own key for it. A name is taken whole — a key
+// as it is, or an alias of one, case aside — and never as part of one, since
+// every command that reaches here is about to act on what it names. A name
+// that is nobody's comes back unchanged, for the caller to report or search.
+// Keys win over aliases, and the registry is walked in sorted order, so an
+// alias two entries both claim resolves the same way on every run.
+func CanonicalName(name string, manifest *Manifest, repos map[string]RepoEntry) string {
+	if manifest != nil {
+		if _, ok := manifest.Repos[name]; ok {
+			return name
+		}
+	}
+	if _, ok := builtinRepos[name]; ok {
+		return name
+	}
+	if _, ok := repos[name]; ok {
+		return name
+	}
+	keys := make([]string, 0, len(repos))
+	for k := range repos {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if manifest != nil {
+		for k := range manifest.Repos {
+			if SameName(k, name) {
+				return k
+			}
+		}
+	}
+	for _, k := range keys {
+		if SameName(k, name) {
+			return k
+		}
+	}
+	for _, k := range keys {
+		for _, alias := range repos[k].Aliases {
+			if SameName(alias, name) {
+				return k
+			}
+		}
+	}
+	return name
+}
+
 // LookupSource resolves a name from non-interactive sources only.
 // Returns the source and true if found; empty string and false if not.
 func LookupSource(name string, manifest *Manifest, repos map[string]RepoEntry) (string, bool) {
@@ -251,7 +309,33 @@ func (m *Manifest) FindBySource(source string) (string, bool) {
 	return "", false
 }
 
-// SearchGitHub runs `gh search repos` and prompts the user to pick a result.
+// RepoHit is one result of a GitHub repository search.
+type RepoHit struct {
+	FullName string `json:"fullName"`
+	Descr    string `json:"description"`
+}
+
+// SearchRepos runs `gh search repos` for name. It is the deeper search, the
+// one past the registry: GitHub itself is asked only for a name nothing in
+// repo.toml answered to, by add and info to resolve it and by find to show
+// what is out there.
+func SearchRepos(name string) ([]RepoHit, error) {
+	cmd, err := ghbin.Command("search", "repos", name, "--limit", "5", "--json", "fullName,description")
+	if err != nil {
+		return nil, err
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("gh search failed — is gh authenticated?")
+	}
+	var hits []RepoHit
+	if err := json.Unmarshal(out, &hits); err != nil || len(hits) == 0 {
+		return nil, fmt.Errorf("no results found for %q", name)
+	}
+	return hits, nil
+}
+
+// SearchGitHub runs SearchRepos and prompts the user to pick a result.
 // With nobody to ask, an unknown name is simply not found: picking a repo out
 // of a search on a script's behalf is how `info <typo>` ends up reporting on
 // somebody else's project.
@@ -259,20 +343,9 @@ func SearchGitHub(name string) (string, error) {
 	if !ui.Interactive() {
 		return "", fmt.Errorf("not found: %q", name)
 	}
-	cmd, err := ghbin.Command("search", "repos", name, "--limit", "5", "--json", "fullName")
+	repos, err := SearchRepos(name)
 	if err != nil {
 		return "", err
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("gh search failed — is gh authenticated?")
-	}
-
-	var repos []struct {
-		FullName string `json:"fullName"`
-	}
-	if err := json.Unmarshal(out, &repos); err != nil || len(repos) == 0 {
-		return "", fmt.Errorf("no results found for %q", name)
 	}
 
 	names := make([]string, len(repos))

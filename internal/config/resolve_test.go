@@ -405,3 +405,58 @@ func TestLoadRepos_MalformedEntry(t *testing.T) {
 		t.Error("expected an error for a non-string, non-table entry")
 	}
 }
+
+func TestParseRepoTable_Aliases(t *testing.T) {
+	entries, err := parseRepoTable([]byte(`
+[rg]
+uri = "github.com/BurntSushi/ripgrep"
+descr = "Line-oriented regex search tool."
+aliases = ["ripgrep", "", 7]
+
+[fzf]
+uri = "github.com/junegunn/fzf"
+`), "repo.toml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// a blank or a non-string is not a name, and is dropped rather than refused
+	if got := entries["rg"].Aliases; len(got) != 1 || got[0] != "ripgrep" {
+		t.Errorf("aliases: got %v", got)
+	}
+	if got := entries["fzf"].Aliases; len(got) != 0 {
+		t.Errorf("an entry without aliases has none: got %v", got)
+	}
+}
+
+func TestCanonicalName(t *testing.T) {
+	m := &Manifest{Repos: map[string]string{"bat": "github.com/sharkdp/bat"}}
+	repos := map[string]RepoEntry{
+		"rg":    {URI: "github.com/BurntSushi/ripgrep", Aliases: []string{"ripgrep"}},
+		"btm":   {URI: "github.com/ClementTsang/bottom", Aliases: []string{"bottom"}},
+		"other": {URI: "github.com/x/other", Aliases: []string{"bottom", "rg"}},
+	}
+	cases := []struct{ typed, want string }{
+		// a key is itself, whether the manifest, the builtins or the registry holds it
+		{"bat", "bat"},
+		{"gh", "gh"},
+		{"rg", "rg"},
+		// an alias is another way to say a key, case aside
+		{"ripgrep", "rg"},
+		{"RipGrep", "rg"},
+		{"RG", "rg"},
+		// a key wins over an alias of the same spelling, and of two entries claiming an alias the first sorted does
+		{"bottom", "btm"},
+		// part of a name is not a name, and neither is a second spelling of one
+		{"rip", "rip"},
+		{"rip-grep", "rip-grep"},
+		{"nosuch", "nosuch"},
+	}
+	for _, c := range cases {
+		if got := CanonicalName(c.typed, m, repos); got != c.want {
+			t.Errorf("CanonicalName(%q) = %q, want %q", c.typed, got, c.want)
+		}
+	}
+	if got := CanonicalName("ripgrep", nil, nil); got != "ripgrep" {
+		t.Errorf("with no registry a name is itself: got %q", got)
+	}
+}

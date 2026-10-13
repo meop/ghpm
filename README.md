@@ -35,11 +35,12 @@ ghpm add fzf ripgrep bat  # install multiple in parallel
 ghpm add --force fzf      # reinstall even if already installed
 
 ghpm list                 # show installed packages
-ghpm list fzf ripgrep     # show only the named packages
-ghpm find fzf             # search cached repos by name or source
+ghpm list fzf rip         # show only packages a term starts a word of
+ghpm find fzf             # search cached repos by name, alias, source or description
+ghpm find regex           # ...when what you remember is what the tool does
 ghpm info fzf             # show available releases and assets
 ghpm outdated             # check for updates
-ghpm outdated fzf         # check updates for only the named packages
+ghpm outdated fzf         # check updates for only packages a term starts a word of
 
 ghpm sync                 # update all floating and major/minor-pinned packages
 ghpm sync fzf             # update specific package
@@ -127,12 +128,21 @@ warn = "yellow"
 Package names like `fzf` are resolved to GitHub repos via `~/.ghpm/repo/`. Any `repo.toml` file anywhere in that directory tree contributes to the map — files are merged alphabetically by path, with later files taking precedence on conflicts. Invalid TOML is a fatal error. Each file is one section per package:
 
 ```toml
-[fzf]
-uri = "github.com/junegunn/fzf"
-descr = "Command-line fuzzy finder."
+[rg]
+uri = "github.com/BurntSushi/ripgrep"
+descr = "Recursively search directories with regex, respecting gitignore."
+aliases = ["ripgrep"]
 ```
 
-`uri` is the `github.com/owner/repo` path. `descr` is optional — one sentence about the tool, shown as a column by `ghpm find` and under the header by `ghpm info`. The older flat form (`fzf = "github.com/junegunn/fzf"`) is still read, so an existing personal `repo.toml` keeps working as is.
+`uri` is the `github.com/owner/repo` path. `descr` is optional — one sentence about the tool, shown as a column by `ghpm find` and under the header by `ghpm info`. `aliases` is optional too — other names the tool is commonly called, accepted wherever the key is: `ghpm add ripgrep` installs `rg`. The package is always installed, listed and shimmed under its key. The older flat form (`fzf = "github.com/junegunn/fzf"`) is still read, so an existing personal `repo.toml` keeps working as is.
+
+### How names are matched
+
+A command that acts takes a name whole. `add`, `remove`, `sync` and `info` accept a package's key or one of its aliases, exactly as spelled (case aside) — `rip` is not `ripgrep`, and a shorter spelling you want is another alias in your own `repo.toml`.
+
+A command that reads takes the start of a word. `find`, `list` and `outdated` match a term against the beginning of any word, a word being whatever sits between characters that are not letters or digits: `go` finds `golangci-lint` and `go-task`, and never `cargo`. `list` and `outdated` look at installed names and their aliases; `find` also looks at each entry's `owner/repo` and `descr`. Look with `find`, then act with the name it shows.
+
+GitHub itself is only searched as a fallback. `add` and `info` offer a repo search for a name the registry does not have, and `find` offers one for a term that found nothing.
 
 `ghpm refresh` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
 

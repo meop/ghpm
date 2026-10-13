@@ -122,6 +122,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				failedItems = append(failedItems, failedItem{name: pkgName, reason: err.Error()})
 				continue
 			}
+			// an alias is another way to say a name, never another name to install under
+			pkgName = config.CanonicalName(pkgName, manifest, repos)
 		}
 
 		var source string

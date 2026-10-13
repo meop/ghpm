@@ -24,7 +24,7 @@ func newRemoveCmd() *cobra.Command {
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(context.Background(), cmdOptions{Lock: true, Manifest: true})
+	ci, err := initCommand(context.Background(), cmdOptions{Lock: true, Manifest: true, Repos: true})
 	if err != nil {
 		return err
 	}
@@ -44,12 +44,13 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	var targets []uninstallTarget
 	for _, arg := range args {
-		pkg, ok := manifest.Extracts[arg]
+		key := canonicalKey(arg, manifest, ci.repos)
+		pkg, ok := manifest.Extracts[key]
 		if !ok {
 			print("%s: not installed", arg)
 			continue
 		}
-		targets = append(targets, uninstallTarget{key: arg, pkg: pkg})
+		targets = append(targets, uninstallTarget{key: key, pkg: pkg})
 	}
 	if len(targets) == 0 {
 		return nil

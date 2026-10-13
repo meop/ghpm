@@ -70,6 +70,8 @@ func runInfo(cmd *cobra.Command, args []string) error {
 			outcomes[i].localErr = err
 			continue
 		}
+		pkgName = config.CanonicalName(pkgName, manifest, repos)
+		outcomes[i].pkgName = pkgName
 		source, err := config.ResolveSource(pkgName, ver, manifest, repos)
 		if err != nil {
 			outcomes[i].localErr = err
