@@ -156,6 +156,7 @@ If a name isn't in the map, `ghpm` looks for GitHub repos of exactly that name a
 - Each downloaded asset's SHA256 is checked against the digest GitHub reports; a mismatch fails the install (bypass with `--skip-hash-check`)
 - `sync` keeps the choices you made at install time — which binaries to add, what to name them — as long as a release offers the same binaries and fonts; if that set changes, it asks again from scratch
 - A package that fails partway is rolled back to the version you had, so re-running the command simply retries it; other packages in the same run are unaffected
+- `ghpm upgrade` replaces only the ghpm the install script put in `~/.ghpm/bin`. One installed another way (a package manager, `go install`) works the same and keeps the same `~/.ghpm`, but is upgraded by what installed it
 
 ## Verifying releases
 

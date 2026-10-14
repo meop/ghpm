@@ -42,8 +42,15 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		pkg config.PackageEntry
 	}
 
+	var hadErrors bool
+	var failedItems []failedItem
 	var targets []uninstallTarget
 	for _, arg := range args {
+		if isItself(arg) {
+			hadErrors = true
+			failedItems = append(failedItems, refuseItself(cfg, "remove", len(args) == 1)...)
+			continue
+		}
 		key := canonicalKey(arg, manifest, ci.repos)
 		pkg, ok := manifest.Extracts[key]
 		if !ok {
@@ -53,6 +60,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		targets = append(targets, uninstallTarget{key: key, pkg: pkg})
 	}
 	if len(targets) == 0 {
+		if hadErrors {
+			printFailedTable(cfg, "package", failedItems)
+			return errSilent
+		}
 		return nil
 	}
 
@@ -67,8 +78,6 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	var hadErrors bool
-	var failedItems []failedItem
 	successCount := 0
 	// Shims and fonts first, extract dir last, manifest entry last of all: every
 	// step here destroys something, so nothing can be rolled back — what keeps

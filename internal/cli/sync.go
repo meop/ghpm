@@ -43,6 +43,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	ghClient := ci.gh
 	dirs := ci.dirs
 
+	var hadErrors bool
+	var failedItems []failedItem
 	targets := map[string]config.PackageEntry{}
 	if len(args) == 0 {
 		for k, p := range manifest.Extracts {
@@ -52,6 +54,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		for _, name := range args {
+			if isItself(name) {
+				hadErrors = true
+				failedItems = append(failedItems, refuseItself(cfg, "sync", len(args) == 1)...)
+				continue
+			}
 			matched := filterExtracts(manifest.Extracts, []string{canonicalKey(name, manifest, ci.repos)})
 			if len(matched) == 0 {
 				print("%s: not installed", name)
@@ -67,6 +74,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if len(targets) == 0 {
+		if hadErrors {
+			printFailedTable(cfg, "package", failedItems)
+			return errSilent
+		}
 		return nil
 	}
 
@@ -104,8 +115,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	var outdated []outdatedPkg
 	checked := 0
 	skipped := 0
-	var hadErrors bool
-	var failedItems []failedItem
 
 	for _, res := range batchResults {
 		if res.Err != nil {

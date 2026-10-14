@@ -27,6 +27,36 @@ const msgAllUpToDate = "all packages are up to date"
 
 const msgGhpmUpToDate = "ghpm is up to date"
 
+// msgItself is why add, sync and remove fail a package named ghpm, each of
+// its own verb: it is never one of its own installed packages, wherever it
+// runs from. What leaves the install alone is not refused: info and download
+// only read ghpm's releases, and upgrade is the one command about ghpm.
+const msgItself = "cannot %s itself"
+
+// isItself says whether arg names ghpm, pinned or not.
+func isItself(arg string) bool {
+	name, _, _ := config.ParseVersionSuffix(arg)
+	return name == binGhpm
+}
+
+// refuseItself fails ghpm as a package of op and returns what the closing
+// table is owed for it. Named beside other packages, that is a failed item
+// like any other, and the rest go on. Named alone, it is nothing: the line
+// just printed is the whole run, and a table under it would only say it again.
+func refuseItself(cfg *config.Settings, op string, alone bool) []failedItem {
+	reason := fmt.Sprintf(msgItself, op)
+	printFail(cfg, "%s: %s", binGhpm, reason)
+	if alone {
+		return nil
+	}
+	return []failedItem{{name: binGhpm, reason: reason}}
+}
+
+// msgCannotUpgradeItself is msgItself for upgrade, which is refused only of a
+// ghpm its installer did not place, and so says why: the path it runs from
+// is what says who does upgrade it.
+const msgCannotUpgradeItself = "%s: cannot upgrade itself, running from %s"
+
 // msgDryRun is printed at every dry-run bail point (gate's preview table, and
 // tidy's per-category previews) so the run doesn't just show a table and then
 // go quiet — nothing distinguished that from a hang or an already-current state.

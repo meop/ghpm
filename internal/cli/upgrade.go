@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/meop/golie/upgrade"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/store"
 )
 
 // self is ghpm as its own release page publishes it. Everything upgrade asks
@@ -17,6 +19,20 @@ import (
 // so ghpm can upgrade itself before, or without, its vendored gh being
 // authenticated. See golie's upgrade package.
 var self = upgrade.Self{Name: binGhpm, ReleasesURL: "https://github.com/meop/ghpm/releases/"}
+
+// installedSelf is self held to the one place ghpm upgrades itself from:
+// ~/.ghpm/bin, where its installer puts it. A ghpm that runs from anywhere
+// else — a package manager's, go install's, a build — is upgraded by what put
+// it there.
+func installedSelf() (upgrade.Self, error) {
+	binDir, err := store.BinDir()
+	if err != nil {
+		return upgrade.Self{}, err
+	}
+	s := self
+	s.Dir = binDir
+	return s, nil
+}
 
 func newUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
@@ -47,6 +63,20 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		printFail(cfg, "%s: %v", binGhpm, err)
 		printFailedTable(cfg, "component", []failedItem{{name: binGhpm, reason: err.Error()}})
 		return errSilent
+	}
+
+	// asked first, and of nothing but the disk: a ghpm that will not be
+	// replaced has no use for which release is newest
+	self, err := installedSelf()
+	if err != nil {
+		return failed(err)
+	}
+	if err := self.Check(); err != nil {
+		if elsewhere, ok := errors.AsType[*upgrade.NotSelfInstalledError](err); ok {
+			printFail(cfg, msgCannotUpgradeItself, binGhpm, elsewhere.Running)
+			return errSilent
+		}
+		return failed(err)
 	}
 
 	tag, err := self.LatestTag(ctx)

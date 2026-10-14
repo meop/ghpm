@@ -110,7 +110,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		if pkgName == binGhpm {
-			print("%s: already self managed", pkgName)
+			hadErrors = true
+			failedItems = append(failedItems, refuseItself(cfg, "add", len(args) == 1)...)
 			continue
 		}
 		if explicitSource == "" {

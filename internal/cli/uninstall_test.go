@@ -156,3 +156,47 @@ func TestRunRemove_DryRunShowsGateTable(t *testing.T) {
 		t.Error("dry-run should not actually remove the package")
 	}
 }
+
+// TestRunUninstall_RefusesGhpmItself: ghpm is never one of its own packages,
+// so naming it is a failure said of the verb asked for — not "not installed",
+// which reads as though adding it were the next step — and the packages named
+// beside it are still removed.
+func TestRunUninstall_RefusesGhpmItself(t *testing.T) {
+	withHome(t)
+	yes = true
+	defer func() { yes = false }()
+	writeManifest(t, &config.Manifest{
+		Repos:    map[string]string{"fzf": "github.com/junegunn/fzf"},
+		Extracts: map[string]config.PackageEntry{"fzf": {Version: "0.58.0"}},
+	})
+
+	const refusal = "✗ ghpm: cannot remove itself\n"
+	for _, args := range [][]string{{binGhpm}, {binGhpm + "@1"}, {binGhpm, "fzf"}} {
+		var buf bytes.Buffer
+		ui.SetOutput(&buf)
+		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
+
+		if err := runRemove(nil, args); err != errSilent {
+			t.Fatalf("remove %v = %v, want the failure", args, err)
+		}
+		out := buf.String()
+		if !strings.Contains(out, refusal) {
+			t.Errorf("remove %v: no refusal in:\n%s", args, out)
+		}
+		// alone, the line is the whole run; the failed table is for a run
+		// that had other packages to get through
+		if alone := len(args) == 1; alone && out != refusal {
+			t.Errorf("remove %v: expected the single refusal line, got:\n%s", args, out)
+		} else if !alone && !strings.Contains(out, "1 package(s) failed") {
+			t.Errorf("remove %v: no failed table in:\n%s", args, out)
+		}
+	}
+
+	m, err := config.LoadManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.Extracts["fzf"]; ok {
+		t.Error("fzf, named beside ghpm, was not removed")
+	}
+}
