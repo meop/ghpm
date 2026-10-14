@@ -13,6 +13,7 @@ import (
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/shim"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/golie/tidy"
 )
 
 func newTidyCmd() *cobra.Command {
@@ -23,7 +24,7 @@ func newTidyCmd() *cobra.Command {
 		Args:    cobra.NoArgs,
 		RunE:    runTidy,
 	}
-	cmd.Flags().Bool("all", false, "remove all cached assets regardless of installation status")
+	cmd.Flags().Bool("all", false, "Remove all cached assets regardless of installation status")
 	return cmd
 }
 
@@ -71,38 +72,11 @@ func runTidy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// pruneExtract removes path (an extract dir, or one version subdir of it) and,
-// if that leaves its parent empty, removes the parent too. Returns the error
-// from removing path itself, so callers whose count of "removed" is meant to
-// reflect actual filesystem state (not just items attempted) can track it.
-func pruneExtract(path, pkgsDir string) error {
-	err := os.RemoveAll(path)
-	parent := filepath.Dir(path)
-	if parent != pkgsDir {
-		if es, rerr := os.ReadDir(parent); rerr == nil && len(es) == 0 {
-			_ = os.Remove(parent)
-		}
-	}
-	return err
-}
+// pruneExtract and pruneDownloadVersion are golie's; see its tidy package.
+func pruneExtract(path, pkgsDir string) error { return tidy.PruneExtract(path, pkgsDir) }
 
-// pruneDownloadVersion removes the cached download for one package version
-// (releaseDir/<source>/<version>) and walks back up removing any now-empty
-// parent directories, stopping at releaseDir. Shared by cleanBrokenInstalls
-// and cleanOrphanedFonts, which both drop a manifest entry's cached download
-// once its last bin/font is gone.
 func pruneDownloadVersion(releaseDir, src, version string) {
-	versionDir := filepath.Join(releaseDir, store.SourceToRelPath(src), version)
-	_ = os.RemoveAll(versionDir)
-	parent := filepath.Join(releaseDir, store.SourceToRelPath(src))
-	for parent != releaseDir {
-		es, err := os.ReadDir(parent)
-		if err != nil || len(es) > 0 {
-			break
-		}
-		_ = os.Remove(parent)
-		parent = filepath.Dir(parent)
-	}
+	tidy.PruneDownloadVersion(releaseDir, src, version)
 }
 
 // dryRunBail prints the shared dry-run closing message and returns true (the
@@ -113,87 +87,33 @@ func dryRunBail() bool {
 	return true
 }
 
+// tidyDirs is the part of ~/.ghpm golie's tidy looks at.
+func tidyDirs() (tidy.Dirs, error) {
+	l, err := store.Layout()
+	if err != nil {
+		return tidy.Dirs{}, err
+	}
+	return tidy.DirsOf(l)
+}
+
 // cleanBrokenInstalls removes manifest entries whose shim or extract is missing,
-// and trims BinNames for entries where only some shims are missing.
+// and trims BinNames for entries where only some shims are missing. What is
+// broken and how it is removed are golie's (tidy.FindBroken, tidy.RemoveBroken).
 func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releaseDir string) bool {
-	binDir, err := store.BinDir()
+	dirs, err := tidyDirs()
 	if err != nil {
 		return false
 	}
-	pkgsDir, err := store.ExtractsDir()
-	if err != nil {
-		return false
-	}
+	dirs.Downloads = releaseDir
 
-	type item struct {
-		tableRow      []string
-		shimPaths     []string
-		extractPath   string
-		manifestKey   string
-		trimShimNames []string
-	}
-	var items []item
-
-	for key, pkg := range manifest.Extracts {
-		allBins := pkg.AllBins()
-		allFonts := pkg.AllFonts()
-
-		if len(allBins) == 0 && len(allFonts) > 0 {
-			if _, err := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version)); os.IsNotExist(err) {
-				items = append(items, item{
-					tableRow:    []string{key, "missing extract"},
-					extractPath: filepath.Join(pkgsDir, key, pkg.Version),
-					manifestKey: key,
-				})
-			}
-			continue
-		}
-
-		if len(allBins) == 0 {
-			continue
-		}
-		var shimPaths []string
-		var missingShimNames []string
-		for shimName := range allBins {
-			sp := filepath.Join(binDir, shimName)
-			shimPaths = append(shimPaths, sp)
-			if _, err := os.Lstat(sp); os.IsNotExist(err) {
-				missingShimNames = append(missingShimNames, shimName)
-			}
-		}
-		extractMissing := false
-		if _, err := os.Lstat(filepath.Join(pkgsDir, key, pkg.Version)); os.IsNotExist(err) {
-			extractMissing = true
-		}
-		if len(missingShimNames) == 0 && !extractMissing {
-			continue
-		}
-		if extractMissing {
-			items = append(items, item{
-				tableRow:    []string{key, "missing extract"},
-				shimPaths:   shimPaths,
-				extractPath: filepath.Join(pkgsDir, key, pkg.Version),
-				manifestKey: key,
-			})
-		} else {
-			for _, shimName := range missingShimNames {
-				items = append(items, item{
-					tableRow:      []string{key, fmt.Sprintf("missing bin (%s)", shimName)},
-					manifestKey:   key,
-					trimShimNames: []string{shimName},
-				})
-			}
-		}
-	}
-
+	items := tidy.FindBroken(manifest, dirs)
 	if len(items) == 0 {
 		return false
 	}
 
-	slices.SortFunc(items, func(a, b item) int { return strings.Compare(a.tableRow[0], b.tableRow[0]) })
 	rows := make([][]string, len(items))
 	for i, it := range items {
-		rows[i] = it.tableRow
+		rows[i] = []string{it.Key, it.Issue}
 	}
 	printTable([]string{"name", "issue"}, rows, nil)
 
@@ -211,40 +131,11 @@ func cleanBrokenInstalls(cfg *config.Settings, manifest *config.Manifest, releas
 		// entry anyway would turn a file ghpm still owns into an orphan only
 		// the *next* tidy could name, and only for bins — the font sweep does
 		// not scan for untracked files at all.
-		stuck := false
-		for _, sp := range it.shimPaths {
-			if err := os.Remove(sp); err != nil && !os.IsNotExist(err) {
-				printFail(cfg, "%s: could not remove shim: %v", filepath.Base(sp), err)
-				stuck = true
-			}
+		changed, stuck := tidy.RemoveBroken(manifest, it, dirs)
+		for _, st := range stuck {
+			printFail(cfg, "%s: could not remove shim: %v", filepath.Base(st.Path), st.Err)
 		}
-		if stuck {
-			continue
-		}
-		if it.extractPath != "" {
-			_ = pruneExtract(it.extractPath, pkgsDir)
-		}
-		if it.manifestKey != "" {
-			if len(it.trimShimNames) > 0 {
-				entry := manifest.Extracts[it.manifestKey]
-				for _, shimName := range it.trimShimNames {
-					delete(entry.Bin, shimName)
-				}
-				manifest.Extracts[it.manifestKey] = entry
-				if len(entry.AllBins()) == 0 && len(entry.AllFonts()) == 0 {
-					manifest.RemoveExtract(it.manifestKey)
-					_ = pruneExtract(filepath.Join(pkgsDir, it.manifestKey, entry.Version), pkgsDir)
-				}
-			} else {
-				baseName, _, _ := config.ParseVersionSuffix(it.manifestKey)
-				pkg := manifest.Extracts[it.manifestKey]
-				if src, ok := manifest.Repos[baseName]; ok {
-					pruneDownloadVersion(releaseDir, src, pkg.Version)
-				}
-				manifest.RemoveExtract(it.manifestKey)
-			}
-			manifestTouched = true
-		}
+		manifestTouched = manifestTouched || changed
 	}
 
 	if manifestTouched {
@@ -355,27 +246,11 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 		return false
 	}
 
-	expected := map[string]bool{exeName(binGhpm): true}
-	for _, pkg := range manifest.Extracts {
-		for shimName := range pkg.AllBins() {
-			expected[shimName] = true
-		}
-	}
-
-	var paths []string
-	var binRows [][]string
-	if binEntries, err := os.ReadDir(binDir); err == nil {
-		for _, e := range binEntries {
-			if !expected[e.Name()] {
-				full := filepath.Join(binDir, e.Name())
-				// only ghpm's own shims are ghpm's to clean up
-				if !shim.IsShim(full) {
-					continue
-				}
-				paths = append(paths, full)
-				binRows = append(binRows, []string{e.Name()})
-			}
-		}
+	// only ghpm's own shims are ghpm's to clean up
+	paths := tidy.FindOrphanShims(manifest, binDir, []string{exeName(binGhpm)}, shim.IsShim)
+	binRows := make([][]string, len(paths))
+	for i, p := range paths {
+		binRows[i] = []string{filepath.Base(p)}
 	}
 
 	if len(paths) == 0 {
@@ -415,30 +290,9 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 
 	var paths []string
 	var extRows [][]string
-
-	if pkgEntries, err := os.ReadDir(pkgsDir); err == nil {
-		for _, e := range pkgEntries {
-			if !e.IsDir() {
-				continue
-			}
-			key := e.Name()
-			pkg, inManifest := manifest.Extracts[key]
-			if !inManifest {
-				paths = append(paths, filepath.Join(pkgsDir, key))
-				extRows = append(extRows, []string{key, ""})
-				continue
-			}
-			verEntries, err := os.ReadDir(filepath.Join(pkgsDir, key))
-			if err != nil {
-				continue
-			}
-			for _, ve := range verEntries {
-				if ve.IsDir() && ve.Name() != pkg.Version {
-					paths = append(paths, filepath.Join(pkgsDir, key, ve.Name()))
-					extRows = append(extRows, []string{key, ve.Name()})
-				}
-			}
-		}
+	for _, o := range tidy.FindOrphanExtracts(manifest, pkgsDir) {
+		paths = append(paths, o.Path)
+		extRows = append(extRows, []string{o.Key, o.Version})
 	}
 
 	if len(paths) == 0 {
@@ -469,40 +323,17 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 	return true
 }
 
-func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *config.Manifest) bool {
-	installed := map[string]bool{}
-	for key, pkg := range manifest.Extracts {
-		pkgName, _, _ := config.ParseVersionSuffix(key)
-		if src, ok := manifest.Repos[pkgName]; ok {
-			installed[src+"/"+pkg.Version] = true
-		}
-	}
+// sourceDepth is how many path elements a source has under download/:
+// github.com/owner/repo.
+const sourceDepth = 3
 
+func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *config.Manifest) bool {
 	var toRemove []string
 	var dlRows [][]string
-	_ = filepath.WalkDir(releaseDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(releaseDir, path)
-		if err != nil {
-			return nil
-		}
-		parts := strings.Split(rel, string(filepath.Separator))
-		if len(parts) < 5 {
-			return nil
-		}
-		source := store.SourceFromPath(rel)
-		ver := parts[3]
-		if !installed[source+"/"+ver] {
-			toRemove = append(toRemove, path)
-			dlRows = append(dlRows, []string{parts[2], ver, parts[len(parts)-1]})
-		}
-		return nil
-	})
+	for _, o := range tidy.FindOrphanDownloads(manifest, releaseDir, sourceDepth) {
+		toRemove = append(toRemove, o.Path)
+		dlRows = append(dlRows, []string{o.Package(), o.Version, o.File})
+	}
 
 	if len(toRemove) == 0 {
 		return false
@@ -526,20 +357,7 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 		}
 		removed++
 	}
-	var dirs []string
-	_ = filepath.WalkDir(releaseDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || path == releaseDir || !d.IsDir() {
-			return nil
-		}
-		dirs = append(dirs, path)
-		return nil
-	})
-	for _, dir := range slices.Backward(dirs) {
-		entries, _ := os.ReadDir(dir)
-		if len(entries) == 0 {
-			_ = os.Remove(dir)
-		}
-	}
+	tidy.PruneEmptyDirs(releaseDir)
 	if removed > 0 {
 		printPass(cfg, "removed %d orphaned download(s)", removed)
 	}

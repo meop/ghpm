@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/meop/golie/home"
-	"github.com/meop/golie/vers"
+	"github.com/meop/golie/layout"
 )
 
 // Dirs abstracts the ~/.ghpm directory layout so commands can be tested with a
@@ -58,21 +58,25 @@ func UserHomeDir() (string, error) { return home.Dir(testHomeEnv) }
 // every derived path under the same isolated root.
 func UsingTestHome() bool { return home.UsingTest(testHomeEnv) }
 
-func ghpmDir() (string, error) {
+// Layout is ~/.ghpm as golie lays a state directory out: bin, vendor,
+// extract and download, with the manifest and the lock beside them. Only
+// repo/ below is ghpm's own.
+func Layout() (layout.Layout, error) {
 	home, err := UserHomeDir()
 	if err != nil {
-		return "", err
+		return layout.Layout{}, err
 	}
-	return filepath.Join(home, ".ghpm"), nil
+	return layout.Layout{Root: filepath.Join(home, ".ghpm")}, nil
 }
 
 // Dir returns the root ~/.ghpm directory path without creating it.
 func Dir() (string, error) {
-	return ghpmDir()
+	l, err := Layout()
+	return l.Root, err
 }
 
 func ghpmSubDir(mkdir bool, elems ...string) (string, error) {
-	base, err := ghpmDir()
+	base, err := Dir()
 	if err != nil {
 		return "", err
 	}
@@ -86,7 +90,11 @@ func ghpmSubDir(mkdir bool, elems ...string) (string, error) {
 // BinDir holds ghpm itself and the shims it stamps for packages — everything
 // meant to be on the user's PATH.
 func BinDir() (string, error) {
-	return ghpmSubDir(true, "bin")
+	l, err := Layout()
+	if err != nil {
+		return "", err
+	}
+	return l.BinDir()
 }
 
 // VendorDir holds the tools ghpm needs to work, not the ones it installs for
@@ -94,39 +102,45 @@ func BinDir() (string, error) {
 // vendored copy can be older, newer, or differently authenticated than the
 // same tool elsewhere on the system without either one disturbing the other.
 func VendorDir() (string, error) {
-	return ghpmSubDir(true, "vendor")
+	l, err := Layout()
+	if err != nil {
+		return "", err
+	}
+	return l.VendorDir()
 }
 
 // ShimDir holds sheesh's own kebab stamper (and whatever else its release
 // ships), alongside gh under vendor — the other tool ghpm needs to work
 // rather than one it installs for you.
 func ShimDir() (string, error) {
-	return ghpmSubDir(true, "vendor", "sheesh")
+	l, err := Layout()
+	if err != nil {
+		return "", err
+	}
+	return l.ShimDir()
 }
 
 func ExtractsDir() (string, error) {
-	return ghpmSubDir(false, "extract")
+	l, err := Layout()
+	return l.ExtractsDir(), err
 }
 
 func ExtractBaseDir(key string) (string, error) {
-	base, err := ExtractsDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, key), nil
+	l, err := Layout()
+	return l.ExtractBaseDir(key), err
 }
 
 func ExtractDir(key, version string) (string, error) {
-	base, err := ExtractBaseDir(key)
+	l, err := Layout()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, version)
-	return dir, os.MkdirAll(dir, 0755)
+	return l.ExtractDir(key, version)
 }
 
 func ReleaseBaseDir() (string, error) {
-	return ghpmSubDir(false, "download")
+	l, err := Layout()
+	return l.DownloadsDir(), err
 }
 
 func ReposBaseDir() (string, error) {
@@ -135,9 +149,7 @@ func ReposBaseDir() (string, error) {
 
 // SourceToRelPath converts a source URI (e.g. "github.com/owner/repo") to a
 // relative filesystem path using the OS path separator.
-func SourceToRelPath(source string) string {
-	return strings.ReplaceAll(source, "/", string(filepath.Separator))
-}
+func SourceToRelPath(source string) string { return layout.SourceToRelPath(source) }
 
 func RepoDir(source string) (string, error) {
 	base, err := ReposBaseDir()
@@ -149,12 +161,11 @@ func RepoDir(source string) (string, error) {
 }
 
 func ReleaseDir(source, ver string) (string, error) {
-	base, err := ReleaseBaseDir()
+	l, err := Layout()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, SourceToRelPath(source), vers.Normalize(ver))
-	return dir, os.MkdirAll(dir, 0755)
+	return l.DownloadDir(source, ver)
 }
 
 func SourceFromPath(rel string) string {

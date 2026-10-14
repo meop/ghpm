@@ -16,6 +16,7 @@ import (
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/golie/manifest"
 	"github.com/meop/golie/ui"
 )
 
@@ -203,12 +204,9 @@ func fetchAndCacheRepos(source string) (int, error) {
 }
 
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).
-// If no "@", returns (name, "", false).
+// If no "@", returns (name, "", false). The key format is golie's.
 func ParseVersionSuffix(arg string) (name, version string, pinned bool) {
-	if before, after, found := strings.CutLast(arg, "@"); found {
-		return before, after, true
-	}
-	return arg, "", false
+	return manifest.ParseKey(arg)
 }
 
 // ValidateName returns an error if name is not a simple filename (no slashes, no spaces).
@@ -300,17 +298,6 @@ func ResolveSource(name, version string, manifest *Manifest, repos map[string]Re
 	return SearchGitHub(name)
 }
 
-// FindBySource returns the name already registered with source.
-func (m *Manifest) FindBySource(source string) (string, bool) {
-	for name, src := range m.Repos {
-		if src == source {
-			return name, true
-		}
-	}
-	return "", false
-}
-
-// RepoHit is one result of a GitHub repository search.
 type RepoHit struct {
 	FullName string `json:"fullName"`
 	Descr    string `json:"description"`

@@ -7,6 +7,7 @@ import (
 
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/golie/manifest"
 	"github.com/meop/golie/ui"
 	"github.com/spf13/cobra"
 )
@@ -33,16 +34,7 @@ func exeName(name string) string {
 	return name
 }
 
-func deriveShimName(key, binName string) string {
-	_, ver, pinned := config.ParseVersionSuffix(key)
-	if !pinned {
-		return binName
-	}
-	if strings.HasSuffix(binName, ".exe") {
-		return binName[:len(binName)-4] + "@" + ver + ".exe"
-	}
-	return binName + "@" + ver
-}
+func deriveShimName(key, binName string) string { return manifest.ShimName(key, binName) }
 
 // reservedShimNames collects the shim names claimed by every installed package
 // except exceptPkg, mapping each name to its owning package.
@@ -87,13 +79,7 @@ func hasReservedConflict(proposed []string, reserved map[string]string) bool {
 	return false
 }
 
-func parseBinPath(key string) (binDir, binName string) {
-	binDir, binName, found := strings.CutLast(key, "/")
-	if !found {
-		return "", key
-	}
-	return binDir, binName
-}
+func parseBinPath(key string) (binDir, binName string) { return manifest.ParseBinPath(key) }
 
 // proposedShimNames returns the default shim name for each selected binary.
 // When multiple binaries share the same filename, a disambiguating suffix is

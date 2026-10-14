@@ -11,10 +11,10 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-// stamper is ghpm's: shims in bin, kebab under vendor, and a shim that points
+// Stamper is ghpm's: shims in bin, kebab under vendor, and a shim that points
 // into the extract dir is one ghpm created — anything else in the bin
 // directory belongs to somebody else.
-func stamper() (golie.Stamper, error) {
+func Stamper() (golie.Stamper, error) {
 	binDir, err := store.BinDir()
 	if err != nil {
 		return golie.Stamper{}, err
@@ -34,7 +34,7 @@ func stamper() (golie.Stamper, error) {
 // write and delete: the bin directory may be shared with binaries ghpm knows
 // nothing about, and those are not ghpm's to replace or remove.
 func IsShim(path string) bool {
-	s, err := stamper()
+	s, err := Stamper()
 	return err == nil && s.IsShim(path)
 }
 
@@ -42,7 +42,7 @@ func IsShim(path string) bool {
 // binary inside pkgDir/binSubdir when run. kebab selects the appropriate sheesh
 // template (console vs GUI on Windows) automatically.
 func Create(shimName, binaryName, pkgDir, binSubdir string, force bool) error {
-	s, err := stamper()
+	s, err := Stamper()
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func Create(shimName, binaryName, pkgDir, binSubdir string, force bool) error {
 // that ghpm did not stamp is left alone: ghpm removing its own package should
 // never take somebody else's binary with it.
 func Remove(shimName string) error {
-	s, err := stamper()
+	s, err := Stamper()
 	if err != nil {
 		return err
 	}

@@ -147,7 +147,7 @@ func TestSyncBinShims_RemovesStaleWhenAllBinsGone(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, nil)
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, nil, false)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -169,7 +169,7 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"})
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"}, false)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -192,6 +192,44 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	}
 }
 
+// TestSyncBinShims_ForceReplacesAForeignFile covers the one thing --force
+// means: a file in the bin dir that ghpm did not stamp stops a shim, the error
+// says how to get past it, and sync --force is a way past it. It used to be
+// that only add honored the flag, so the hint was a dead end on sync.
+func TestSyncBinShims_ForceReplacesAForeignFile(t *testing.T) {
+	withHome(t)
+	fakeKebab(t)
+	binDir, err := store.BinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimDir, err := store.ShimDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(binDir, "tool")
+	if err := os.WriteFile(foreign, []byte("somebody else's binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	bins := map[string]string{"tool": "bin/tool"}
+
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", nil, bins, false)
+	if len(errs) != 1 || !strings.Contains(errs[0].err.Error(), "--force") || len(installed) != 0 {
+		t.Fatalf("expected the foreign file to stop the shim and name --force, got %v, %v", installed, errs)
+	}
+	if _, err := os.Stat(filepath.Join(shimDir, "kebab-args.txt")); !os.IsNotExist(err) {
+		t.Fatal("expected kebab not to be run over a foreign file")
+	}
+
+	installed, errs = syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", nil, bins, true)
+	if len(errs) != 0 || installed["tool"] != "bin/tool" {
+		t.Fatalf("expected --force to stamp over the foreign file, got %v, %v", installed, errs)
+	}
+	if _, err := os.Stat(filepath.Join(shimDir, "kebab-args.txt")); err != nil {
+		t.Fatalf("expected kebab to have been run: %v", err)
+	}
+}
+
 // TestSyncBinShims_FailedCreateNotRecorded guards against a failed shim.Create
 // still reading back as installed, the same class of bug as add.go's applyShimPlan.
 func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
@@ -201,7 +239,7 @@ func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No fakeKebab staged, so shim.Create fails for every entry in newBin.
-	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"})
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"}, false)
 	if len(errs) == 0 {
 		t.Fatal("expected an error when kebab is not staged")
 	}

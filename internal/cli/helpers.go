@@ -215,6 +215,15 @@ func verifyAssetDigest(digest, assetPath string) error {
 	return verifyDigest(digest, assetPath)
 }
 
+// addInstallFlags adds the two flags add and sync share. They are separate
+// because they are different things to ask for: --reinstall redoes ghpm's own
+// work and touches nothing that is not ghpm's, while --force is the only way
+// a shim replaces a file ghpm did not stamp. Neither implies the other.
+func addInstallFlags(cmd *cobra.Command, reinstallUsage string) {
+	cmd.Flags().BoolP("reinstall", "r", false, reinstallUsage)
+	cmd.Flags().BoolP("force", "f", false, "Replace a file in the bin directory that is not a ghpm shim")
+}
+
 func addNameFormatFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVarP(&longNames, "long-names", "l", false, "Print names only, one per line")
 	cmd.Flags().BoolVarP(&shortNames, "short-names", "s", false, "Print names only, space-separated on one line")

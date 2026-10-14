@@ -14,17 +14,17 @@ import (
 func TestJournal_RollbackReversesNewestFirst(t *testing.T) {
 	var order []string
 	jrn := &journal{}
-	jrn.did("first", func() error { order = append(order, "first"); return nil })
-	jrn.did("second", func() error { order = append(order, "second"); return nil })
-	jrn.did("third", func() error { order = append(order, "third"); return nil })
+	jrn.Did("first", func() error { order = append(order, "first"); return nil })
+	jrn.Did("second", func() error { order = append(order, "second"); return nil })
+	jrn.Did("third", func() error { order = append(order, "third"); return nil })
 
-	if errs := jrn.rollback(); len(errs) != 0 {
+	if errs := jrn.Rollback(); len(errs) != 0 {
 		t.Fatalf("unexpected rollback errors: %v", errs)
 	}
 	if strings.Join(order, ",") != "third,second,first" {
 		t.Errorf("expected newest-first undo order, got %v", order)
 	}
-	if errs := jrn.rollback(); len(errs) != 0 || len(order) != 3 {
+	if errs := jrn.Rollback(); len(errs) != 0 || len(order) != 3 {
 		t.Errorf("expected a rolled-back journal to be spent, got %v after %v", order, errs)
 	}
 }
@@ -36,10 +36,10 @@ func TestJournal_RollbackReversesNewestFirst(t *testing.T) {
 func TestJournal_RollbackContinuesPastAFailingUndo(t *testing.T) {
 	undone := 0
 	jrn := &journal{}
-	jrn.did("earlier", func() error { undone++; return nil })
-	jrn.did("locked", func() error { return errors.New("file in use") })
+	jrn.Did("earlier", func() error { undone++; return nil })
+	jrn.Did("locked", func() error { return errors.New("file in use") })
 
-	errs := jrn.rollback()
+	errs := jrn.Rollback()
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "locked: file in use") {
 		t.Fatalf("expected the failing step named in one error, got %v", errs)
 	}
@@ -50,9 +50,9 @@ func TestJournal_RollbackContinuesPastAFailingUndo(t *testing.T) {
 
 func TestJournal_DidDropsNilUndo(t *testing.T) {
 	jrn := &journal{}
-	jrn.did("nothing to reverse", nil)
-	if len(jrn.steps) != 0 {
-		t.Errorf("expected a nil undo to record no step, got %d", len(jrn.steps))
+	jrn.Did("nothing to reverse", nil)
+	if jrn.Len() != 0 {
+		t.Errorf("expected a nil undo to record no step, got %d", jrn.Len())
 	}
 }
 
@@ -191,7 +191,7 @@ func TestSyncBinShims_RollbackRestoresShimAfterFailedCreate(t *testing.T) {
 	// target does.
 	jrn := &journal{}
 	installed, errs := syncBinShims(&config.Settings{}, jrn, t.TempDir(), oldPkgDir,
-		map[string]string{"pwsh": "pwsh"}, map[string]string{"pwsh": "pwsh"})
+		map[string]string{"pwsh": "pwsh"}, map[string]string{"pwsh": "pwsh"}, false)
 	if len(errs) == 0 {
 		t.Fatal("expected the create to fail with no kebab staged")
 	}
@@ -201,7 +201,7 @@ func TestSyncBinShims_RollbackRestoresShimAfterFailedCreate(t *testing.T) {
 
 	// Rolling back has to restamp against the version the manifest still names.
 	fakeKebab(t)
-	if rbErrs := jrn.rollback(); len(rbErrs) != 0 {
+	if rbErrs := jrn.Rollback(); len(rbErrs) != 0 {
 		t.Fatalf("unexpected rollback errors: %v", rbErrs)
 	}
 	shimDir, err := store.ShimDir()
@@ -245,7 +245,7 @@ func TestApplyShimPlan_RollbackRemovesShimsFromAFailedAdd(t *testing.T) {
 		t.Fatalf("expected the shim to exist before rollback: %v", err)
 	}
 
-	if errs := jrn.rollback(); len(errs) != 0 {
+	if errs := jrn.Rollback(); len(errs) != 0 {
 		t.Fatalf("unexpected rollback errors: %v", errs)
 	}
 	if _, err := os.Stat(filepath.Join(binDir, "rg")); !os.IsNotExist(err) {

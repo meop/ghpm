@@ -14,6 +14,7 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/shim"
+	"github.com/meop/golie/manifest"
 )
 
 func newAddCmd() *cobra.Command {
@@ -24,7 +25,7 @@ func newAddCmd() *cobra.Command {
 		Args:    cobra.MinimumNArgs(1),
 		RunE:    runAdd,
 	}
-	cmd.Flags().BoolP("force", "f", false, "Reinstall even if already installed")
+	addInstallFlags(cmd, "Reinstall even if already installed")
 	addSkipHashCheckFlag(cmd)
 	return cmd
 }
@@ -38,20 +39,16 @@ type installJob struct {
 
 func (j installJob) pin() string {
 	if !j.pinned {
-		return "latest"
+		return manifest.PinLatest
 	}
-	c, err := config.ParseConstraint(j.version)
-	if err != nil {
-		return "latest"
-	}
-	return c.Level.String()
+	return manifest.Pin(j.version)
 }
 
 func (j installJob) key() string {
 	if !j.pinned {
 		return j.name
 	}
-	return j.name + "@" + strings.TrimPrefix(j.version, "v")
+	return manifest.Key(j.name, j.version)
 }
 
 type shimPlan struct {
@@ -80,7 +77,8 @@ type installTaskResult struct {
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	forceInstall, _ := cmd.Flags().GetBool("force")
+	reinstall, _ := cmd.Flags().GetBool("reinstall")
+	force, _ := cmd.Flags().GetBool("force")
 	ctx := cmd.Context()
 	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Shim: true, Dirs: true, Repos: true, SkipHashCheck: true})
 	if err != nil {
@@ -145,12 +143,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		partialJob := installJob{name: pkgName, version: ver, pinned: pinned}
-		if entry, exists := manifest.Extracts[partialJob.key()]; exists && !forceInstall {
+		if entry, exists := manifest.Extracts[partialJob.key()]; exists && !reinstall {
 			print("%s: already added → %s", pkgName, entry.Version)
 			continue
 		}
 		if !pinned {
-			if existing, found := manifest.FindBySource(source); found && existing != pkgName && !forceInstall {
+			if existing, found := manifest.FindBySource(source); found && existing != pkgName && !reinstall {
 				print("%s: already added as %s", pkgName, existing)
 				continue
 			}
@@ -460,15 +458,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		// that fails anywhere below is put back to whatever was installed before
 		// (nothing, for a first add) rather than recorded half-created.
 		jrn := &journal{}
-		jrn.did("extract "+p.version, extractUndo(p.pkgDir, existing.Version, p.version))
+		jrn.Did("extract "+p.version, extractUndo(p.pkgDir, existing.Version, p.version))
 
-		if forceInstall && existing.Version != "" {
+		if reinstall && existing.Version != "" {
 			for shimName, oldKey := range existing.AllBins() {
 				if err := shim.Remove(shimName); err != nil {
 					printWarn(cfg, "%s: could not remove stale shim: %v", shimName, err)
 					continue
 				}
-				jrn.did("stale shim "+shimName, shimUndo(shimName, oldKey, oldPkgDir))
+				jrn.Did("stale shim "+shimName, shimUndo(shimName, oldKey, oldPkgDir))
 			}
 			if oldFonts := existing.AllFonts(); len(oldFonts) > 0 {
 				var newPaths []string
@@ -481,13 +479,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 							printWarn(cfg, "%s: could not remove stale font: %v", filepath.Base(fontPath), err)
 							continue
 						}
-						jrn.did("stale font "+filepath.Base(fontPath), fontUndo("", fontPath, oldPkgDir, fontsDir))
+						jrn.Did("stale font "+filepath.Base(fontPath), fontUndo("", fontPath, oldPkgDir, fontsDir))
 					}
 				}
 			}
 		}
 
-		installedBin, installedFont, failed, failReason := applyShimPlan(p, forceInstall, jrn, existing, oldPkgDir, shim.Create, ensureFontDir, installFont)
+		installedBin, installedFont, failed, failReason := applyShimPlan(p, force, jrn, existing, oldPkgDir, shim.Create, ensureFontDir, installFont)
 		if failed {
 			hadErrors = true
 			failedItems = append(failedItems, failedItem{name: p.jobName, reason: failReason})
@@ -524,7 +522,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 // applyShimPlan returns only the shims/fonts that actually succeeded, so a caller never records a failed one as installed.
 func applyShimPlan(
 	p shimPlan,
-	forceInstall bool,
+	force bool,
 	jrn *journal,
 	prev config.PackageEntry,
 	oldPkgDir string,
@@ -535,8 +533,8 @@ func applyShimPlan(
 	installedBin = make(map[string]string, len(p.bin))
 	for shimName, binsKey := range p.bin {
 		binDir, binName := parseBinPath(binsKey)
-		jrn.did("shim "+shimName, shimUndo(shimName, prev.Bin[shimName], oldPkgDir))
-		if err := createShim(shimName, binName, p.pkgDir, binDir, forceInstall); err != nil {
+		jrn.Did("shim "+shimName, shimUndo(shimName, prev.Bin[shimName], oldPkgDir))
+		if err := createShim(shimName, binName, p.pkgDir, binDir, force); err != nil {
 			printFail(nil, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
 			failed = true
 			if failReason == "" {
@@ -564,7 +562,7 @@ func applyShimPlan(
 			slices.Sort(fontNames)
 			for _, fontName := range fontNames {
 				srcPath := filepath.Join(p.pkgDir, filepath.FromSlash(p.font[fontName]))
-				jrn.did("font "+fontName, fontUndo(p.font[fontName], prev.Font[fontName], oldPkgDir, fontsDir))
+				jrn.Did("font "+fontName, fontUndo(p.font[fontName], prev.Font[fontName], oldPkgDir, fontsDir))
 				if err := installFontFn(srcPath, fontsDir); err != nil {
 					printFail(nil, "%s: %s: could not install font: %v", p.jobName, fontName, err)
 					failed = true

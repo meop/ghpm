@@ -32,7 +32,7 @@ ghpm add fzf@14           # install latest fzf 14.x (tracks within major)
 ghpm add fzf@14.1         # install latest fzf 14.1.x (tracks within minor)
 ghpm add fzf@14.1.0       # install exact fzf 14.1.0 (static, never updates)
 ghpm add fzf ripgrep bat  # install multiple in parallel
-ghpm add --force fzf      # reinstall even if already installed
+ghpm add --reinstall fzf  # reinstall even if already installed
 
 ghpm list                 # show installed packages
 ghpm list fzf rip         # show only packages a term starts a word of
@@ -44,8 +44,8 @@ ghpm outdated fzf         # check updates for only packages a term starts a word
 
 ghpm sync                 # update all floating and major/minor-pinned packages
 ghpm sync fzf             # update specific package
-ghpm sync --force         # reinstall all packages even if already at latest version
-ghpm sync --force fzf     # reinstall specific package even if already at latest version
+ghpm sync --reinstall     # reinstall all packages even if already at latest version
+ghpm sync --reinstall fzf # reinstall specific package even if already at latest version
 
 ghpm download fzf         # download release asset to cache without installing
 ghpm download --path /tmp fzf # download release asset to a specific directory
@@ -65,12 +65,15 @@ ghpm doctor               # check system health
 |---|---|
 | `--dry-run`, `-n` | Print what would be done without executing |
 | `--yes`, `-y` | Skip confirmation prompts |
+| `--quiet`, `-q` | Print only tables and errors |
+| `--non-interactive` | Never prompt; for scripted use |
 
 ### Per-command flags
 
 | Flag | Commands | Description |
 |---|---|---|
-| `--force`, `-f` | `add`, `sync` | Reinstall even if already installed / already at latest version |
+| `--reinstall`, `-r` | `add`, `sync` | Reinstall even if already installed / already at latest version |
+| `--force`, `-f` | `add`, `sync` | Replace a file in `~/.ghpm/bin` that ghpm did not put there |
 | `--path` | `download` | Destination directory (default: `~/.ghpm/download/`) |
 | `--all` | `tidy` | Remove all cached assets regardless of installation status |
 | `--long-names`, `-l` | `list`, `find`, `outdated` | Print names only, one per line, and nothing when there are none |

@@ -89,10 +89,19 @@ The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips t
 What ghpm shares with gotm lives in [golie](https://github.com/meop/golie), a
 separate module: `ui`, `vers` (pins and comparison — `internal/config/semver.go`
 is only ghpm's names for it), `fetch`, `pinned`, `sheesh`, `shim`, `upgrade`,
-`lock` and `home`. A change to any of those is made there, released there
-(bump its `VERSION`), and taken here with `go get github.com/meop/golie@v<VERSION>`.
-Anything that is only ghpm's — GitHub through `gh`, asset selection, the
-manifest, the commands — stays here.
+`lock` and `home` — and the backend of a package manager itself: `manifest`
+(the manifest's format, its keys, pin levels and shim names;
+`config.Manifest` / `config.PackageEntry` are aliases of it), `layout` (the
+directories under `~/.ghpm`, which `internal/store` wraps), `journal` (commit
+and rollback; `cli/journal.go` keeps only the font undo and ghpm's wrappers)
+and `tidy` (what is broken or orphaned and how it is removed; `cli/tidy.go`
+keeps the tables, the confirms and the font sweep). gotm keeps the same
+manifest and layout for its one package, so a change to any of these is a
+change to both tools' state on disk. A change to any of those is made there,
+released there (bump its `VERSION`), and taken here with
+`go get github.com/meop/golie@v<VERSION>`. Anything that is only ghpm's —
+GitHub through `gh`, asset selection, fonts, the repo registry, the
+commands and everything they print — stays here.
 
 ## Manifest and disk layout
 
@@ -147,6 +156,8 @@ All output and prompts go through `internal/ui`, which uses **deferred separator
 
 ## Conventions
 
+- `--reinstall` and `--force` (`add`, `sync`; `addInstallFlags`) are two flags because they are two things to ask for, and neither implies the other. `--reinstall` redoes ghpm's own work — a package already installed, one already at its latest release — and touches nothing that is not ghpm's. `--force` is the only way a shim replaces a file in `~/.ghpm/bin` that `shim.IsShim` does not say ghpm stamped, which is the one destructive thing either command can do. They were one `--force` that meant both on `add` and only the first on `sync`, so the shim error's own hint (`pass --force to replace it`) was a dead end there. Both now mean the same on both commands, and the same in gotm
+- A flag is one thing to ask for, means the same on every command that has it, and is the same flag in gotm when gotm has it. Do not copy a flag from another tool because it is there: take what is cleanest, and change both tools together
 - All GitHub interaction goes through `gh` CLI, never a Go SDK
 - Interactive prompts must run only in the orchestrator goroutine, never inside a `parallel.Task` worker — `ui` is a shared single sink with one stdin reader, so concurrent prompts would interleave menus and race on stdin. The pattern is: parallel workers do network fetch + scoring (`SelectAssetAuto`) and return candidates; the orchestrator then prompts sequentially over the results (see `download`, `add`, `sync`). Non-prompt output (e.g. download progress) may be emitted from workers: `ui`'s separator state and writes are guarded by a mutex, so concurrent lines stay atomic and the deferred blank can't be double-flushed
 - Manifest is read/written by the orchestrator goroutine only (not by parallel workers)
