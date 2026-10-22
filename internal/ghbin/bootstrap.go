@@ -40,11 +40,9 @@ func Ensure(ctx context.Context) error {
 		return nil
 	}
 	// gh's config dir sits beside it and holds ghpm's token: it is kept, and
-	// everything else that is not the pinned gh is cleared out
-	err = pinned.Ensure(ctx, tool, dir, pinned.Options{
-		Keep:      []string{configDirName},
-		Replacing: func(file string) { ui.Warn("gh: %s does not match its pin, replacing", file) },
-	})
+	// everything else that is not the pinned gh is cleared out. Silent: it is
+	// ghpm's internals, not something its user asked for
+	err = pinned.Ensure(ctx, tool, dir, pinned.Options{Keep: []string{configDirName}})
 	if err != nil {
 		return err
 	}

@@ -34,8 +34,6 @@ func syncSheesh(ctx context.Context) error {
 	if dryRun {
 		return nil
 	}
-	return pinned.Ensure(ctx, tool, shimDir, pinned.Options{
-		Fetching:  func(asset string) { print("%s: asset fetching [%s]...", binSheesh, asset) },
-		Replacing: func(file string) { printWarn(nil, "%s: %s does not match its pin, replacing", binSheesh, file) },
-	})
+	// silent: it is ghpm's internals, not something its user asked for
+	return pinned.Ensure(ctx, tool, shimDir, pinned.Options{})
 }
