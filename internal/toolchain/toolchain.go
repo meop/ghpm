@@ -11,7 +11,7 @@ import "github.com/meop/golie/pinned"
 
 // GhVersion is the pinned gh release. ghpm syncs its own copy to exactly this
 // at runtime, by content — see golie's pinned package — which is why it is
-// absent from `ghpm upgrade`: it is ghpm's internals, not a component a user
+// absent from `ghpm upgrade`: it is internals, not a component a user
 // chose to install, and nobody running `ghpm upgrade` means "and also move
 // gh". Bumping it here, with the digests below, is the only way it moves.
 const GhVersion = "2.100.0"

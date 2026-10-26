@@ -34,6 +34,6 @@ func syncSheesh(ctx context.Context) error {
 	if dryRun {
 		return nil
 	}
-	// silent: it is ghpm's internals, not something its user asked for
+	// silent: it is internals, not something its user asked for
 	return pinned.Ensure(ctx, tool, shimDir, pinned.Options{})
 }
