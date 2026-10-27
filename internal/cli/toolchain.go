@@ -26,14 +26,10 @@ func syncSheesh(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf("no sheesh release asset found for this platform")
 	}
-	if tool.Verified(shimDir) {
-		return nil
-	}
 	// A dry run has nothing to preview here: the vendored toolchain isn't the
 	// change the user asked about, and fetching it anyway would write to disk.
-	if dryRun {
+	if dryRun && !tool.Verified(shimDir) {
 		return nil
 	}
-	// silent: it is internals, not something its user asked for
 	return pinned.Ensure(ctx, tool, shimDir, pinned.Options{})
 }

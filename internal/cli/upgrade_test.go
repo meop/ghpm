@@ -79,8 +79,6 @@ func TestRunUpgrade_FailsWhenTheReleasePageCannotBeRead(t *testing.T) {
 	withHome(t)
 	runInstalled(t)
 	writeSettings(t, &config.Settings{})
-	quiet = true
-	defer func() { quiet = false }()
 
 	if err := runUpgrade(cmdWithExpiredContext(), nil); err == nil {
 		t.Fatal("expected an error when the release page cannot be read")

@@ -21,19 +21,15 @@ func sep() { ui.Break() }
 // result is empty output.
 func namesOnly() bool { return longNames || shortNames }
 
-// -q ("quiet") suppresses status chatter (print, printWarn, printPass) but
-// never the substantive content: printFail (errors), and printTable (which
-// backs both gate previews and the actual result of read-only commands like
-// list/find/outdated — quiet-ing those would make the command return nothing).
 func print(format string, args ...any) {
-	if quiet || namesOnly() {
+	if namesOnly() {
 		return
 	}
 	ui.Out(format, args...)
 }
 
 func printWarn(_ *config.Settings, format string, args ...any) {
-	if quiet || namesOnly() {
+	if namesOnly() {
 		return
 	}
 	ui.Warn(format, args...)
@@ -42,7 +38,7 @@ func printWarn(_ *config.Settings, format string, args ...any) {
 func printFail(_ *config.Settings, format string, args ...any) { ui.Fail(format, args...) }
 
 func printPass(_ *config.Settings, format string, args ...any) {
-	if quiet || namesOnly() {
+	if namesOnly() {
 		return
 	}
 	ui.Pass(format, args...)

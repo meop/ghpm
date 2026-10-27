@@ -76,8 +76,6 @@ func TestDownloadAllAssets_FlattensAcrossPackages(t *testing.T) {
 		{pkgIdx: 0, owner: "o", repo: "r1", tagName: "v1", cacheDir: t.TempDir(), displayName: "pkg1", asset: gh.Asset{Name: "a2"}},
 		{pkgIdx: 1, owner: "o", repo: "r2", tagName: "v1", cacheDir: t.TempDir(), displayName: "pkg2", asset: gh.Asset{Name: "b1"}},
 	}
-	quiet = true
-	defer func() { quiet = false }()
 
 	errs := downloadAllAssets(context.Background(), client, downloads, 5)
 	if len(errs) != 0 {
@@ -196,8 +194,6 @@ func TestDownloadAllAssets_ErrorsMapToOwningPackage(t *testing.T) {
 		{pkgIdx: 0, owner: "o", repo: "r", tagName: "v1", cacheDir: t.TempDir(), displayName: "pkg0", asset: gh.Asset{Name: "bad2"}},
 		{pkgIdx: 1, owner: "o", repo: "r", tagName: "v1", cacheDir: t.TempDir(), displayName: "pkg1", asset: gh.Asset{Name: "ok"}},
 	}
-	quiet = true
-	defer func() { quiet = false }()
 
 	errs := downloadAllAssets(context.Background(), client, downloads, 5)
 	if len(errs) != 1 {

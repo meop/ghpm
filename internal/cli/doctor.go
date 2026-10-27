@@ -51,18 +51,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		warnLabel = fn("WARN")
 	}
 
-	// pass respects -q (it's just a confirmation nothing's wrong); fail and
-	// warn always print, since -q's job is to suppress chatter, not the
-	// problems a diagnostic command exists to surface. Both route through
-	// ui.Out directly rather than print() so they're unaffected by quiet.
 	line := func(status, label, detail string) {
-		if detail != "" {
-			print("  [%s] %s — %s", status, label, detail)
-		} else {
-			print("  [%s] %s", status, label)
-		}
-	}
-	alwaysLine := func(status, label, detail string) {
 		if detail != "" {
 			ui.Out("  [%s] %s — %s", status, label, detail)
 		} else {
@@ -70,8 +59,8 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 	pass := func(label, detail string) { line(passLabel, label, detail) }
-	fail := func(label, detail string) { alwaysLine(failLabel, label, detail) }
-	warn := func(label, detail string) { alwaysLine(warnLabel, label, detail) }
+	fail := func(label, detail string) { line(failLabel, label, detail) }
+	warn := func(label, detail string) { line(warnLabel, label, detail) }
 
 	print("ghpm doctor")
 	print("%s", strings.Repeat("─", 50))

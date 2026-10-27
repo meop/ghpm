@@ -65,7 +65,7 @@ ghpm doctor               # check system health
 |---|---|
 | `--dry-run`, `-n` | Print what would be done without executing |
 | `--yes`, `-y` | Skip confirmation prompts |
-| `--quiet`, `-q` | Print only tables and errors |
+| `--verbose`, `-v` | Also print the checks and syncs of ghpm's vendored tools, and more detail on their errors |
 | `--non-interactive` | Never prompt; for scripted use |
 
 ### Per-command flags

@@ -221,8 +221,6 @@ func TestRunList_NoMatchVsEmpty(t *testing.T) {
 func TestRunList_Empty(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{})
-	quiet = true
-	defer func() { quiet = false }()
 
 	if err := runList(nil, nil); err != nil {
 		t.Fatal(err)
@@ -332,8 +330,6 @@ func TestRunRefresh(t *testing.T) {
 	writeSettings(t, &config.Settings{
 		RepoSources: []string{"github.com/meop/ghpm-config"},
 	})
-	quiet = true
-	defer func() { quiet = false }()
 
 	fakeGHBin(t, `case "$*" in
   *api*) echo '{"repos": {"fzf": "github.com/junegunn/fzf"}}' ;;

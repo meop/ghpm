@@ -37,11 +37,11 @@ func Ensure(ctx context.Context) error {
 		return fmt.Errorf("no gh release available for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	if tool.Verified(dir) {
+		ui.Verbose("%s %s: current in %s", tool.Name, tool.Version, dir)
 		return nil
 	}
 	// gh's config dir sits beside it and holds ghpm's token: it is kept, and
-	// everything else that is not the pinned gh is cleared out. Silent: it is
-	// internals, not something its user asked for
+	// everything else that is not the pinned gh is cleared out
 	err = pinned.Ensure(ctx, tool, dir, pinned.Options{Keep: []string{configDirName}})
 	if err != nil {
 		return err

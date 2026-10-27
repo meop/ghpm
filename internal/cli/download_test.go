@@ -16,8 +16,6 @@ func TestRunDownload_NoGH(t *testing.T) {
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
 	writeSettings(t, &config.Settings{})
-	quiet = true
-	defer func() { quiet = false }()
 
 	err := runDownload(cmdWithExpiredContext(), []string{"fzf"})
 	if err == nil {
@@ -105,8 +103,6 @@ func TestRunInfo_NoGH(t *testing.T) {
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)
 	writeSettings(t, &config.Settings{})
-	quiet = true
-	defer func() { quiet = false }()
 
 	err := runInfo(cmdWithExpiredContext(), []string{"fzf"})
 	if err == nil {
