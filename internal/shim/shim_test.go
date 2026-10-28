@@ -13,8 +13,6 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-// stampedBody is a wedge template with mallet's trailer for target, which is
-// what golie reads to tell a shim is ghpm's own.
 func stampedBody(target string) []byte {
 	n := make([]byte, 4)
 	binary.LittleEndian.PutUint32(n, uint32(len(target)))
@@ -109,8 +107,8 @@ func TestRemove_Idempotent(t *testing.T) {
 	}
 }
 
-// writeFakeShim stamps what IsShim looks for: the mallet marker and a source
-// path inside ghpm's extract dir.
+// writeFakeShim stamps what IsShim looks for: a source path inside ghpm's
+// extract dir.
 func writeFakeShim(t *testing.T, path string) {
 	t.Helper()
 	extracts, err := store.ExtractsDir()

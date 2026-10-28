@@ -38,6 +38,11 @@ developed, so a test must not assume Unix:
 - A path a test expects is built with `filepath`, and a directory the host
   chooses (the user font dir) is asked for rather than spelled.
 
+## Comments
+
+No comment explains why code does what it does where a unit test can show it: the test is the explanation, and it
+fails when the reasoning stops holding. A comment is only for what no test can show.
+
 ## Keeping this file current
 
 Update this file whenever you make changes in these categories — do not wait to be asked:
