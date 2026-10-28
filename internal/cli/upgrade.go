@@ -45,7 +45,7 @@ func newUpgradeCmd() *cobra.Command {
 }
 
 // runUpgrade upgrades ghpm and nothing else. The tools ghpm vendors for its
-// own use (gh, sheesh's kebab) are deliberately not components here: they are
+// own use (gh, wedge's mallet) are deliberately not components here: they are
 // pinned and synced to that pin at runtime, so "upgrade" means exactly what a
 // user reading it expects — upgrade ghpm — rather than asking about internals
 // they never chose to install. The release's archive is always checked

@@ -86,7 +86,7 @@ func TestRunUpgrade_FailsWhenTheReleasePageCannotBeRead(t *testing.T) {
 }
 
 // TestRunUpgrade_OnlyGhpmIsAComponent is the regression test for the reported
-// bug: upgrade offered to move gh and sheesh, ghpm's own vendored toolchain,
+// bug: upgrade offered to move gh and wedge, ghpm's own vendored toolchain,
 // which means nothing to someone who typed `ghpm upgrade` to upgrade ghpm.
 // Both are pinned and synced at runtime instead, so neither may appear here —
 // not even as an up-to-date row.
@@ -111,7 +111,7 @@ func TestRunUpgrade_OnlyGhpmIsAComponent(t *testing.T) {
 	if !strings.Contains(out, binGhpm) || !strings.Contains(out, "9.9.9") {
 		t.Errorf("expected ghpm's own update in the gate table, got:\n%s", out)
 	}
-	if strings.Contains(out, binSheesh) || strings.Contains(out, "gh ") {
+	if strings.Contains(out, binWedge) || strings.Contains(out, "gh ") {
 		t.Errorf("only ghpm may surface in upgrade, got:\n%s", out)
 	}
 }

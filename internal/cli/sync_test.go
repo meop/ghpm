@@ -12,16 +12,16 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-// fakeKebab stages a kebab script that records its args to a file alongside
-// it, then exits 0 — enough for shim.Create to succeed without a real sheesh
+// fakeMallet stages a mallet script that records its args to a file alongside
+// it, then exits 0 — enough for shim.Create to succeed without a real wedge
 // install.
-func fakeKebab(t *testing.T) {
+func fakeMallet(t *testing.T) {
 	t.Helper()
 	shimDir, err := store.ShimDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	faketool.Write(t, filepath.Join(shimDir, exeName("kebab")), `echo "$@" >> "$(dirname "$0")/kebab-args.txt"`)
+	faketool.Write(t, filepath.Join(shimDir, exeName("mallet")), `echo "$@" >> "$(dirname "$0")/mallet-args.txt"`)
 }
 
 func names(assets []gh.Asset) []string {
@@ -139,7 +139,7 @@ func TestResolvePriorAssets_NoPriorAssets_NotClean(t *testing.T) {
 // when newBin was non-empty.
 func TestSyncBinShims_RemovesStaleWhenAllBinsGone(t *testing.T) {
 	withHome(t)
-	fakeKebab(t)
+	fakeMallet(t)
 	binDir, err := store.BinDir()
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestSyncBinShims_RemovesStaleWhenAllBinsGone(t *testing.T) {
 
 func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	withHome(t)
-	fakeKebab(t)
+	fakeMallet(t)
 	binDir, err := store.BinDir()
 	if err != nil {
 		t.Fatal(err)
@@ -183,12 +183,12 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args, err := os.ReadFile(filepath.Join(shimDir, "kebab-args.txt"))
+	args, err := os.ReadFile(filepath.Join(shimDir, "mallet-args.txt"))
 	if err != nil {
-		t.Fatalf("expected kebab to have been invoked: %v", err)
+		t.Fatalf("expected mallet to have been invoked: %v", err)
 	}
 	if !strings.Contains(string(args), "new") {
-		t.Errorf("expected kebab args to reference the new shim name: %s", args)
+		t.Errorf("expected mallet args to reference the new shim name: %s", args)
 	}
 }
 
@@ -198,7 +198,7 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 // that only add honored the flag, so the hint was a dead end on sync.
 func TestSyncBinShims_ForceReplacesAForeignFile(t *testing.T) {
 	withHome(t)
-	fakeKebab(t)
+	fakeMallet(t)
 	binDir, err := store.BinDir()
 	if err != nil {
 		t.Fatal(err)
@@ -217,16 +217,16 @@ func TestSyncBinShims_ForceReplacesAForeignFile(t *testing.T) {
 	if len(errs) != 1 || !strings.Contains(errs[0].err.Error(), "--force") || len(installed) != 0 {
 		t.Fatalf("expected the foreign file to stop the shim and name --force, got %v, %v", installed, errs)
 	}
-	if _, err := os.Stat(filepath.Join(shimDir, "kebab-args.txt")); !os.IsNotExist(err) {
-		t.Fatal("expected kebab not to be run over a foreign file")
+	if _, err := os.Stat(filepath.Join(shimDir, "mallet-args.txt")); !os.IsNotExist(err) {
+		t.Fatal("expected mallet not to be run over a foreign file")
 	}
 
 	installed, errs = syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", nil, bins, true)
 	if len(errs) != 0 || installed["tool"] != "bin/tool" {
 		t.Fatalf("expected --force to stamp over the foreign file, got %v, %v", installed, errs)
 	}
-	if _, err := os.Stat(filepath.Join(shimDir, "kebab-args.txt")); err != nil {
-		t.Fatalf("expected kebab to have been run: %v", err)
+	if _, err := os.Stat(filepath.Join(shimDir, "mallet-args.txt")); err != nil {
+		t.Fatalf("expected mallet to have been run: %v", err)
 	}
 }
 
@@ -238,10 +238,10 @@ func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// No fakeKebab staged, so shim.Create fails for every entry in newBin.
+	// No fakeMallet staged, so shim.Create fails for every entry in newBin.
 	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"}, false)
 	if len(errs) == 0 {
-		t.Fatal("expected an error when kebab is not staged")
+		t.Fatal("expected an error when mallet is not staged")
 	}
 	if _, ok := installed["gh"]; ok {
 		t.Errorf("expected a failed create to not be recorded as installed, got %v", installed)

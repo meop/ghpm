@@ -1,6 +1,7 @@
 package shim
 
 import (
+	"encoding/binary"
 	golie "github.com/meop/golie/shim"
 
 	"os"
@@ -12,8 +13,13 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-// sheeshMarker is what every kebab template carries; golie looks for it.
-const sheeshMarker = "use kebab to stamp a source path"
+// stampedBody is a wedge template with mallet's trailer for target, which is
+// what golie reads to tell a shim is ghpm's own.
+func stampedBody(target string) []byte {
+	n := make([]byte, 4)
+	binary.LittleEndian.PutUint32(n, uint32(len(target)))
+	return append(append([]byte("a wedge template"+target), n...), "SHIM"...)
+}
 
 func withHome(t *testing.T) string {
 	t.Helper()
@@ -25,20 +31,20 @@ func withHome(t *testing.T) string {
 	return tmp
 }
 
-// fakeKebab stands a script in for kebab in shimDir that records its args to
+// fakeMallet stands a script in for mallet in shimDir that records its args to
 // a file alongside it, then exits 0.
-func fakeKebab(t *testing.T, shimDir string) {
+func fakeMallet(t *testing.T, shimDir string) {
 	t.Helper()
-	faketool.Write(t, filepath.Join(shimDir, golie.ExeName("kebab")), `echo "$@" > "$(dirname "$0")/kebab-args.txt"`)
+	faketool.Write(t, filepath.Join(shimDir, golie.ExeName("mallet")), `echo "$@" > "$(dirname "$0")/mallet-args.txt"`)
 }
 
-func TestCreate_InvokesKebabWithPaths(t *testing.T) {
+func TestCreate_InvokesMalletWithPaths(t *testing.T) {
 	home := withHome(t)
 	shimDir, err := store.ShimDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	fakeKebab(t, shimDir)
+	fakeMallet(t, shimDir)
 
 	pkgDir := t.TempDir()
 	srcBin := filepath.Join(pkgDir, golie.ExeName("fzf"))
@@ -50,10 +56,10 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	argsFile := filepath.Join(shimDir, "kebab-args.txt")
+	argsFile := filepath.Join(shimDir, "mallet-args.txt")
 	data, err := os.ReadFile(argsFile)
 	if err != nil {
-		t.Fatalf("kebab-args.txt not written: %v", err)
+		t.Fatalf("mallet-args.txt not written: %v", err)
 	}
 	got := strings.TrimSpace(string(data))
 
@@ -67,14 +73,14 @@ func TestCreate_InvokesKebabWithPaths(t *testing.T) {
 	}
 }
 
-func TestCreate_KebabMissing(t *testing.T) {
+func TestCreate_MalletMissing(t *testing.T) {
 	withHome(t)
 	pkgDir := t.TempDir()
 	err := Create(golie.ExeName("fzf"), golie.ExeName("fzf"), pkgDir, "", false)
 	if err == nil {
-		t.Fatal("expected error when kebab is absent")
+		t.Fatal("expected error when mallet is absent")
 	}
-	if !strings.Contains(err.Error(), "kebab not found") {
+	if !strings.Contains(err.Error(), "mallet not found") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -103,7 +109,7 @@ func TestRemove_Idempotent(t *testing.T) {
 	}
 }
 
-// writeFakeShim stamps what IsShim looks for: the kebab marker and a source
+// writeFakeShim stamps what IsShim looks for: the mallet marker and a source
 // path inside ghpm's extract dir.
 func writeFakeShim(t *testing.T, path string) {
 	t.Helper()
@@ -111,7 +117,7 @@ func writeFakeShim(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := []byte(sheeshMarker + "\x00" + filepath.Join(extracts, "fzf", "1.0", "fzf"))
+	body := stampedBody(filepath.Join(extracts, "fzf", "1.0", "fzf"))
 	if err := os.WriteFile(path, body, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -138,9 +144,9 @@ func TestIsShim_OnlyOurOwn(t *testing.T) {
 		t.Error("a binary ghpm did not stamp must not be claimed")
 	}
 
-	// a sheesh shim pointing somewhere else is not ghpm's to touch either
+	// a wedge shim pointing somewhere else is not ghpm's to touch either
 	elsewhere := filepath.Join(binDir, "elsewhere")
-	if err := os.WriteFile(elsewhere, []byte(sheeshMarker+"\x00/opt/other/bin/tool"), 0755); err != nil {
+	if err := os.WriteFile(elsewhere, stampedBody("/opt/other/bin/tool"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if IsShim(elsewhere) {

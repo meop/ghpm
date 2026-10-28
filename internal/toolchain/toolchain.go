@@ -3,7 +3,7 @@
 // "vendor": Go reserves that directory name, and a repo that ignores it (as
 // this one does at the module root) would silently drop the package.
 //
-// sheesh's pin is golie's (golie/sheesh), since every tool built on golie
+// wedge's pin is golie's (golie/wedge), since every tool built on golie
 // stamps with the same one. gh is ghpm's alone, and is pinned here.
 package toolchain
 

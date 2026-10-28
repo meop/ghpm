@@ -18,49 +18,49 @@ import (
 	"testing"
 
 	"github.com/meop/golie/pinned"
-	"github.com/meop/golie/sheesh"
+	"github.com/meop/golie/wedge"
 
 	"github.com/meop/ghpm/internal/store"
 )
 
-const pinnedKebab = "#!/bin/sh\necho the pinned kebab\n"
+const pinnedMallet = "#!/bin/sh\necho the pinned mallet\n"
 
 func sha(b []byte) string {
 	s := sha256.Sum256(b)
 	return hex.EncodeToString(s[:])
 }
 
-// sheeshKey finds this platform's entry in golie's pin table.
-func sheeshKey(t *testing.T) string {
+// wedgeKey finds this platform's entry in golie's pin table.
+func wedgeKey(t *testing.T) string {
 	t.Helper()
-	tool, ok := sheesh.Tool(runtime.GOOS, runtime.GOARCH)
+	tool, ok := wedge.Tool(runtime.GOOS, runtime.GOARCH)
 	if !ok {
-		t.Skipf("no sheesh release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
+		t.Skipf("no wedge release convention known for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	for key, asset := range sheesh.Assets {
+	for key, asset := range wedge.Assets {
 		if asset.SHA256 == tool.Asset.SHA256 {
 			return key
 		}
 	}
-	t.Fatal("this platform's sheesh asset is not in the pin table")
+	t.Fatal("this platform's wedge asset is not in the pin table")
 	return ""
 }
 
-// pinSheesh makes asset what golie pins for this platform, for the length of
+// pinWedge makes asset what golie pins for this platform, for the length of
 // the test: what a fake release serves is not what the real pin names.
-func pinSheesh(t *testing.T, asset pinned.Asset) {
+func pinWedge(t *testing.T, asset pinned.Asset) {
 	t.Helper()
-	key := sheeshKey(t)
-	orig := sheesh.Assets[key]
-	sheesh.Assets[key] = asset
-	t.Cleanup(func() { sheesh.Assets[key] = orig })
+	key := wedgeKey(t)
+	orig := wedge.Assets[key]
+	wedge.Assets[key] = asset
+	t.Cleanup(func() { wedge.Assets[key] = orig })
 }
 
-// fakeSheeshArchive builds a release archive for the current platform
-// holding one executable, kebab.
-func fakeSheeshArchive(t *testing.T) []byte {
+// fakeWedgeArchive builds a release archive for the current platform
+// holding one executable, mallet.
+func fakeWedgeArchive(t *testing.T) []byte {
 	t.Helper()
-	name := exeName("kebab")
+	name := exeName("mallet")
 	var buf bytes.Buffer
 	if runtime.GOOS == "windows" {
 		zw := zip.NewWriter(&buf)
@@ -68,7 +68,7 @@ func fakeSheeshArchive(t *testing.T) []byte {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _ = f.Write([]byte(pinnedKebab))
+		_, _ = f.Write([]byte(pinnedMallet))
 		if err := zw.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -76,10 +76,10 @@ func fakeSheeshArchive(t *testing.T) []byte {
 	}
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(pinnedKebab)), Typeflag: tar.TypeReg}); err != nil {
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(pinnedMallet)), Typeflag: tar.TypeReg}); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = tw.Write([]byte(pinnedKebab))
+	_, _ = tw.Write([]byte(pinnedMallet))
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -89,110 +89,110 @@ func fakeSheeshArchive(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// unreachableSheesh points golie's release base at a closed local port, so a
-// test that hits it proves syncSheesh attempted a fetch it should have skipped.
-func unreachableSheesh(t *testing.T) {
+// unreachableWedge points golie's release base at a closed local port, so a
+// test that hits it proves syncWedge attempted a fetch it should have skipped.
+func unreachableWedge(t *testing.T) {
 	t.Helper()
 	srv := httptest.NewServer(nil)
 	url := srv.URL
 	srv.Close()
-	orig := sheesh.ReleaseBase
-	sheesh.ReleaseBase = url + "/"
-	t.Cleanup(func() { sheesh.ReleaseBase = orig })
+	orig := wedge.ReleaseBase
+	wedge.ReleaseBase = url + "/"
+	t.Cleanup(func() { wedge.ReleaseBase = orig })
 }
 
-// serveSheeshRelease stands up a local server offering a fake release for
+// serveWedgeRelease stands up a local server offering a fake release for
 // the current platform, points golie at it, and pins it.
-func serveSheeshRelease(t *testing.T) {
+func serveWedgeRelease(t *testing.T) {
 	t.Helper()
-	archive := fakeSheeshArchive(t)
-	pinSheesh(t, pinned.Asset{SHA256: sha(archive), Files: map[string]string{exeName("kebab"): sha([]byte(pinnedKebab))}})
+	archive := fakeWedgeArchive(t)
+	pinWedge(t, pinned.Asset{SHA256: sha(archive), Files: map[string]string{exeName("mallet"): sha([]byte(pinnedMallet))}})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(archive)
 	}))
 	t.Cleanup(srv.Close)
-	orig := sheesh.ReleaseBase
-	sheesh.ReleaseBase = srv.URL + "/"
-	t.Cleanup(func() { sheesh.ReleaseBase = orig })
+	orig := wedge.ReleaseBase
+	wedge.ReleaseBase = srv.URL + "/"
+	t.Cleanup(func() { wedge.ReleaseBase = orig })
 }
 
-func kebabPathForTest(t *testing.T) string {
+func malletPathForTest(t *testing.T) string {
 	t.Helper()
 	shimDir, err := store.ShimDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(shimDir, exeName("kebab"))
+	return filepath.Join(shimDir, exeName("mallet"))
 }
 
-func TestSyncSheesh_NoOpWhenKebabMatchesItsPin(t *testing.T) {
+func TestSyncWedge_NoOpWhenMalletMatchesItsPin(t *testing.T) {
 	withHome(t)
-	unreachableSheesh(t)
-	if err := os.WriteFile(kebabPathForTest(t), []byte(pinnedKebab), 0755); err != nil {
+	unreachableWedge(t)
+	if err := os.WriteFile(malletPathForTest(t), []byte(pinnedMallet), 0755); err != nil {
 		t.Fatal(err)
 	}
-	pinSheesh(t, pinned.Asset{Files: map[string]string{exeName("kebab"): sha([]byte(pinnedKebab))}})
+	pinWedge(t, pinned.Asset{Files: map[string]string{exeName("mallet"): sha([]byte(pinnedMallet))}})
 
-	if err := syncSheesh(context.Background()); err != nil {
-		t.Errorf("expected a no-op (and no fetch) when kebab already matches its pin, got %v", err)
+	if err := syncWedge(context.Background()); err != nil {
+		t.Errorf("expected a no-op (and no fetch) when mallet already matches its pin, got %v", err)
 	}
 }
 
-func TestSyncSheesh_PropagatesFetchError(t *testing.T) {
+func TestSyncWedge_PropagatesFetchError(t *testing.T) {
 	withHome(t)
-	unreachableSheesh(t)
+	unreachableWedge(t)
 
-	if err := syncSheesh(context.Background()); err == nil {
+	if err := syncWedge(context.Background()); err == nil {
 		t.Fatal("expected the fetch error to propagate")
 	}
 }
 
-// TestSyncSheesh_VendorsFromPinnedRelease covers the real path: no kebab yet,
-// so syncSheesh downloads the pinned asset for this platform and unpacks it
+// TestSyncWedge_VendorsFromPinnedRelease covers the real path: no mallet yet,
+// so syncWedge downloads the pinned asset for this platform and unpacks it
 // into ShimDir.
-func TestSyncSheesh_VendorsFromPinnedRelease(t *testing.T) {
+func TestSyncWedge_VendorsFromPinnedRelease(t *testing.T) {
 	withHome(t)
-	serveSheeshRelease(t)
+	serveWedgeRelease(t)
 
-	if err := syncSheesh(context.Background()); err != nil {
+	if err := syncWedge(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(kebabPathForTest(t))
+	info, err := os.Stat(malletPathForTest(t))
 	if err != nil {
-		t.Fatalf("expected kebab to be vendored: %v", err)
+		t.Fatalf("expected mallet to be vendored: %v", err)
 	}
 	if runtime.GOOS != "windows" && info.Mode()&0111 == 0 {
-		t.Error("vendored kebab should be executable")
+		t.Error("vendored mallet should be executable")
 	}
 }
 
-// TestSyncSheesh_ReplacesAKebabThatDoesNotMatch is the point of pinning by
-// content: a kebab that merely exists is not enough, and neither is one that
+// TestSyncWedge_ReplacesAMalletThatDoesNotMatch is the point of pinning by
+// content: a mallet that merely exists is not enough, and neither is one that
 // would report the right version. Whatever is not the pinned file is
 // replaced, and the directory ends up holding the pinned release and nothing
 // else — no file an older release shipped, nothing left of the fetch.
-func TestSyncSheesh_ReplacesAKebabThatDoesNotMatch(t *testing.T) {
+func TestSyncWedge_ReplacesAMalletThatDoesNotMatch(t *testing.T) {
 	withHome(t)
-	kebabPath := kebabPathForTest(t)
-	if err := os.WriteFile(kebabPath, []byte("#!/bin/sh\necho "+sheesh.Version+"\n"), 0755); err != nil {
+	malletPath := malletPathForTest(t)
+	if err := os.WriteFile(malletPath, []byte("#!/bin/sh\necho "+wedge.Version+"\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	stale := filepath.Join(filepath.Dir(kebabPath), "shipped-by-an-older-release")
+	stale := filepath.Join(filepath.Dir(malletPath), "shipped-by-an-older-release")
 	if err := os.WriteFile(stale, []byte("x"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	serveSheeshRelease(t)
+	serveWedgeRelease(t)
 
-	if err := syncSheesh(context.Background()); err != nil {
+	if err := syncWedge(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := os.ReadFile(kebabPath); string(got) != pinnedKebab {
-		t.Errorf("expected the kebab that does not match its pin to be replaced, got %q", got)
+	if got, _ := os.ReadFile(malletPath); string(got) != pinnedMallet {
+		t.Errorf("expected the mallet that does not match its pin to be replaced, got %q", got)
 	}
 	if _, err := os.Stat(stale); err == nil {
 		t.Error("a file the pinned release does not ship was left in the vendored dir")
 	}
-	entries, err := os.ReadDir(filepath.Dir(filepath.Dir(kebabPath)))
+	entries, err := os.ReadDir(filepath.Dir(filepath.Dir(malletPath)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,43 +200,43 @@ func TestSyncSheesh_ReplacesAKebabThatDoesNotMatch(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if !slices.Equal(names, []string{"sheesh"}) {
-		t.Errorf("the sync left %v in the vendor dir, want only sheesh", names)
+	if !slices.Equal(names, []string{"wedge"}) {
+		t.Errorf("the sync left %v in the vendor dir, want only wedge", names)
 	}
 }
 
-// TestSyncSheesh_RefusesAReleaseThatDoesNotMatchItsPin: the pin names exact
+// TestSyncWedge_RefusesAReleaseThatDoesNotMatchItsPin: the pin names exact
 // contents, so a release serving anything else is not vendored and what was
 // there stays.
-func TestSyncSheesh_RefusesAReleaseThatDoesNotMatchItsPin(t *testing.T) {
+func TestSyncWedge_RefusesAReleaseThatDoesNotMatchItsPin(t *testing.T) {
 	withHome(t)
-	kebabPath := kebabPathForTest(t)
-	if err := os.WriteFile(kebabPath, []byte("the old kebab"), 0755); err != nil {
+	malletPath := malletPathForTest(t)
+	if err := os.WriteFile(malletPath, []byte("the old mallet"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	serveSheeshRelease(t)
-	pinSheesh(t, pinned.Asset{SHA256: strings.Repeat("0", 64), Files: map[string]string{exeName("kebab"): sha([]byte(pinnedKebab))}})
+	serveWedgeRelease(t)
+	pinWedge(t, pinned.Asset{SHA256: strings.Repeat("0", 64), Files: map[string]string{exeName("mallet"): sha([]byte(pinnedMallet))}})
 
-	if err := syncSheesh(context.Background()); err == nil {
+	if err := syncWedge(context.Background()); err == nil {
 		t.Fatal("expected a release that does not match its pinned digest to be refused")
 	}
-	if got, _ := os.ReadFile(kebabPath); string(got) != "the old kebab" {
-		t.Errorf("the vendored kebab was disturbed by a release that failed its check: %q", got)
+	if got, _ := os.ReadFile(malletPath); string(got) != "the old mallet" {
+		t.Errorf("the vendored mallet was disturbed by a release that failed its check: %q", got)
 	}
 }
 
-// TestSyncSheesh_DryRunWritesNothing: a dry run is about the command the user
+// TestSyncWedge_DryRunWritesNothing: a dry run is about the command the user
 // asked for, and vendoring the toolchain to preview it would be a real write.
-func TestSyncSheesh_DryRunWritesNothing(t *testing.T) {
+func TestSyncWedge_DryRunWritesNothing(t *testing.T) {
 	withHome(t)
-	unreachableSheesh(t)
+	unreachableWedge(t)
 	dryRun = true
 	defer func() { dryRun = false }()
 
-	if err := syncSheesh(context.Background()); err != nil {
+	if err := syncWedge(context.Background()); err != nil {
 		t.Fatalf("expected a dry run to be a silent no-op, got %v", err)
 	}
-	if _, err := os.Stat(kebabPathForTest(t)); err == nil {
-		t.Error("expected no kebab written during a dry run")
+	if _, err := os.Stat(malletPathForTest(t)); err == nil {
+		t.Error("expected no mallet written during a dry run")
 	}
 }

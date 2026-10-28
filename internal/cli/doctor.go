@@ -203,11 +203,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	if shimDir, err := store.ShimDir(); err == nil {
-		kebabPath := filepath.Join(shimDir, exeName("kebab"))
-		if _, err := os.Stat(kebabPath); err != nil {
-			warn("kebab", "not present — run any command that creates shims (e.g. 'ghpm add') to vendor it")
+		malletPath := filepath.Join(shimDir, exeName("mallet"))
+		if _, err := os.Stat(malletPath); err != nil {
+			warn("mallet", "not present — run any command that creates shims (e.g. 'ghpm add') to vendor it")
 		} else {
-			pass("kebab", "present — "+kebabPath)
+			pass("mallet", "present — "+malletPath)
 		}
 	}
 

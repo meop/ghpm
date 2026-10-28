@@ -109,7 +109,7 @@ func VendorDir() (string, error) {
 	return l.VendorDir()
 }
 
-// ShimDir holds sheesh's own kebab stamper (and whatever else its release
+// ShimDir holds wedge's own mallet stamper (and whatever else its release
 // ships), alongside gh under vendor — the other tool ghpm needs to work
 // rather than one it installs for you.
 func ShimDir() (string, error) {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,7 +34,7 @@ func cmdWithExpiredContext() *cobra.Command {
 	return cmd
 }
 
-// writeFakeShim stamps what shim.IsShim looks for, so a test fixture is a shim
+// writeFakeShim stamps what shim.IsShim looks for, a trailer naming a target under the extract dir, so a test fixture is a shim
 // ghpm would recognize as its own rather than a stranger's binary.
 func writeFakeShim(t *testing.T, path string) {
 	t.Helper()
@@ -41,8 +42,16 @@ func writeFakeShim(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := []byte("use kebab to stamp a source path\x00" + filepath.Join(extracts, "pkg", "1.0", "bin"))
+	body := stampedBody(filepath.Join(extracts, "pkg", "1.0", "bin"))
 	if err := os.WriteFile(path, body, 0755); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// stampedBody is a wedge template with mallet's trailer for target, which is
+// what golie reads to tell a shim is ghpm's own.
+func stampedBody(target string) []byte {
+	n := make([]byte, 4)
+	binary.LittleEndian.PutUint32(n, uint32(len(target)))
+	return append(append([]byte("a wedge template"+target), n...), "SHIM"...)
 }

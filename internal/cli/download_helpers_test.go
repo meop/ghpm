@@ -24,7 +24,7 @@ type fakeGHClient struct {
 
 	// latestRelease/latestReleaseErr control GetLatestRelease's response, and
 	// tagRelease/tagReleaseErr GetReleaseByTag's, for callers (e.g.
-	// syncSheesh) that act on a release rather than just downloading assets
+	// syncWedge) that act on a release rather than just downloading assets
 	// by name.
 	latestRelease    gh.Release
 	latestReleaseErr error

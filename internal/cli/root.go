@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	binGhpm   = "ghpm"
-	binSheesh = "sheesh"
+	binGhpm  = "ghpm"
+	binWedge = "wedge"
 )
 
 var (

@@ -11,7 +11,7 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-// Stamper is ghpm's: shims in bin, kebab under vendor, and a shim that points
+// Stamper is ghpm's: shims in bin, mallet under vendor, and a shim that points
 // into the extract dir is one ghpm created — anything else in the bin
 // directory belongs to somebody else.
 func Stamper() (golie.Stamper, error) {
@@ -27,7 +27,7 @@ func Stamper() (golie.Stamper, error) {
 	if err != nil {
 		return golie.Stamper{}, err
 	}
-	return golie.Stamper{Tool: "ghpm", BinDir: binDir, KebabDir: shimDir, Owned: extracts}, nil
+	return golie.Stamper{Tool: "ghpm", BinDir: binDir, MalletDir: shimDir, Owned: extracts}, nil
 }
 
 // IsShim reports whether path is a shim ghpm stamped. It is the guard for every
@@ -38,8 +38,8 @@ func IsShim(path string) bool {
 	return err == nil && s.IsShim(path)
 }
 
-// Create stamps a sheesh shim at ~/.ghpm/bin/shimName that execs the resolved
-// binary inside pkgDir/binSubdir when run. kebab selects the appropriate sheesh
+// Create stamps a wedge shim at ~/.ghpm/bin/shimName that execs the resolved
+// binary inside pkgDir/binSubdir when run. mallet selects the appropriate wedge
 // template (console vs GUI on Windows) automatically.
 func Create(shimName, binaryName, pkgDir, binSubdir string, force bool) error {
 	s, err := Stamper()

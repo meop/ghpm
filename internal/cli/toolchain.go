@@ -6,25 +6,25 @@ import (
 	"runtime"
 
 	"github.com/meop/golie/pinned"
-	"github.com/meop/golie/sheesh"
+	"github.com/meop/golie/wedge"
 
 	"github.com/meop/ghpm/internal/store"
 )
 
-// syncSheesh makes sure ghpm's vendored kebab and its shim templates are
-// exactly the sheesh release golie pins, checked by content. It is the
+// syncWedge makes sure ghpm's vendored mallet and its shim templates are
+// exactly the wedge release golie pins, checked by content. It is the
 // counterpart to ghbin.Ensure and follows the same rules (see golie's pinned
 // package): a copy that does not match — another version's, a damaged one, a
 // swapped one — is replaced from a plain download of the pinned release, and
 // the directory ends up holding that release's files and nothing else.
-func syncSheesh(ctx context.Context) error {
+func syncWedge(ctx context.Context) error {
 	shimDir, err := store.ShimDir()
 	if err != nil {
 		return err
 	}
-	tool, ok := sheesh.Tool(runtime.GOOS, runtime.GOARCH)
+	tool, ok := wedge.Tool(runtime.GOOS, runtime.GOARCH)
 	if !ok {
-		return fmt.Errorf("no sheesh release asset found for this platform")
+		return fmt.Errorf("no wedge release asset found for this platform")
 	}
 	// A dry run has nothing to preview here: the vendored toolchain isn't the
 	// change the user asked about, and fetching it anyway would write to disk.

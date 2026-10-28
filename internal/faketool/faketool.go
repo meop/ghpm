@@ -1,5 +1,5 @@
 // Package faketool lets a test stand a shell script in for a real executable
-// — ghpm's vendored gh, sheesh's kebab — on every platform.
+// — ghpm's vendored gh, wedge's mallet — on every platform.
 //
 // On Unix a script with a #! line is an executable, and that is all Write
 // does. Windows runs only a real program from a path ending in .exe, so there

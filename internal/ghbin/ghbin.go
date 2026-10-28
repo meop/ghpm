@@ -23,7 +23,7 @@ func vendorName() string {
 }
 
 // vendorSubDir returns ghpm's own gh subtree under vendor: vendor/gh/, next
-// to vendor/sheesh/ (see internal/store.ShimDir).
+// to vendor/wedge/ (see internal/store.ShimDir).
 func vendorSubDir() (string, error) {
 	dir, err := store.VendorDir()
 	if err != nil {

@@ -87,7 +87,7 @@ func TestExtractUndo_RemovesNewVersionDir(t *testing.T) {
 // to the extract dir of the version the manifest still names.
 func TestShimUndo_RestampsAtOldExtractDir(t *testing.T) {
 	withHome(t)
-	fakeKebab(t)
+	fakeMallet(t)
 	oldPkgDir := filepath.Join(t.TempDir(), "1.0.0")
 
 	if err := shimUndo("pwsh", "bin/pwsh", oldPkgDir)(); err != nil {
@@ -98,9 +98,9 @@ func TestShimUndo_RestampsAtOldExtractDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args, err := os.ReadFile(filepath.Join(shimDir, "kebab-args.txt"))
+	args, err := os.ReadFile(filepath.Join(shimDir, "mallet-args.txt"))
 	if err != nil {
-		t.Fatalf("expected kebab to have been invoked: %v", err)
+		t.Fatalf("expected mallet to have been invoked: %v", err)
 	}
 	if !strings.Contains(string(args), filepath.Join(oldPkgDir, "bin", "pwsh")) {
 		t.Errorf("expected the shim restamped against the old extract dir, got %s", args)
@@ -187,20 +187,20 @@ func TestSyncBinShims_RollbackRestoresShimAfterFailedCreate(t *testing.T) {
 	withHome(t)
 	oldPkgDir := filepath.Join(t.TempDir(), "7.5.0")
 
-	// No fakeKebab staged yet, so every shim.Create fails the way a locked
+	// No fakeMallet staged yet, so every shim.Create fails the way a locked
 	// target does.
 	jrn := &journal{}
 	installed, errs := syncBinShims(&config.Settings{}, jrn, t.TempDir(), oldPkgDir,
 		map[string]string{"pwsh": "pwsh"}, map[string]string{"pwsh": "pwsh"}, false)
 	if len(errs) == 0 {
-		t.Fatal("expected the create to fail with no kebab staged")
+		t.Fatal("expected the create to fail with no mallet staged")
 	}
 	if _, ok := installed["pwsh"]; ok {
 		t.Errorf("expected a failed create to not be recorded as installed, got %v", installed)
 	}
 
 	// Rolling back has to restamp against the version the manifest still names.
-	fakeKebab(t)
+	fakeMallet(t)
 	if rbErrs := jrn.Rollback(); len(rbErrs) != 0 {
 		t.Fatalf("unexpected rollback errors: %v", rbErrs)
 	}
@@ -208,7 +208,7 @@ func TestSyncBinShims_RollbackRestoresShimAfterFailedCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args, err := os.ReadFile(filepath.Join(shimDir, "kebab-args.txt"))
+	args, err := os.ReadFile(filepath.Join(shimDir, "mallet-args.txt"))
 	if err != nil {
 		t.Fatalf("expected the shim to be restamped on rollback: %v", err)
 	}

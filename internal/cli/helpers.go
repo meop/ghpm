@@ -180,7 +180,7 @@ func initCommand(ctx context.Context, opts cmdOptions) (*cmdInit, error) {
 	}
 
 	if opts.Shim {
-		if err := syncSheesh(ctx); err != nil {
+		if err := syncWedge(ctx); err != nil {
 			printFail(cfg, "%v", err)
 			return nil, ci.fail()
 		}
