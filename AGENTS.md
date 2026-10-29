@@ -159,6 +159,17 @@ All output and prompts go through `internal/ui`, which uses **deferred separator
 - Per-package messages inline the name (e.g., `"%s installed"`, `"%s: bin found [%s]"`) — no per-result title line in the final install/sync/download output loops.
 - golie's `ui/ui_test.go` has golden tests asserting exact blank-line placement (loops, empty iterations, post-prompt separation, tables). Add to them when changing spacing behavior.
 
+## Testing on a real host
+
+CI runs the tests on Linux, macOS and Windows. To run them on a machine of your own over ssh:
+
+- Windows: build the test binary anywhere (`GOOS=windows go test -c -o <pkg>.test.exe ./<pkg>/`), copy it over and run
+  it there with Git for Windows' `bin` on PATH, for the fake tools. In PowerShell, quote a test flag whole (`'-test.v=true'`): PowerShell splits a bare `-test.v` at its dot.
+- macOS and Windows fold the case of file names: a test that makes two names differing only by case (or a link from
+  one to the other) cannot run there, so test the behavior the folding causes instead.
+- In a Windows ssh login, OpenSSH's own tools (`ssh`, `ssh-keygen`) can lose their output: run what uses them from the
+  desktop session.
+
 ## Conventions
 
 - `--reinstall` and `--force` (`add`, `sync`; `addInstallFlags`) are two flags because they are two things to ask for, and neither implies the other. `--reinstall` redoes ghpm's own work — a package already installed, one already at its latest release — and touches nothing that is not ghpm's. `--force` is the only way a shim replaces a file in `~/.ghpm/bin` that `shim.IsShim` does not say ghpm stamped, which is the one destructive thing either command can do. They were one `--force` that meant both on `add` and only the first on `sync`, so the shim error's own hint (`pass --force to replace it`) was a dead end there. Both now mean the same on both commands, and the same in gotm

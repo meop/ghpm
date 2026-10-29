@@ -158,6 +158,21 @@ If a name isn't in the map, `ghpm` looks for GitHub repos of exactly that name a
 - A package that fails partway is rolled back to the version you had, so re-running the command simply retries it; other packages in the same run are unaffected
 - `ghpm upgrade` replaces only the ghpm the install script put in `~/.ghpm/bin`. One installed another way (a package manager, `go install`) works the same and keeps the same `~/.ghpm`, but is upgraded by what installed it
 
+## Where packages live
+
+A package is unpacked to `~/.ghpm/extract/<name>/<version>`, and its shims in `~/.ghpm/bin` run it through
+`~/.ghpm/extract/<name>/version`, a file naming that version. An update unpacks the new version beside the old,
+rewrites that file, and only then removes the old version, so the shims stay the same files from one version to the
+next, and a program still running from the old version (the shell you ran `ghpm sync` in, say) keeps running. A
+version still in use when its turn to go comes is left for `ghpm tidy`.
+
+## Upgrading ghpm
+
+Run `ghpm upgrade` before `ghpm sync`. A newer ghpm moves each package to the layout above on its next sync, and
+`ghpm sync --reinstall` moves them all at once; the choices you made (which binaries, their names) carry over. Once
+it has, do not run an older ghpm on that machine: it looks for packages where they no longer are, and its `tidy`
+would remove them.
+
 ## Verifying releases
 
 Release archives contain `LICENSE`. Verify the signed checksum manifest
