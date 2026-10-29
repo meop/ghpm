@@ -92,7 +92,7 @@ func TestShimUndo_RestampsAtWhatTheShimRanBefore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	undo := shimUndo("pwsh")
+	undo := shimUndo(exeName("pwsh"))
 	if err := os.WriteFile(shimPath, stampedBody(filepath.Join(extracts, "pwsh", "pwsh")), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestShimUndo_RemovesShimTheOpCreated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	undo := shimUndo("fzf")
+	undo := shimUndo(exeName("fzf"))
 	created := filepath.Join(binDir, exeName("fzf"))
 	writeFakeShim(t, created)
 
@@ -208,12 +208,13 @@ func TestSyncBinShims_RollbackRestoresShimAfterFailedCreate(t *testing.T) {
 	// No fakeMallet staged yet, so every shim.Create fails the way a locked
 	// target does.
 	jrn := &journal{}
+	name := exeName("pwsh")
 	installed, errs := syncBinShims(&config.Settings{}, jrn, filepath.Join(extracts, "pwsh"),
-		map[string]string{"pwsh": "pwsh"}, map[string]string{"pwsh": "pwsh"}, false)
+		map[string]string{name: "pwsh"}, map[string]string{name: "pwsh"}, false)
 	if len(errs) == 0 {
 		t.Fatal("expected the create to fail with no mallet staged")
 	}
-	if _, ok := installed["pwsh"]; ok {
+	if _, ok := installed[name]; ok {
 		t.Errorf("expected a failed create to not be recorded as installed, got %v", installed)
 	}
 
