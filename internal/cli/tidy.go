@@ -225,7 +225,7 @@ func cleanOrphanedFonts(cfg *config.Settings, manifest *config.Manifest, release
 				pruneDownloadVersion(releaseDir, src, entry.Version)
 			}
 			manifest.RemoveExtract(it.manifestKey)
-			_ = pruneExtract(filepath.Join(pkgsDir, it.manifestKey, entry.Version), pkgsDir)
+			_ = pruneExtract(filepath.Join(pkgsDir, it.manifestKey), pkgsDir)
 		}
 		manifestTouched = true
 	}
@@ -281,7 +281,15 @@ func cleanOrphanedBinShims(cfg *config.Settings, manifest *config.Manifest) bool
 	return true
 }
 
-// cleanOrphanedExtracts removes extract dirs (or stale version subdirs) with no manifest entry.
+// orphanState says why an extract dir is an orphan: no install names it, or an op left it staged or aside.
+func orphanState(o tidy.OrphanExtract) string {
+	if o.Leftover {
+		return "left over"
+	}
+	return "not installed"
+}
+
+// cleanOrphanedExtracts removes extract dirs no manifest entry names, and what an op left staged or aside.
 func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool {
 	pkgsDir, err := store.ExtractsDir()
 	if err != nil {
@@ -292,14 +300,14 @@ func cleanOrphanedExtracts(cfg *config.Settings, manifest *config.Manifest) bool
 	var extRows [][]string
 	for _, o := range tidy.FindOrphanExtracts(manifest, pkgsDir) {
 		paths = append(paths, o.Path)
-		extRows = append(extRows, []string{o.Key, o.Version})
+		extRows = append(extRows, []string{o.Key, orphanState(o)})
 	}
 
 	if len(paths) == 0 {
 		return false
 	}
 
-	printTable([]string{"name", "version"}, extRows, nil)
+	printTable([]string{"name", "state"}, extRows, nil)
 
 	if dryRun {
 		return dryRunBail()

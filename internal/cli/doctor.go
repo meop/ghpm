@@ -159,7 +159,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	if manifestErr == nil && manifest != nil && pkgsErr == nil {
 		var staleExtracts, missingShims, missingFonts []string
 		for key, pkg := range manifest.Extracts {
-			if _, serr := os.Stat(filepath.Join(pkgsDir, key, pkg.Version)); os.IsNotExist(serr) {
+			if _, serr := os.Stat(filepath.Join(pkgsDir, key)); os.IsNotExist(serr) {
 				staleExtracts = append(staleExtracts, key)
 			}
 			if binDirErr == nil {

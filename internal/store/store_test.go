@@ -47,18 +47,15 @@ func TestExtractsDir(t *testing.T) {
 	}
 }
 
-func TestExtractDir_CreatesDir(t *testing.T) {
+func TestExtractDirHasNoVersionAndStageDirSitsBesideIt(t *testing.T) {
 	home := withHome(t)
-	dir, err := ExtractDir("fzf", "0.58.0")
-	if err != nil {
-		t.Fatal(err)
+	dir, err := ExtractDir("fzf@14")
+	if err != nil || dir != filepath.Join(home, ".ghpm", "extract", "fzf@14") {
+		t.Errorf("ExtractDir = %q, %v", dir, err)
 	}
-	want := filepath.Join(home, ".ghpm", "extract", "fzf", "0.58.0")
-	if dir != want {
-		t.Errorf("ExtractDir = %q, want %q", dir, want)
-	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		t.Errorf("ExtractDir did not create directory: %v", err)
+	stage, err := StageDir("fzf@14")
+	if err != nil || stage != filepath.Join(home, ".ghpm", "extract", ".fzf@14.new") {
+		t.Errorf("StageDir = %q, %v", stage, err)
 	}
 }
 

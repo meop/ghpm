@@ -163,9 +163,9 @@ func buildBatchQuery(items []BatchItem, aliases []string, ownerMap map[string][2
 		pair := ownerMap[aliases[i]]
 		fmt.Fprintf(&b, "  %s: repository(owner: %q, name: %q) {\n", aliases[i], pair[0], pair[1])
 		if item.Pin.Raw != "" {
-			vp, nvp := tagRefPrefixes(item.Pin)
-			fmt.Fprintf(&b, "    vRefs: refs(refPrefix: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", vp)
-			fmt.Fprintf(&b, "    nvRefs: refs(refPrefix: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", nvp)
+			vq, nvq := tagQueries(item.Pin)
+			fmt.Fprintf(&b, "    vRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", vq)
+			fmt.Fprintf(&b, "    nvRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", nvq)
 		} else {
 			b.WriteString("    latestRelease { tagName }\n")
 		}
@@ -175,17 +175,16 @@ func buildBatchQuery(items []BatchItem, aliases []string, ownerMap map[string][2
 	return b.String()
 }
 
-// tagRefPrefixes returns the v-prefixed and non-v-prefixed tag ref prefixes for a constraint.
-// e.g. PinMajor{20} → "refs/tags/v20.", "refs/tags/20."
-// e.g. PinMinor{20,9} → "refs/tags/v20.9.", "refs/tags/20.9."
-func tagRefPrefixes(c config.Constraint) (vPfx, nvPfx string) {
+// tagQueries are the tag name filters for a constraint, v-prefixed and not. GitHub takes a refPrefix only as a whole
+// ref namespace ("refs/tags/"), so the version goes in the name query, and extractTag keeps what the pin matches.
+func tagQueries(c config.Constraint) (vQuery, nvQuery string) {
 	var base string
 	if c.Level == config.PinMinor {
 		base = fmt.Sprintf("%d.%d.", c.Major, c.Minor)
 	} else {
 		base = fmt.Sprintf("%d.", c.Major)
 	}
-	return "refs/tags/v" + base, "refs/tags/" + base
+	return "v" + base, base
 }
 
 func extractTag(rf releaseField, pin config.Constraint) (string, error) {

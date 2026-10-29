@@ -48,10 +48,10 @@ func TestBuildBatchQuery_Pinned(t *testing.T) {
 
 	query := buildBatchQuery(items, aliases, ownerMap)
 
-	if !strings.Contains(query, `refPrefix: "refs/tags/v14."`) {
+	if !strings.Contains(query, `refPrefix: "refs/tags/", query: "v14."`) {
 		t.Error("expected v-prefixed refs query for pinned major")
 	}
-	if !strings.Contains(query, `refPrefix: "refs/tags/14."`) {
+	if !strings.Contains(query, `refPrefix: "refs/tags/", query: "14."`) {
 		t.Error("expected non-v refs query for pinned major")
 	}
 	if strings.Contains(query, "latestRelease") {
@@ -71,10 +71,10 @@ func TestBuildBatchQuery_PinnedMinor(t *testing.T) {
 
 	query := buildBatchQuery(items, aliases, ownerMap)
 
-	if !strings.Contains(query, `refPrefix: "refs/tags/v0.70."`) {
+	if !strings.Contains(query, `refPrefix: "refs/tags/", query: "v0.70."`) {
 		t.Error("expected v-prefixed refs query for pinned minor")
 	}
-	if !strings.Contains(query, `refPrefix: "refs/tags/0.70."`) {
+	if !strings.Contains(query, `refPrefix: "refs/tags/", query: "0.70."`) {
 		t.Error("expected non-v refs query for pinned minor")
 	}
 }

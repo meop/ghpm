@@ -463,7 +463,7 @@ func TestCleanOrphanedExtracts_OrphanedExtract(t *testing.T) {
 	}
 }
 
-func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
+func TestCleanOrphanedExtracts_WhatAnOpLeftStagedOrAside(t *testing.T) {
 	withHome(t)
 	yes = true
 	defer func() { yes = false }()
@@ -473,11 +473,10 @@ func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.57.0"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(pkgsDir, "fzf", "0.58.0"), 0755); err != nil {
-		t.Fatal(err)
+	for _, dir := range []string{"fzf", ".fzf.new", ".fzf.1793253698000000000.old"} {
+		if err := os.MkdirAll(filepath.Join(pkgsDir, dir), 0755); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	manifest := &config.Manifest{
@@ -487,10 +486,11 @@ func TestCleanOrphanedExtracts_StaleVersion(t *testing.T) {
 
 	cleanOrphanedExtracts(nil, manifest)
 
-	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.57.0")); !os.IsNotExist(err) {
-		t.Error("stale version 0.57.0 was not removed")
+	entries, err := os.ReadDir(pkgsDir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(pkgsDir, "fzf", "0.58.0")); err != nil {
-		t.Errorf("current version 0.58.0 was removed: %v", err)
+	if len(entries) != 1 || entries[0].Name() != "fzf" {
+		t.Errorf("extracts left after tidy: %v", entries)
 	}
 }

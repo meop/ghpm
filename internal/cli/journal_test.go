@@ -56,41 +56,47 @@ func TestJournal_DidDropsNilUndo(t *testing.T) {
 	}
 }
 
-// TestExtractUndo_KeepsDirWhenVersionUnchanged guards a force sync/add landing
-// on the version already installed: it re-extracts in place, so removing that
-// dir on rollback would delete the live install rather than restore it.
-func TestExtractUndo_KeepsDirWhenVersionUnchanged(t *testing.T) {
-	if undo := extractUndo(t.TempDir(), "1.2.3", "1.2.3"); undo != nil {
-		t.Error("expected no undo when the extract dir is the one already installed")
+func TestOldRoot_FindsTheVersionDirOfAnInstallMadeBeforeTheStableLayout(t *testing.T) {
+	aside := t.TempDir()
+	if got := oldRoot(aside, "1.0.0"); got != aside {
+		t.Errorf("oldRoot of a stable install = %s, want %s", got, aside)
+	}
+	if err := os.MkdirAll(filepath.Join(aside, "1.0.0", "bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got := oldRoot(aside, "1.0.0"); got != filepath.Join(aside, "1.0.0") {
+		t.Errorf("oldRoot of a versioned install = %s", got)
+	}
+	if got := oldRoot("", "1.0.0"); got != "" {
+		t.Errorf("oldRoot of a first install = %s", got)
 	}
 }
 
-func TestExtractUndo_RemovesNewVersionDir(t *testing.T) {
-	newDir := filepath.Join(t.TempDir(), "2.0.0")
-	if err := os.MkdirAll(newDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	undo := extractUndo(newDir, "1.0.0", "2.0.0")
-	if undo == nil {
-		t.Fatal("expected an undo for a newly extracted version")
-	}
-	if err := undo(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(newDir); !os.IsNotExist(err) {
-		t.Errorf("expected the new extract dir to be removed, stat err = %v", err)
-	}
-}
-
-// TestShimUndo_RestampsAtOldExtractDir is the heart of the sync rollback: a
-// shim ghpm re-pointed (or destroyed on the way to re-pointing) has to go back
-// to the extract dir of the version the manifest still names.
-func TestShimUndo_RestampsAtOldExtractDir(t *testing.T) {
+// TestShimUndo_RestampsAtWhatTheShimRanBefore is the heart of the sync
+// rollback: a shim ghpm re-pointed (or destroyed on the way to re-pointing)
+// goes back to the target it named when the undo was recorded.
+func TestShimUndo_RestampsAtWhatTheShimRanBefore(t *testing.T) {
 	withHome(t)
 	fakeMallet(t)
-	oldPkgDir := filepath.Join(t.TempDir(), "1.0.0")
+	binDir, err := store.BinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	extracts, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := filepath.Join(extracts, "pwsh", "1.0.0", "pwsh")
+	shimPath := filepath.Join(binDir, exeName("pwsh"))
+	if err := os.WriteFile(shimPath, stampedBody(before), 0755); err != nil {
+		t.Fatal(err)
+	}
 
-	if err := shimUndo("pwsh", "bin/pwsh", oldPkgDir)(); err != nil {
+	undo := shimUndo("pwsh")
+	if err := os.WriteFile(shimPath, stampedBody(filepath.Join(extracts, "pwsh", "pwsh")), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := undo(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,8 +108,8 @@ func TestShimUndo_RestampsAtOldExtractDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected mallet to have been invoked: %v", err)
 	}
-	if !strings.Contains(string(args), filepath.Join(oldPkgDir, "bin", "pwsh")) {
-		t.Errorf("expected the shim restamped against the old extract dir, got %s", args)
+	if !strings.Contains(string(args), before) {
+		t.Errorf("expected the shim restamped at %s, got %s", before, args)
 	}
 }
 
@@ -113,10 +119,11 @@ func TestShimUndo_RemovesShimTheOpCreated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created := filepath.Join(binDir, "fzf")
+	undo := shimUndo("fzf")
+	created := filepath.Join(binDir, exeName("fzf"))
 	writeFakeShim(t, created)
 
-	if err := shimUndo("fzf", "", "")(); err != nil {
+	if err := undo(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(created); !os.IsNotExist(err) {
@@ -185,12 +192,23 @@ func TestFontUndo_RemovesRenamedFontBeforeRestoring(t *testing.T) {
 // back before the caller decides not to write the entry at all.
 func TestSyncBinShims_RollbackRestoresShimAfterFailedCreate(t *testing.T) {
 	withHome(t)
-	oldPkgDir := filepath.Join(t.TempDir(), "7.5.0")
+	extracts, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binDir, err := store.BinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPkgDir := filepath.Join(extracts, "pwsh", "7.5.0")
+	if err := os.WriteFile(filepath.Join(binDir, exeName("pwsh")), stampedBody(filepath.Join(oldPkgDir, "pwsh")), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	// No fakeMallet staged yet, so every shim.Create fails the way a locked
 	// target does.
 	jrn := &journal{}
-	installed, errs := syncBinShims(&config.Settings{}, jrn, t.TempDir(), oldPkgDir,
+	installed, errs := syncBinShims(&config.Settings{}, jrn, filepath.Join(extracts, "pwsh"),
 		map[string]string{"pwsh": "pwsh"}, map[string]string{"pwsh": "pwsh"}, false)
 	if len(errs) == 0 {
 		t.Fatal("expected the create to fail with no mallet staged")
@@ -199,7 +217,7 @@ func TestSyncBinShims_RollbackRestoresShimAfterFailedCreate(t *testing.T) {
 		t.Errorf("expected a failed create to not be recorded as installed, got %v", installed)
 	}
 
-	// Rolling back has to restamp against the version the manifest still names.
+	// Rolling back has to restamp at what the shim ran before.
 	fakeMallet(t)
 	if rbErrs := jrn.Rollback(); len(rbErrs) != 0 {
 		t.Fatalf("unexpected rollback errors: %v", rbErrs)

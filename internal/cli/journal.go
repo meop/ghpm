@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 
 	gjournal "github.com/meop/golie/journal"
@@ -13,27 +14,30 @@ import (
 // still describes. See golie's journal package for the ordering rules.
 type journal = gjournal.Journal
 
-// extractUndo reverses an overlay extraction. A sync --reinstall that lands on the
-// version already installed re-extracts in place, so there is nothing to undo
-// — and removing that dir would delete the live install.
-func extractUndo(newPkgDir, oldVersion, newVersion string) func() error {
-	return gjournal.ExtractUndo(newPkgDir, oldVersion, newVersion)
+// swapIn puts the install staged at stage in live's place. See golie's journal.Swap.
+func swapIn(stage, live string) (aside string, undo func() error, err error) {
+	return gjournal.Swap(stage, live)
 }
 
-// shimUndo reverses a shim ghpm is about to stamp or delete: re-stamping it
-// against the extract dir it pointed at before the op, or removing it when the
-// op is what created it. An empty oldBinKey means there was no such shim.
-func shimUndo(shimName, oldBinKey, oldPkgDir string) func() error {
+// oldRoot is where the install a swap moved aside keeps its files. One made
+// before extract dirs lost their version keeps them in a dir of that version.
+func oldRoot(aside, oldVersion string) string {
+	if aside == "" || oldVersion == "" {
+		return aside
+	}
+	if fi, err := os.Stat(filepath.Join(aside, oldVersion)); err == nil && fi.IsDir() {
+		return filepath.Join(aside, oldVersion)
+	}
+	return aside
+}
+
+// shimUndo reverses a shim ghpm is about to stamp or delete. See golie's journal.ShimUndo.
+func shimUndo(shimName string) func() error {
 	s, err := shim.Stamper()
 	if err != nil {
 		return func() error { return err }
 	}
-	oldSource := ""
-	if oldBinKey != "" {
-		binDir, binName := parseBinPath(oldBinKey)
-		oldSource = filepath.Join(oldPkgDir, binDir, binName)
-	}
-	return gjournal.ShimUndo(s, shimName, oldSource)
+	return gjournal.ShimUndo(s, shimName)
 }
 
 // fontUndo mirrors shimUndo for an installed font. Fonts live in the user font

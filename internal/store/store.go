@@ -15,8 +15,8 @@ type Dirs interface {
 	BinDir() (string, error)
 	ShimDir() (string, error)
 	ExtractsDir() (string, error)
-	ExtractBaseDir(key string) (string, error)
-	ExtractDir(key, version string) (string, error)
+	ExtractDir(key string) (string, error)
+	StageDir(key string) (string, error)
 	ReleaseDir(source, version string) (string, error)
 	ReleaseBaseDir() (string, error)
 	RepoDir(source string) (string, error)
@@ -29,15 +29,11 @@ const testHomeEnv = "GHPM_TEST_HOME"
 
 func NewLocalDirs() *LocalDirs { return &LocalDirs{} }
 
-func (*LocalDirs) BinDir() (string, error)      { return BinDir() }
-func (*LocalDirs) ShimDir() (string, error)     { return ShimDir() }
-func (*LocalDirs) ExtractsDir() (string, error) { return ExtractsDir() }
-func (*LocalDirs) ExtractBaseDir(k string) (string, error) {
-	return ExtractBaseDir(k)
-}
-func (*LocalDirs) ExtractDir(key, version string) (string, error) {
-	return ExtractDir(key, version)
-}
+func (*LocalDirs) BinDir() (string, error)               { return BinDir() }
+func (*LocalDirs) ShimDir() (string, error)              { return ShimDir() }
+func (*LocalDirs) ExtractsDir() (string, error)          { return ExtractsDir() }
+func (*LocalDirs) ExtractDir(key string) (string, error) { return ExtractDir(key) }
+func (*LocalDirs) StageDir(key string) (string, error)   { return StageDir(key) }
 func (*LocalDirs) ReleaseDir(source, version string) (string, error) {
 	return ReleaseDir(source, version)
 }
@@ -125,17 +121,16 @@ func ExtractsDir() (string, error) {
 	return l.ExtractsDir(), err
 }
 
-func ExtractBaseDir(key string) (string, error) {
+// ExtractDir is where key is installed, whether or not it is there.
+func ExtractDir(key string) (string, error) {
 	l, err := Layout()
-	return l.ExtractBaseDir(key), err
+	return l.ExtractPath(key), err
 }
 
-func ExtractDir(key, version string) (string, error) {
+// StageDir is where key's next install is unpacked, before it is swapped in.
+func StageDir(key string) (string, error) {
 	l, err := Layout()
-	if err != nil {
-		return "", err
-	}
-	return l.ExtractDir(key, version)
+	return l.StagePath(key), err
 }
 
 func ReleaseBaseDir() (string, error) {

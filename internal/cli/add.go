@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -56,6 +57,7 @@ type shimPlan struct {
 	jobName      string
 	source       string
 	pkgDir       string
+	stageDir     string
 	assets       []string
 	bin          map[string]string
 	font         map[string]string
@@ -289,8 +291,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		installTasks = append(installTasks, parallel.Task[installTaskResult]{
 			Name: r.job.name,
 			Run: func() (installTaskResult, error) {
-				ver := config.NormalizeVersion(r.release.TagName)
-				ex, err := extractOverlay(dirs, r.job.key(), ver, cacheDirs[i], r.job.name, r.chosens)
+				ex, err := extractOverlay(dirs, r.job.key(), cacheDirs[i], r.job.name, r.chosens)
 				if err != nil {
 					return installTaskResult{}, err
 				}
@@ -300,6 +301,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	installResults := parallel.Run(cmd.Context(), installTasks, cfg.NumParallel)
+	// a stage that is not swapped in (skipped, declined, failed) goes with the command
+	for _, res := range installResults {
+		if res.Err == nil {
+			defer func() { _ = os.RemoveAll(res.Value.stageDir) }()
+		}
+	}
 
 	var shimPlans []shimPlan
 
@@ -385,6 +392,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			jobName:      r.job.name,
 			source:       r.job.source,
 			pkgDir:       tr.pkgDir,
+			stageDir:     tr.stageDir,
 			assets:       assetNames(r.chosens),
 			bin:          bin,
 			font:         font,
@@ -448,26 +456,29 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	successCount := 0
 	for _, p := range shimPlans {
 		existing := manifest.Extracts[p.key]
-		oldPkgDir := ""
-		if existing.Version != "" {
-			if oldBase, err := ci.dirs.ExtractBaseDir(p.key); err == nil {
-				oldPkgDir = filepath.Join(oldBase, existing.Version)
-			}
-		}
 
 		// Journalled like sync's: the manifest entry is the commit, and a package
 		// that fails anywhere below is put back to whatever was installed before
 		// (nothing, for a first add) rather than recorded half-created.
 		jrn := &journal{}
-		jrn.Did("extract "+p.version, extractUndo(p.pkgDir, existing.Version, p.version))
+		aside, undo, err := swapIn(p.stageDir, p.pkgDir)
+		if err != nil {
+			printFail(cfg, "%s: %v", p.jobName, err)
+			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: p.jobName, reason: err.Error()})
+			continue
+		}
+		jrn.Did("extract "+p.version, undo)
+		oldPkgDir := oldRoot(aside, existing.Version)
 
 		if reinstall && existing.Version != "" {
-			for shimName, oldKey := range existing.AllBins() {
+			for shimName := range existing.AllBins() {
+				undo := shimUndo(shimName)
 				if err := shim.Remove(shimName); err != nil {
 					printWarn(cfg, "%s: could not remove stale shim: %v", shimName, err)
 					continue
 				}
-				jrn.Did("stale shim "+shimName, shimUndo(shimName, oldKey, oldPkgDir))
+				jrn.Did("stale shim "+shimName, undo)
 			}
 			if oldFonts := existing.AllFonts(); len(oldFonts) > 0 {
 				var newPaths []string
@@ -503,6 +514,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			BinDeclined:  p.binDeclined,
 			FontDeclined: p.fontDeclined,
 		}
+		if aside != "" {
+			if err := os.RemoveAll(aside); err != nil {
+				printWarn(cfg, "%s: could not remove old extract dir: %v", p.jobName, err)
+			}
+		}
 		successCount++
 	}
 	if successCount > 0 {
@@ -534,7 +550,7 @@ func applyShimPlan(
 	installedBin = make(map[string]string, len(p.bin))
 	for shimName, binsKey := range p.bin {
 		binDir, binName := parseBinPath(binsKey)
-		jrn.Did("shim "+shimName, shimUndo(shimName, prev.Bin[shimName], oldPkgDir))
+		jrn.Did("shim "+shimName, shimUndo(shimName))
 		if err := createShim(shimName, binName, p.pkgDir, binDir, force); err != nil {
 			printFail(nil, "%s: %s: could not create shim: %v", p.jobName, shimName, err)
 			failed = true

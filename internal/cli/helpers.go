@@ -118,9 +118,10 @@ type cmdInit struct {
 // task: the single dir all chosen assets were overlaid into, plus the bins and
 // fonts discovered across that combined tree.
 type extractResult struct {
-	pkgDir string
-	bins   []asset.BinCandidate
-	fonts  []asset.FontCandidate
+	pkgDir   string
+	stageDir string
+	bins     []asset.BinCandidate
+	fonts    []asset.FontCandidate
 }
 
 type cmdOptions struct {
@@ -296,6 +297,33 @@ func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) []
 		rows = append(rows, append(append([]string(nil), prefix...), "font", fontName))
 	}
 	return rows
+}
+
+// carriedKeys is sameKeySetFold, also matching old keys that all sit in one
+// top-level dir to new keys without it: an install from before extraction
+// dropped the dir an archive wraps itself in.
+func carriedKeys(newKeys, oldKeys []string) (recase map[string]string, ok bool) {
+	if recase, ok := sameKeySetFold(newKeys, oldKeys); ok {
+		return recase, true
+	}
+	stripped := make([]string, len(oldKeys))
+	top := ""
+	for i, k := range oldKeys {
+		dir, rest, found := strings.Cut(k, "/")
+		if !found || (top != "" && dir != top) {
+			return nil, false
+		}
+		top, stripped[i] = dir, rest
+	}
+	byStripped, ok := sameKeySetFold(newKeys, stripped)
+	if !ok {
+		return nil, false
+	}
+	recase = make(map[string]string, len(oldKeys))
+	for i, k := range oldKeys {
+		recase[k] = byStripped[stripped[i]]
+	}
+	return recase, true
 }
 
 // sameKeySetFold reports whether newKeys and oldKeys hold the same bin/font
@@ -515,41 +543,90 @@ func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []asse
 	return errs
 }
 
-// extractOverlay extracts the given assets — already downloaded into cacheDir
-// by downloadAllAssets — and overlays them all into a single extract dir, in
-// the order given (a later asset overwrites a colliding path, so "last wins").
-// Bins and fonts are then discovered once across the combined tree.
-// displayName is used in progress/error messages; extractKey and version
-// identify the extract directory.
-func extractOverlay(dirs store.Dirs, extractKey, ver, cacheDir, displayName string, chosens []gh.Asset) (extractResult, error) {
-	pkgDir, err := dirs.ExtractDir(extractKey, ver)
+// extractOverlay overlays the downloaded assets into the key's stage dir, in
+// order ("last wins"), each without the one dir an archive may wrap itself in,
+// and discovers bins and fonts across the result. The caller swaps it in at pkgDir.
+func extractOverlay(dirs store.Dirs, extractKey, cacheDir, displayName string, chosens []gh.Asset) (extractResult, error) {
+	pkgDir, err := dirs.ExtractDir(extractKey)
 	if err != nil {
 		return extractResult{}, err
 	}
-	if err := os.RemoveAll(pkgDir); err != nil {
+	stage, err := dirs.StageDir(extractKey)
+	if err != nil {
 		return extractResult{}, err
 	}
-	if err := os.MkdirAll(pkgDir, 0755); err != nil {
+	if err := os.RemoveAll(stage); err != nil {
+		return extractResult{}, err
+	}
+	if err := os.MkdirAll(stage, 0755); err != nil {
+		return extractResult{}, err
+	}
+	fail := func(err error) (extractResult, error) {
+		_ = os.RemoveAll(stage)
 		return extractResult{}, err
 	}
 
-	for _, chosen := range chosens {
+	for i, chosen := range chosens {
 		assetPath := filepath.Join(cacheDir, chosen.Name)
 		if err := verifyAssetDigest(chosen.Digest, assetPath); err != nil {
-			return extractResult{}, fmt.Errorf("%s: %s: %w", displayName, chosen.Name, err)
+			return fail(fmt.Errorf("%s: %s: %w", displayName, chosen.Name, err))
 		}
-
-		if err := asset.ExtractPackage(cacheDir, chosen.Name, pkgDir); err != nil {
-			_ = os.RemoveAll(pkgDir)
-			return extractResult{}, err
+		part := filepath.Join(stage, fmt.Sprintf(".asset%d", i))
+		if err := os.MkdirAll(part, 0755); err != nil {
+			return fail(err)
+		}
+		if err := asset.ExtractPackage(cacheDir, chosen.Name, part); err != nil {
+			return fail(err)
+		}
+		if err := overlay(unwrapped(part), stage); err != nil {
+			return fail(err)
+		}
+		if err := os.RemoveAll(part); err != nil {
+			return fail(err)
 		}
 	}
 
 	return extractResult{
-		pkgDir: pkgDir,
-		bins:   asset.FindBins(pkgDir),
-		fonts:  asset.FindFonts(pkgDir),
+		pkgDir:   pkgDir,
+		stageDir: stage,
+		bins:     asset.FindBins(stage),
+		fonts:    asset.FindFonts(stage),
 	}, nil
+}
+
+// unwrapped is dir's one entry when that is a directory, the wrapper an
+// archive names for its release, and otherwise dir.
+func unwrapped(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err == nil && len(entries) == 1 && entries[0].IsDir() {
+		return filepath.Join(dir, entries[0].Name())
+	}
+	return dir
+}
+
+// overlay moves src's entries into dst, merging a directory dst already has
+// and replacing anything else of the same name.
+func overlay(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		from, to := filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())
+		if fi, err := os.Lstat(to); err == nil && fi.IsDir() && e.IsDir() {
+			if err := overlay(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.RemoveAll(to); err != nil {
+			return err
+		}
+		if err := os.Rename(from, to); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // assetNames returns the names of the chosen assets in order, used as the

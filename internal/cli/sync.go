@@ -257,8 +257,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		syncTasks = append(syncTasks, parallel.Task[syncTaskResult]{
 			Name: r.key,
 			Run: func() (syncTaskResult, error) {
-				newVersion := config.NormalizeVersion(r.release.TagName)
-				ex, err := extractOverlay(dirs, r.key, newVersion, cacheDirs[i], r.key, r.chosens)
+				ex, err := extractOverlay(dirs, r.key, cacheDirs[i], r.key, r.chosens)
 				if err != nil {
 					return syncTaskResult{}, err
 				}
@@ -283,11 +282,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// ~/.ghpm back the way it was and leave the manifest entry — the only
 		// commit point — untouched for the next run to retry.
 		jrn := &journal{}
-		oldPkgDir := ""
-		if oldBase, err := dirs.ExtractBaseDir(tr.r.key); err == nil {
-			oldPkgDir = filepath.Join(oldBase, tr.r.pkg.Version)
+		aside, undo, err := swapIn(tr.stageDir, tr.pkgDir)
+		if err != nil {
+			_ = os.RemoveAll(tr.stageDir)
+			printFail(cfg, "%s: %v", res.Name, err)
+			hadErrors = true
+			failedItems = append(failedItems, failedItem{name: res.Name, reason: err.Error()})
+			continue
 		}
-		jrn.Did("extract "+newVer, extractUndo(tr.pkgDir, tr.r.pkg.Version, newVer))
+		jrn.Did("extract "+newVer, undo)
+		oldPkgDir := oldRoot(aside, tr.r.pkg.Version)
 
 		if len(tr.bins) == 0 && len(tr.fonts) == 0 {
 			reason := fmt.Sprintf("no binaries or fonts found in %s", strings.Join(assetNames(tr.r.chosens), ", "))
@@ -317,7 +321,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if len(tr.bins) > 0 {
 			pkgBase, _, pinned := config.ParseVersionSuffix(tr.r.key)
 			prev := tr.r.pkg.DiscoveredBins()
-			recase, foldOK := sameKeySetFold(binKeys(tr.bins), prev)
+			recase, foldOK := carriedKeys(binKeys(tr.bins), prev)
 			if len(prev) > 0 && foldOK {
 				newBin = make(map[string]string, len(tr.r.pkg.Bin))
 				for shimName, oldKey := range tr.r.pkg.Bin {
@@ -352,7 +356,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// package used to have (newBin then stays empty) and the old shims still
 		// need removing.
 		if !pkgFailed && (len(tr.r.pkg.Bin) > 0 || len(newBin) > 0) {
-			installedBin, binErrs := syncBinShims(cfg, jrn, tr.pkgDir, oldPkgDir, tr.r.pkg.Bin, newBin, force)
+			installedBin, binErrs := syncBinShims(cfg, jrn, tr.pkgDir, tr.r.pkg.Bin, newBin, force)
 			newBin = installedBin
 			for _, e := range binErrs {
 				printFail(cfg, "%s: %s: could not update shim: %v", res.Name, e.name, e.err)
@@ -371,7 +375,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if !pkgFailed && len(tr.fonts) > 0 {
 			pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
 			prev := tr.r.pkg.DiscoveredFonts()
-			recase, foldOK := sameKeySetFold(fontKeys(tr.fonts), prev)
+			recase, foldOK := carriedKeys(fontKeys(tr.fonts), prev)
 			if len(prev) > 0 && foldOK {
 				newFont = make(map[string]string, len(tr.r.pkg.Font))
 				for fontName, oldPath := range tr.r.pkg.Font {
@@ -449,13 +453,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 			FontDeclined: newFontDeclined,
 		}
 
-		// Only now: every undo above restores from the old extract dir, so it
-		// has to outlive the commit that makes those undos unnecessary.
-		if tr.r.pkg.Version != newVer {
-			if oldBase, err := dirs.ExtractBaseDir(tr.r.key); err == nil {
-				if err := os.RemoveAll(filepath.Join(oldBase, tr.r.pkg.Version)); err != nil {
-					printWarn(cfg, "%s: could not remove old extract dir: %v", res.Name, err)
-				}
+		// Only now: every undo above restores from what the swap moved aside.
+		if aside != "" {
+			if err := os.RemoveAll(aside); err != nil {
+				printWarn(cfg, "%s: could not remove old extract dir: %v", res.Name, err)
 			}
 		}
 	}
@@ -483,18 +484,19 @@ type shimSyncErr struct {
 }
 
 // syncBinShims returns only the shims actually confirmed created, so a caller never records a failed one as installed.
-// Every shim it touches is journalled against oldPkgDir first, so the caller can put the package's shims back if any
-// later step fails. force lets a shim replace a file ghpm did not stamp.
-func syncBinShims(cfg *config.Settings, jrn *journal, pkgDir, oldPkgDir string, oldBin, newBin map[string]string, force bool) (installedBin map[string]string, errs []shimSyncErr) {
-	for shimName, oldKey := range oldBin {
+// Every shim it touches is journalled first, so the caller can put the package's shims back if any later step fails.
+// force lets a shim replace a file ghpm did not stamp.
+func syncBinShims(cfg *config.Settings, jrn *journal, pkgDir string, oldBin, newBin map[string]string, force bool) (installedBin map[string]string, errs []shimSyncErr) {
+	for shimName := range oldBin {
 		if _, keep := newBin[shimName]; keep {
 			continue
 		}
+		undo := shimUndo(shimName)
 		if err := shim.Remove(shimName); err != nil {
 			printWarn(cfg, "%s: could not remove stale shim: %v", shimName, err)
 			continue
 		}
-		jrn.Did("stale shim "+shimName, shimUndo(shimName, oldKey, oldPkgDir))
+		jrn.Did("stale shim "+shimName, undo)
 	}
 	installedBin = make(map[string]string, len(newBin))
 	for shimName, binKey := range newBin {
@@ -502,7 +504,7 @@ func syncBinShims(cfg *config.Settings, jrn *journal, pkgDir, oldPkgDir string, 
 		// Journalled before the create, not after: on Windows Create removes the
 		// existing shim to free the path, so even a create that fails can have
 		// destroyed the shim it was replacing.
-		jrn.Did("shim "+shimName, shimUndo(shimName, oldBin[shimName], oldPkgDir))
+		jrn.Did("shim "+shimName, shimUndo(shimName))
 		if err := shim.Create(shimName, binName, pkgDir, binDir, force); err != nil {
 			errs = append(errs, shimSyncErr{shimName, err})
 			continue

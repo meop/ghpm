@@ -107,7 +107,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if failReason == "" {
-			pkgPath := filepath.Join(pkgsDir, t.key, t.pkg.Version)
+			pkgPath := filepath.Join(pkgsDir, t.key)
 			if err := os.RemoveAll(pkgPath); err != nil && !os.IsNotExist(err) {
 				failReason = fmt.Sprintf("could not remove extract dir: %v", err)
 				printFail(cfg, "%s: %s", t.key, failReason)

@@ -147,7 +147,7 @@ func TestSyncBinShims_RemovesStaleWhenAllBinsGone(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, nil, false)
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), map[string]string{"old": "bin/old"}, nil, false)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -169,7 +169,7 @@ func TestSyncBinShims_RemovesOldAndCreatesNew(t *testing.T) {
 	stalePath := filepath.Join(binDir, "old")
 	writeFakeShim(t, stalePath)
 
-	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"}, false)
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), map[string]string{"old": "bin/old"}, map[string]string{"new": "bin/new"}, false)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -213,7 +213,7 @@ func TestSyncBinShims_ForceReplacesAForeignFile(t *testing.T) {
 	}
 	bins := map[string]string{"tool": "bin/tool"}
 
-	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", nil, bins, false)
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), nil, bins, false)
 	if len(errs) != 1 || !strings.Contains(errs[0].err.Error(), "--force") || len(installed) != 0 {
 		t.Fatalf("expected the foreign file to stop the shim and name --force, got %v, %v", installed, errs)
 	}
@@ -221,7 +221,7 @@ func TestSyncBinShims_ForceReplacesAForeignFile(t *testing.T) {
 		t.Fatal("expected mallet not to be run over a foreign file")
 	}
 
-	installed, errs = syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", nil, bins, true)
+	installed, errs = syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), nil, bins, true)
 	if len(errs) != 0 || installed["tool"] != "bin/tool" {
 		t.Fatalf("expected --force to stamp over the foreign file, got %v, %v", installed, errs)
 	}
@@ -239,7 +239,7 @@ func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No fakeMallet staged, so shim.Create fails for every entry in newBin.
-	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"}, false)
+	installed, errs := syncBinShims(&config.Settings{}, &journal{}, t.TempDir(), map[string]string{"gh": "bin/gh"}, map[string]string{"gh": "bin/gh"}, false)
 	if len(errs) == 0 {
 		t.Fatal("expected an error when mallet is not staged")
 	}

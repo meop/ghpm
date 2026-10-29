@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/faketool"
+	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/ghpm/internal/toolchain"
@@ -444,4 +448,125 @@ func TestInitCommand_WithDirs(t *testing.T) {
 		t.Error("bin dir was not created")
 	}
 	_ = ci
+}
+
+func TestCarriedKeys_OldKeysInOneTopDirMatchNewKeysWithoutIt(t *testing.T) {
+	recase, ok := carriedKeys(
+		[]string{"nu", "nu_plugin_gstat"},
+		[]string{"nu-0.116.1-aarch64-apple-darwin/nu", "nu-0.116.1-aarch64-apple-darwin/nu_plugin_gstat"},
+	)
+	if !ok || recase["nu-0.116.1-aarch64-apple-darwin/nu"] != "nu" || recase["nu-0.116.1-aarch64-apple-darwin/nu_plugin_gstat"] != "nu_plugin_gstat" {
+		t.Errorf("carriedKeys = %v, %v", recase, ok)
+	}
+}
+
+func TestCarriedKeys_OldKeysInDifferentTopDirsAreNotCarried(t *testing.T) {
+	if _, ok := carriedKeys([]string{"codex", "rg"}, []string{"bin/codex", "codex-path/rg"}); ok {
+		t.Error("keys from two top dirs were carried as one stripped set")
+	}
+	if recase, ok := carriedKeys([]string{"bin/codex"}, []string{"bin/codex"}); !ok || recase["bin/codex"] != "bin/codex" {
+		t.Errorf("unchanged keys: %v, %v", recase, ok)
+	}
+}
+
+func TestUnwrappedIsTheOneDirAnArchiveWrapsItselfIn(t *testing.T) {
+	wrapped := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(wrapped, "delish-0.2.0-darwin-aarch64"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got := unwrapped(wrapped); got != filepath.Join(wrapped, "delish-0.2.0-darwin-aarch64") {
+		t.Errorf("unwrapped = %s", got)
+	}
+	bare := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bare, "fzf"), nil, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got := unwrapped(bare); got != bare {
+		t.Errorf("a lone file was unwrapped: %s", got)
+	}
+}
+
+func TestOverlayMergesDirsAndLetsTheLaterFileWin(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+	for path, body := range map[string]string{
+		filepath.Join(dst, "bin", "llama"):     "old",
+		filepath.Join(dst, "bin", "keep"):      "kept",
+		filepath.Join(src, "bin", "llama"):     "new",
+		filepath.Join(src, "bin", "cudart.so"): "lib",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := overlay(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"llama": "new", "keep": "kept", "cudart.so": "lib"} {
+		if got, err := os.ReadFile(filepath.Join(dst, "bin", name)); err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v; want %q", name, got, err, want)
+		}
+	}
+}
+
+// the bin key, and so a shim's target, has no version in it to change with the next release
+func TestExtractOverlay_StagesBesideTheInstallWithNoVersionInTheBinPath(t *testing.T) {
+	withHome(t)
+	cache := t.TempDir()
+	writeTarGzFiles(t, filepath.Join(cache, "tool-1.2.0-linux.tar.gz"), map[string]string{
+		"tool-1.2.0-linux/" + exeName("tool"): binaryBody(),
+	})
+	ex, err := extractOverlay(store.NewLocalDirs(), "tool", cache, "tool", []gh.Asset{{Name: "tool-1.2.0-linux.tar.gz"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	extracts, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ex.pkgDir != filepath.Join(extracts, "tool") || ex.stageDir != filepath.Join(extracts, ".tool.new") {
+		t.Errorf("pkgDir %s, stageDir %s", ex.pkgDir, ex.stageDir)
+	}
+	if keys := binKeys(ex.bins); len(keys) != 1 || keys[0] != exeName("tool") {
+		t.Errorf("bin keys = %v", keys)
+	}
+	if entries, _ := os.ReadDir(ex.stageDir); len(entries) != 1 {
+		t.Errorf("the stage holds %v", entries)
+	}
+}
+
+// binaryBody is a file FindBins takes for a binary of this host's format.
+func binaryBody() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "MZ"
+	case "darwin":
+		return string([]byte{0xce, 0xfa, 0xed, 0xfe})
+	}
+	return string([]byte{0x7f, 'E', 'L', 'F', 0})
+}
+
+func writeTarGzFiles(t *testing.T, path string, files map[string]string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+	for name, body := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(body))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []io.Closer{tw, gw, f} {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
