@@ -57,7 +57,7 @@ func TestJournal_DidDropsNilUndo(t *testing.T) {
 	}
 }
 
-func TestOldRoot_IsThePointersTargetOrTheVersionDirOrTheKeysDir(t *testing.T) {
+func TestOldRoot_IsTheVersionFilesTargetOrTheVersionDirOrTheKeysDir(t *testing.T) {
 	keyDir := t.TempDir()
 	if got := oldRoot(keyDir, "1.0.0"); got != keyDir {
 		t.Errorf("an install with its files in the key's dir: %s", got)
@@ -66,28 +66,28 @@ func TestOldRoot_IsThePointersTargetOrTheVersionDirOrTheKeysDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := oldRoot(keyDir, "1.0.0"); got != filepath.Join(keyDir, "1.0.0") {
-		t.Errorf("an install in a version dir with no pointer: %s", got)
+		t.Errorf("an install in a version dir with no version file: %s", got)
 	}
 	linked := filepath.Join(keyDir, "1.0.0+1")
 	if err := os.MkdirAll(linked, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := pointer.Point(filepath.Join(keyDir, "latest"), linked); err != nil {
+	if err := pointer.Point(filepath.Join(keyDir, "version"), linked); err != nil {
 		t.Fatal(err)
 	}
 	if got := oldRoot(keyDir, "1.0.0"); got != linked {
-		t.Errorf("an install with a latest pointer: %s", got)
+		t.Errorf("an install with a version file: %s", got)
 	}
 }
 
-func TestInstallVersion_RollbackPutsThePointerBackAndRemovesTheNewVersion(t *testing.T) {
+func TestInstallVersion_RollbackPutsTheVersionFileBackAndRemovesTheNewVersion(t *testing.T) {
 	keyDir := t.TempDir()
 	old := filepath.Join(keyDir, "1.0.0")
 	if err := os.MkdirAll(old, 0755); err != nil {
 		t.Fatal(err)
 	}
-	latest := filepath.Join(keyDir, "latest")
-	if err := pointer.Point(latest, old); err != nil {
+	vfile := filepath.Join(keyDir, "version")
+	if err := pointer.Point(vfile, old); err != nil {
 		t.Fatal(err)
 	}
 	stage := filepath.Join(keyDir, ".2.0.0.new")
@@ -96,24 +96,24 @@ func TestInstallVersion_RollbackPutsThePointerBackAndRemovesTheNewVersion(t *tes
 	}
 
 	jrn := &journal{}
-	if err := installVersion(jrn, extractResult{pkgDir: latest, stageDir: stage, versionDir: filepath.Join(keyDir, "2.0.0")}, "2.0.0"); err != nil {
+	if _, err := installVersion(jrn, extractResult{pkgDir: vfile, stageDir: stage, versionDir: filepath.Join(keyDir, "2.0.0")}, "2.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := pointer.Target(latest); got != filepath.Join(keyDir, "2.0.0") {
-		t.Fatalf("latest -> %s after the install", got)
+	if got, _ := pointer.Target(vfile); got != filepath.Join(keyDir, "2.0.0") {
+		t.Fatalf("version -> %s after the install", got)
 	}
 	if errs := jrn.Rollback(); len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	if got, _ := pointer.Target(latest); got != old {
-		t.Errorf("latest -> %s after the rollback", got)
+	if got, _ := pointer.Target(vfile); got != old {
+		t.Errorf("version -> %s after the rollback", got)
 	}
 	if _, err := os.Stat(filepath.Join(keyDir, "2.0.0")); !os.IsNotExist(err) {
 		t.Error("the new version survived the rollback")
 	}
 }
 
-func TestPrune_KeepsOnlyTheLatestPointerAndItsVersion(t *testing.T) {
+func TestPrune_KeepsOnlyTheVersionFileAndItsVersion(t *testing.T) {
 	keyDir := t.TempDir()
 	for _, p := range []string{"1.0.0/tool", "2.0.0/tool", "1.9.0-ripgrep/rg", "loose-binary"} {
 		path := filepath.Join(keyDir, p)
@@ -124,7 +124,7 @@ func TestPrune_KeepsOnlyTheLatestPointerAndItsVersion(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := pointer.Point(filepath.Join(keyDir, "latest"), filepath.Join(keyDir, "2.0.0")); err != nil {
+	if err := pointer.Point(filepath.Join(keyDir, "version"), filepath.Join(keyDir, "2.0.0")); err != nil {
 		t.Fatal(err)
 	}
 	prune(&config.Settings{}, "tool", keyDir)
@@ -136,7 +136,7 @@ func TestPrune_KeepsOnlyTheLatestPointerAndItsVersion(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if strings.Join(names, ",") != "2.0.0,latest" {
+	if strings.Join(names, ",") != "2.0.0,version" {
 		t.Errorf("after prune: %v", names)
 	}
 }

@@ -23,16 +23,16 @@ func placeIn(stage, dir string) (placed string, undo func() error, err error) {
 	return gjournal.Place(stage, dir)
 }
 
-// pointLatest moves key's latest pointer to dir. See golie's journal.Point.
-func pointLatest(latest, dir string) (undo func() error, err error) {
-	return gjournal.Point(latest, dir)
+// pointVersion moves key's version file to dir. See golie's journal.Point.
+func pointVersion(file, dir string) (undo func() error, err error) {
+	return gjournal.Point(file, dir)
 }
 
-// oldRoot is where the install the latest pointer is about to leave keeps its
-// files: the pointer's target, or with no pointer the version's dir, or the key's
-// dir itself, as ghpm 0.14.0 unpacked.
+// oldRoot is where the install the version file is about to leave keeps its
+// files: the file's target, or with no version file the version's dir, or the
+// key's dir itself, as ghpm 0.14.0 unpacked.
 func oldRoot(keyDir, oldVersion string) string {
-	if target, ok := pointer.Target(filepath.Join(keyDir, layout.Latest)); ok {
+	if target, ok := pointer.Target(filepath.Join(keyDir, layout.VersionFile)); ok {
 		return target
 	}
 	if fi, err := os.Stat(filepath.Join(keyDir, oldVersion)); oldVersion != "" && err == nil && fi.IsDir() {
@@ -41,23 +41,23 @@ func oldRoot(keyDir, oldVersion string) string {
 	return keyDir
 }
 
-// installVersion places the unpacked version and points the latest pointer at
-// it, journalling both.
-func installVersion(jrn *journal, ex extractResult, version string) error {
+// installVersion places the unpacked version and points the version file at
+// it, journalling both, and returns where it placed it.
+func installVersion(jrn *journal, ex extractResult, version string) (string, error) {
 	placed, undo, err := placeIn(ex.stageDir, ex.versionDir)
 	if err != nil {
-		return err
+		return "", err
 	}
 	jrn.Did("extract "+version, undo)
-	undo, err = pointLatest(ex.pkgDir, placed)
+	undo, err = pointVersion(ex.pkgDir, placed)
 	if err != nil {
-		return err
+		return "", err
 	}
-	jrn.Did("latest "+version, undo)
-	return nil
+	jrn.Did("version file "+version, undo)
+	return placed, nil
 }
 
-// prune clears a key's dir of all but its latest pointer and that version,
+// prune clears a key's dir of all but its version file and that version,
 // once the manifest no longer needs them, and says what would not go.
 func prune(cfg *config.Settings, name, keyDir string) {
 	for _, st := range tidy.PruneInstall(keyDir) {

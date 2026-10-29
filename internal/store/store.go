@@ -16,7 +16,7 @@ type Dirs interface {
 	ShimDir() (string, error)
 	ExtractsDir() (string, error)
 	ExtractDir(key string) (string, error)
-	LatestDir(key string) (string, error)
+	VersionFile(key string) (string, error)
 	VersionDir(key, version string) (string, error)
 	StageDir(key, version string) (string, error)
 	ReleaseDir(source, version string) (string, error)
@@ -31,11 +31,11 @@ const testHomeEnv = "GHPM_TEST_HOME"
 
 func NewLocalDirs() *LocalDirs { return &LocalDirs{} }
 
-func (*LocalDirs) BinDir() (string, error)               { return BinDir() }
-func (*LocalDirs) ShimDir() (string, error)              { return ShimDir() }
-func (*LocalDirs) ExtractsDir() (string, error)          { return ExtractsDir() }
-func (*LocalDirs) ExtractDir(key string) (string, error) { return ExtractDir(key) }
-func (*LocalDirs) LatestDir(key string) (string, error)  { return LatestDir(key) }
+func (*LocalDirs) BinDir() (string, error)                { return BinDir() }
+func (*LocalDirs) ShimDir() (string, error)               { return ShimDir() }
+func (*LocalDirs) ExtractsDir() (string, error)           { return ExtractsDir() }
+func (*LocalDirs) ExtractDir(key string) (string, error)  { return ExtractDir(key) }
+func (*LocalDirs) VersionFile(key string) (string, error) { return VersionFile(key) }
 func (*LocalDirs) VersionDir(key, version string) (string, error) {
 	return VersionDir(key, version)
 }
@@ -127,16 +127,17 @@ func ExtractsDir() (string, error) {
 	return l.ExtractsDir(), err
 }
 
-// ExtractDir holds every version of key and its latest pointer.
+// ExtractDir holds every version of key and its version file.
 func ExtractDir(key string) (string, error) {
 	l, err := Layout()
 	return l.ExtractPath(key), err
 }
 
-// LatestDir is key's pointer to its installed version, which shims are stamped through.
-func LatestDir(key string) (string, error) {
+// VersionFile is key's pointer file naming its installed version, which shims
+// are stamped through.
+func VersionFile(key string) (string, error) {
 	l, err := Layout()
-	return l.LatestPath(key), err
+	return l.VersionFilePath(key), err
 }
 
 // VersionDir is where one version of key is unpacked.

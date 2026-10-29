@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
@@ -113,5 +114,26 @@ func TestApplyShimPlan_AllSucceed(t *testing.T) {
 	}
 	if len(installedBin) != 1 || len(installedFont) != 1 {
 		t.Errorf("expected 1 bin and 1 font installed, got bin=%v font=%v", installedBin, installedFont)
+	}
+}
+
+func TestApplyShimPlan_FontsComeFromThePlacedVersionNotThroughTheVersionFile(t *testing.T) {
+	p := shimPlan{
+		key:       "nerd-fonts",
+		jobName:   "nerd-fonts",
+		pkgDir:    "/fake/extract/nerd-fonts/version",
+		placedDir: "/fake/extract/nerd-fonts/3.5.1",
+		font:      map[string]string{"hack": "Hack.ttf"},
+	}
+	var from string
+	installFont := func(srcPath, fontsDir string) error { from = srcPath; return nil }
+	ensureFontDir := func() (string, error) { return "/fake/fonts", nil }
+	create := func(shimName, binaryName, pkgDir, binSubdir string, force bool) error { return nil }
+
+	if _, _, failed, reason := applyShimPlan(p, false, &journal{}, config.PackageEntry{}, "", create, ensureFontDir, installFont); failed {
+		t.Fatal(reason)
+	}
+	if from != filepath.Join("/fake/extract/nerd-fonts/3.5.1", "Hack.ttf") {
+		t.Errorf("the font was read from %s", from)
 	}
 }

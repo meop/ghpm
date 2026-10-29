@@ -47,12 +47,12 @@ func TestExtractsDir(t *testing.T) {
 	}
 }
 
-func TestAKeysDirHoldsItsVersionsItsStageAndItsLatestLink(t *testing.T) {
+func TestAKeysDirHoldsItsVersionsItsStageAndItsVersionFile(t *testing.T) {
 	home := withHome(t)
 	key := filepath.Join(home, ".ghpm", "extract", "fzf@14")
 	for name, got := range map[string]func() (string, error){
 		key:                               func() (string, error) { return ExtractDir("fzf@14") },
-		filepath.Join(key, "latest"):      func() (string, error) { return LatestDir("fzf@14") },
+		filepath.Join(key, "version"):     func() (string, error) { return VersionFile("fzf@14") },
 		filepath.Join(key, "14.1.0"):      func() (string, error) { return VersionDir("fzf@14", "14.1.0") },
 		filepath.Join(key, ".14.1.0.new"): func() (string, error) { return StageDir("fzf@14", "14.1.0") },
 	} {

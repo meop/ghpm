@@ -526,7 +526,7 @@ func TestExtractOverlay_StagesInTheKeysDirWithNoVersionInTheBinPath(t *testing.T
 		t.Fatal(err)
 	}
 	key := filepath.Join(extracts, "tool")
-	if ex.pkgDir != filepath.Join(key, "latest") || ex.versionDir != filepath.Join(key, "1.2.0") || ex.stageDir != filepath.Join(key, ".1.2.0.new") {
+	if ex.pkgDir != filepath.Join(key, "version") || ex.versionDir != filepath.Join(key, "1.2.0") || ex.stageDir != filepath.Join(key, ".1.2.0.new") {
 		t.Errorf("pkgDir %s, versionDir %s, stageDir %s", ex.pkgDir, ex.versionDir, ex.stageDir)
 	}
 	if keys := binKeys(ex.bins); len(keys) != 1 || keys[0] != exeName("tool") {

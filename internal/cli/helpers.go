@@ -547,9 +547,9 @@ func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []asse
 // extractOverlay overlays the downloaded assets into the version's stage dir,
 // in order ("last wins"), each without the one dir an archive may wrap itself
 // in, and discovers bins and fonts across the result. The caller places it at
-// versionDir and points pkgDir, the latest pointer, at it.
+// versionDir and points pkgDir, the version file, at it.
 func extractOverlay(dirs store.Dirs, extractKey, version, cacheDir, displayName string, chosens []gh.Asset) (extractResult, error) {
-	pkgDir, err := dirs.LatestDir(extractKey)
+	pkgDir, err := dirs.VersionFile(extractKey)
 	if err != nil {
 		return extractResult{}, err
 	}

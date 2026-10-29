@@ -284,7 +284,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		jrn := &journal{}
 		keyDir := filepath.Dir(tr.pkgDir)
 		oldPkgDir := oldRoot(keyDir, tr.r.pkg.Version)
-		if err := installVersion(jrn, tr.extractResult, newVer); err != nil {
+		placed, err := installVersion(jrn, tr.extractResult, newVer)
+		if err != nil {
 			_ = os.RemoveAll(tr.stageDir)
 			rollbackPkg(cfg, jrn, res.Name)
 			printFail(cfg, "%s: %v", res.Name, err)
@@ -411,7 +412,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// fonts — mirrors the bin handling above: a release can drop every font a
 		// package used to have, and the old ones still need uninstalling.
 		if !pkgFailed && (len(tr.r.pkg.Font) > 0 || len(newFont) > 0) {
-			installedFont, fontErrs, err := syncPkgFonts(cfg, jrn, tr.pkgDir, oldPkgDir, tr.r.pkg.Font, newFont)
+			installedFont, fontErrs, err := syncPkgFonts(cfg, jrn, placed, oldPkgDir, tr.r.pkg.Font, newFont)
 			newFont = installedFont
 			if err != nil {
 				printFail(cfg, "%s: font dir: %v", res.Name, err)
@@ -453,7 +454,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			FontDeclined: newFontDeclined,
 		}
 
-		// Only now: every undo above restores from the version the pointer left.
+		// Only now: every undo above restores from the version the version file left.
 		prune(cfg, res.Name, keyDir)
 	}
 

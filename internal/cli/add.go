@@ -59,6 +59,7 @@ type shimPlan struct {
 	pkgDir       string
 	stageDir     string
 	versionDir   string
+	placedDir    string
 	assets       []string
 	bin          map[string]string
 	font         map[string]string
@@ -465,7 +466,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		jrn := &journal{}
 		keyDir := filepath.Dir(p.pkgDir)
 		oldPkgDir := oldRoot(keyDir, existing.Version)
-		if err := installVersion(jrn, extractResult{pkgDir: p.pkgDir, stageDir: p.stageDir, versionDir: p.versionDir}, p.version); err != nil {
+		placed, err := installVersion(jrn, extractResult{pkgDir: p.pkgDir, stageDir: p.stageDir, versionDir: p.versionDir}, p.version)
+		if err != nil {
 			rollbackPkg(cfg, jrn, p.jobName)
 			printFail(cfg, "%s: %v", p.jobName, err)
 			hadErrors = true
@@ -499,6 +501,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		p.placedDir = placed
 		installedBin, installedFont, failed, failReason := applyShimPlan(p, force, jrn, existing, oldPkgDir, shim.Create, ensureFontDir, installFont)
 		if failed {
 			hadErrors = true
@@ -576,7 +579,7 @@ func applyShimPlan(
 			}
 			slices.Sort(fontNames)
 			for _, fontName := range fontNames {
-				srcPath := filepath.Join(p.pkgDir, filepath.FromSlash(p.font[fontName]))
+				srcPath := filepath.Join(p.placedDir, filepath.FromSlash(p.font[fontName]))
 				jrn.Did("font "+fontName, fontUndo(p.font[fontName], prev.Font[fontName], oldPkgDir, fontsDir))
 				if err := installFontFn(srcPath, fontsDir); err != nil {
 					printFail(nil, "%s: %s: could not install font: %v", p.jobName, fontName, err)
