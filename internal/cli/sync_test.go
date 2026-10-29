@@ -258,7 +258,10 @@ func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
 func TestSyncPkgFonts_UninstallsStaleWhenAllFontsGone(t *testing.T) {
 	home := withHome(t)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "xdg-data"))
-	fontsDir := filepath.Join(home, "xdg-data", "fonts")
+	fontsDir, err := userFontDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	makeFontFile(t, fontsDir, "Hack-Regular.ttf")
 
 	installed, errs, err := syncPkgFonts(&config.Settings{}, &journal{}, t.TempDir(), "", map[string]string{"hack": "Hack-Regular.ttf"}, nil)
