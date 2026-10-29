@@ -58,6 +58,7 @@ type shimPlan struct {
 	source       string
 	pkgDir       string
 	stageDir     string
+	versionDir   string
 	assets       []string
 	bin          map[string]string
 	font         map[string]string
@@ -291,7 +292,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		installTasks = append(installTasks, parallel.Task[installTaskResult]{
 			Name: r.job.name,
 			Run: func() (installTaskResult, error) {
-				ex, err := extractOverlay(dirs, r.job.key(), cacheDirs[i], r.job.name, r.chosens)
+				ex, err := extractOverlay(dirs, r.job.key(), config.NormalizeVersion(r.release.TagName), cacheDirs[i], r.job.name, r.chosens)
 				if err != nil {
 					return installTaskResult{}, err
 				}
@@ -393,6 +394,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			source:       r.job.source,
 			pkgDir:       tr.pkgDir,
 			stageDir:     tr.stageDir,
+			versionDir:   tr.versionDir,
 			assets:       assetNames(r.chosens),
 			bin:          bin,
 			font:         font,
@@ -461,15 +463,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		// that fails anywhere below is put back to whatever was installed before
 		// (nothing, for a first add) rather than recorded half-created.
 		jrn := &journal{}
-		aside, undo, err := swapIn(p.stageDir, p.pkgDir)
-		if err != nil {
+		keyDir := filepath.Dir(p.pkgDir)
+		oldPkgDir := oldRoot(keyDir, existing.Version)
+		if err := installVersion(jrn, extractResult{pkgDir: p.pkgDir, stageDir: p.stageDir, versionDir: p.versionDir}, p.version); err != nil {
+			rollbackPkg(cfg, jrn, p.jobName)
 			printFail(cfg, "%s: %v", p.jobName, err)
 			hadErrors = true
 			failedItems = append(failedItems, failedItem{name: p.jobName, reason: err.Error()})
 			continue
 		}
-		jrn.Did("extract "+p.version, undo)
-		oldPkgDir := oldRoot(aside, existing.Version)
 
 		if reinstall && existing.Version != "" {
 			for shimName := range existing.AllBins() {
@@ -514,11 +516,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			BinDeclined:  p.binDeclined,
 			FontDeclined: p.fontDeclined,
 		}
-		if aside != "" {
-			if err := os.RemoveAll(aside); err != nil {
-				printWarn(cfg, "%s: could not remove old extract dir: %v", p.jobName, err)
-			}
-		}
+		prune(cfg, p.jobName, keyDir)
 		successCount++
 	}
 	if successCount > 0 {

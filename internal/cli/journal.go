@@ -5,7 +5,11 @@ import (
 	"path/filepath"
 
 	gjournal "github.com/meop/golie/journal"
+	"github.com/meop/golie/layout"
+	"github.com/meop/golie/pointer"
+	"github.com/meop/golie/tidy"
 
+	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/shim"
 )
 
@@ -14,21 +18,51 @@ import (
 // still describes. See golie's journal package for the ordering rules.
 type journal = gjournal.Journal
 
-// swapIn puts the install staged at stage in live's place. See golie's journal.Swap.
-func swapIn(stage, live string) (aside string, undo func() error, err error) {
-	return gjournal.Swap(stage, live)
+// placeIn puts the version unpacked at stage at dir. See golie's journal.Place.
+func placeIn(stage, dir string) (placed string, undo func() error, err error) {
+	return gjournal.Place(stage, dir)
 }
 
-// oldRoot is where the install a swap moved aside keeps its files. One made
-// before extract dirs lost their version keeps them in a dir of that version.
-func oldRoot(aside, oldVersion string) string {
-	if aside == "" || oldVersion == "" {
-		return aside
+// pointLatest moves key's latest pointer to dir. See golie's journal.Point.
+func pointLatest(latest, dir string) (undo func() error, err error) {
+	return gjournal.Point(latest, dir)
+}
+
+// oldRoot is where the install the latest pointer is about to leave keeps its
+// files: the pointer's target, or with no pointer the version's dir, or the key's
+// dir itself, as ghpm 0.14.0 unpacked.
+func oldRoot(keyDir, oldVersion string) string {
+	if target, ok := pointer.Target(filepath.Join(keyDir, layout.Latest)); ok {
+		return target
 	}
-	if fi, err := os.Stat(filepath.Join(aside, oldVersion)); err == nil && fi.IsDir() {
-		return filepath.Join(aside, oldVersion)
+	if fi, err := os.Stat(filepath.Join(keyDir, oldVersion)); oldVersion != "" && err == nil && fi.IsDir() {
+		return filepath.Join(keyDir, oldVersion)
 	}
-	return aside
+	return keyDir
+}
+
+// installVersion places the unpacked version and points the latest pointer at
+// it, journalling both.
+func installVersion(jrn *journal, ex extractResult, version string) error {
+	placed, undo, err := placeIn(ex.stageDir, ex.versionDir)
+	if err != nil {
+		return err
+	}
+	jrn.Did("extract "+version, undo)
+	undo, err = pointLatest(ex.pkgDir, placed)
+	if err != nil {
+		return err
+	}
+	jrn.Did("latest "+version, undo)
+	return nil
+}
+
+// prune clears a key's dir of all but its latest pointer and that version,
+// once the manifest no longer needs them, and says what would not go.
+func prune(cfg *config.Settings, name, keyDir string) {
+	for _, st := range tidy.PruneInstall(keyDir) {
+		printWarn(cfg, "%s: could not remove %s, left for tidy: %v", name, filepath.Base(st.Path), st.Err)
+	}
 }
 
 // shimUndo reverses a shim ghpm is about to stamp or delete. See golie's journal.ShimUndo.

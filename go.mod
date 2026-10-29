@@ -25,7 +25,7 @@ require (
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/fatih/color v1.19.0
 	github.com/klauspost/compress v1.19.2
-	github.com/meop/golie v0.5.0
+	github.com/meop/golie v0.7.1
 	github.com/spf13/cobra v1.10.2
 	github.com/ulikunitz/xz v0.5.15
 	golang.org/x/sys v0.49.0

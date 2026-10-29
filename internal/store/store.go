@@ -16,7 +16,9 @@ type Dirs interface {
 	ShimDir() (string, error)
 	ExtractsDir() (string, error)
 	ExtractDir(key string) (string, error)
-	StageDir(key string) (string, error)
+	LatestDir(key string) (string, error)
+	VersionDir(key, version string) (string, error)
+	StageDir(key, version string) (string, error)
 	ReleaseDir(source, version string) (string, error)
 	ReleaseBaseDir() (string, error)
 	RepoDir(source string) (string, error)
@@ -33,7 +35,11 @@ func (*LocalDirs) BinDir() (string, error)               { return BinDir() }
 func (*LocalDirs) ShimDir() (string, error)              { return ShimDir() }
 func (*LocalDirs) ExtractsDir() (string, error)          { return ExtractsDir() }
 func (*LocalDirs) ExtractDir(key string) (string, error) { return ExtractDir(key) }
-func (*LocalDirs) StageDir(key string) (string, error)   { return StageDir(key) }
+func (*LocalDirs) LatestDir(key string) (string, error)  { return LatestDir(key) }
+func (*LocalDirs) VersionDir(key, version string) (string, error) {
+	return VersionDir(key, version)
+}
+func (*LocalDirs) StageDir(key, version string) (string, error) { return StageDir(key, version) }
 func (*LocalDirs) ReleaseDir(source, version string) (string, error) {
 	return ReleaseDir(source, version)
 }
@@ -121,16 +127,28 @@ func ExtractsDir() (string, error) {
 	return l.ExtractsDir(), err
 }
 
-// ExtractDir is where key is installed, whether or not it is there.
+// ExtractDir holds every version of key and its latest pointer.
 func ExtractDir(key string) (string, error) {
 	l, err := Layout()
 	return l.ExtractPath(key), err
 }
 
-// StageDir is where key's next install is unpacked, before it is swapped in.
-func StageDir(key string) (string, error) {
+// LatestDir is key's pointer to its installed version, which shims are stamped through.
+func LatestDir(key string) (string, error) {
 	l, err := Layout()
-	return l.StagePath(key), err
+	return l.LatestPath(key), err
+}
+
+// VersionDir is where one version of key is unpacked.
+func VersionDir(key, version string) (string, error) {
+	l, err := Layout()
+	return l.VersionPath(key, version), err
+}
+
+// StageDir is where a version of key is unpacked before it is placed.
+func StageDir(key, version string) (string, error) {
+	l, err := Layout()
+	return l.StagePath(key, version), err
 }
 
 func ReleaseBaseDir() (string, error) {

@@ -118,10 +118,11 @@ type cmdInit struct {
 // task: the single dir all chosen assets were overlaid into, plus the bins and
 // fonts discovered across that combined tree.
 type extractResult struct {
-	pkgDir   string
-	stageDir string
-	bins     []asset.BinCandidate
-	fonts    []asset.FontCandidate
+	pkgDir     string
+	stageDir   string
+	versionDir string
+	bins       []asset.BinCandidate
+	fonts      []asset.FontCandidate
 }
 
 type cmdOptions struct {
@@ -543,15 +544,20 @@ func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []asse
 	return errs
 }
 
-// extractOverlay overlays the downloaded assets into the key's stage dir, in
-// order ("last wins"), each without the one dir an archive may wrap itself in,
-// and discovers bins and fonts across the result. The caller swaps it in at pkgDir.
-func extractOverlay(dirs store.Dirs, extractKey, cacheDir, displayName string, chosens []gh.Asset) (extractResult, error) {
-	pkgDir, err := dirs.ExtractDir(extractKey)
+// extractOverlay overlays the downloaded assets into the version's stage dir,
+// in order ("last wins"), each without the one dir an archive may wrap itself
+// in, and discovers bins and fonts across the result. The caller places it at
+// versionDir and points pkgDir, the latest pointer, at it.
+func extractOverlay(dirs store.Dirs, extractKey, version, cacheDir, displayName string, chosens []gh.Asset) (extractResult, error) {
+	pkgDir, err := dirs.LatestDir(extractKey)
 	if err != nil {
 		return extractResult{}, err
 	}
-	stage, err := dirs.StageDir(extractKey)
+	versionDir, err := dirs.VersionDir(extractKey, version)
+	if err != nil {
+		return extractResult{}, err
+	}
+	stage, err := dirs.StageDir(extractKey, version)
 	if err != nil {
 		return extractResult{}, err
 	}
@@ -587,10 +593,11 @@ func extractOverlay(dirs store.Dirs, extractKey, cacheDir, displayName string, c
 	}
 
 	return extractResult{
-		pkgDir:   pkgDir,
-		stageDir: stage,
-		bins:     asset.FindBins(stage),
-		fonts:    asset.FindFonts(stage),
+		pkgDir:     pkgDir,
+		stageDir:   stage,
+		versionDir: versionDir,
+		bins:       asset.FindBins(stage),
+		fonts:      asset.FindFonts(stage),
 	}, nil
 }
 

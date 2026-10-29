@@ -9,6 +9,7 @@ import (
 
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/golie/pointer"
 )
 
 func TestJournal_RollbackReversesNewestFirst(t *testing.T) {
@@ -56,19 +57,87 @@ func TestJournal_DidDropsNilUndo(t *testing.T) {
 	}
 }
 
-func TestOldRoot_FindsTheVersionDirOfAnInstallMadeBeforeTheStableLayout(t *testing.T) {
-	aside := t.TempDir()
-	if got := oldRoot(aside, "1.0.0"); got != aside {
-		t.Errorf("oldRoot of a stable install = %s, want %s", got, aside)
+func TestOldRoot_IsThePointersTargetOrTheVersionDirOrTheKeysDir(t *testing.T) {
+	keyDir := t.TempDir()
+	if got := oldRoot(keyDir, "1.0.0"); got != keyDir {
+		t.Errorf("an install with its files in the key's dir: %s", got)
 	}
-	if err := os.MkdirAll(filepath.Join(aside, "1.0.0", "bin"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(keyDir, "1.0.0"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if got := oldRoot(aside, "1.0.0"); got != filepath.Join(aside, "1.0.0") {
-		t.Errorf("oldRoot of a versioned install = %s", got)
+	if got := oldRoot(keyDir, "1.0.0"); got != filepath.Join(keyDir, "1.0.0") {
+		t.Errorf("an install in a version dir with no pointer: %s", got)
 	}
-	if got := oldRoot("", "1.0.0"); got != "" {
-		t.Errorf("oldRoot of a first install = %s", got)
+	linked := filepath.Join(keyDir, "1.0.0+1")
+	if err := os.MkdirAll(linked, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := pointer.Point(filepath.Join(keyDir, "latest"), linked); err != nil {
+		t.Fatal(err)
+	}
+	if got := oldRoot(keyDir, "1.0.0"); got != linked {
+		t.Errorf("an install with a latest pointer: %s", got)
+	}
+}
+
+func TestInstallVersion_RollbackPutsThePointerBackAndRemovesTheNewVersion(t *testing.T) {
+	keyDir := t.TempDir()
+	old := filepath.Join(keyDir, "1.0.0")
+	if err := os.MkdirAll(old, 0755); err != nil {
+		t.Fatal(err)
+	}
+	latest := filepath.Join(keyDir, "latest")
+	if err := pointer.Point(latest, old); err != nil {
+		t.Fatal(err)
+	}
+	stage := filepath.Join(keyDir, ".2.0.0.new")
+	if err := os.MkdirAll(stage, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	jrn := &journal{}
+	if err := installVersion(jrn, extractResult{pkgDir: latest, stageDir: stage, versionDir: filepath.Join(keyDir, "2.0.0")}, "2.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := pointer.Target(latest); got != filepath.Join(keyDir, "2.0.0") {
+		t.Fatalf("latest -> %s after the install", got)
+	}
+	if errs := jrn.Rollback(); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if got, _ := pointer.Target(latest); got != old {
+		t.Errorf("latest -> %s after the rollback", got)
+	}
+	if _, err := os.Stat(filepath.Join(keyDir, "2.0.0")); !os.IsNotExist(err) {
+		t.Error("the new version survived the rollback")
+	}
+}
+
+func TestPrune_KeepsOnlyTheLatestPointerAndItsVersion(t *testing.T) {
+	keyDir := t.TempDir()
+	for _, p := range []string{"1.0.0/tool", "2.0.0/tool", "1.9.0-ripgrep/rg", "loose-binary"} {
+		path := filepath.Join(keyDir, p)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := pointer.Point(filepath.Join(keyDir, "latest"), filepath.Join(keyDir, "2.0.0")); err != nil {
+		t.Fatal(err)
+	}
+	prune(&config.Settings{}, "tool", keyDir)
+	entries, err := os.ReadDir(keyDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, ",") != "2.0.0,latest" {
+		t.Errorf("after prune: %v", names)
 	}
 }
 

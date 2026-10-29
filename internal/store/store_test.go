@@ -47,15 +47,18 @@ func TestExtractsDir(t *testing.T) {
 	}
 }
 
-func TestExtractDirHasNoVersionAndStageDirSitsBesideIt(t *testing.T) {
+func TestAKeysDirHoldsItsVersionsItsStageAndItsLatestLink(t *testing.T) {
 	home := withHome(t)
-	dir, err := ExtractDir("fzf@14")
-	if err != nil || dir != filepath.Join(home, ".ghpm", "extract", "fzf@14") {
-		t.Errorf("ExtractDir = %q, %v", dir, err)
-	}
-	stage, err := StageDir("fzf@14")
-	if err != nil || stage != filepath.Join(home, ".ghpm", "extract", ".fzf@14.new") {
-		t.Errorf("StageDir = %q, %v", stage, err)
+	key := filepath.Join(home, ".ghpm", "extract", "fzf@14")
+	for name, got := range map[string]func() (string, error){
+		key:                               func() (string, error) { return ExtractDir("fzf@14") },
+		filepath.Join(key, "latest"):      func() (string, error) { return LatestDir("fzf@14") },
+		filepath.Join(key, "14.1.0"):      func() (string, error) { return VersionDir("fzf@14", "14.1.0") },
+		filepath.Join(key, ".14.1.0.new"): func() (string, error) { return StageDir("fzf@14", "14.1.0") },
+	} {
+		if dir, err := got(); err != nil || dir != name {
+			t.Errorf("got %q, %v; want %q", dir, err, name)
+		}
 	}
 }
 

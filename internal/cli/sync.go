@@ -257,7 +257,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		syncTasks = append(syncTasks, parallel.Task[syncTaskResult]{
 			Name: r.key,
 			Run: func() (syncTaskResult, error) {
-				ex, err := extractOverlay(dirs, r.key, cacheDirs[i], r.key, r.chosens)
+				ex, err := extractOverlay(dirs, r.key, config.NormalizeVersion(r.release.TagName), cacheDirs[i], r.key, r.chosens)
 				if err != nil {
 					return syncTaskResult{}, err
 				}
@@ -282,16 +282,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// ~/.ghpm back the way it was and leave the manifest entry — the only
 		// commit point — untouched for the next run to retry.
 		jrn := &journal{}
-		aside, undo, err := swapIn(tr.stageDir, tr.pkgDir)
-		if err != nil {
+		keyDir := filepath.Dir(tr.pkgDir)
+		oldPkgDir := oldRoot(keyDir, tr.r.pkg.Version)
+		if err := installVersion(jrn, tr.extractResult, newVer); err != nil {
 			_ = os.RemoveAll(tr.stageDir)
+			rollbackPkg(cfg, jrn, res.Name)
 			printFail(cfg, "%s: %v", res.Name, err)
 			hadErrors = true
 			failedItems = append(failedItems, failedItem{name: res.Name, reason: err.Error()})
 			continue
 		}
-		jrn.Did("extract "+newVer, undo)
-		oldPkgDir := oldRoot(aside, tr.r.pkg.Version)
 
 		if len(tr.bins) == 0 && len(tr.fonts) == 0 {
 			reason := fmt.Sprintf("no binaries or fonts found in %s", strings.Join(assetNames(tr.r.chosens), ", "))
@@ -453,12 +453,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 			FontDeclined: newFontDeclined,
 		}
 
-		// Only now: every undo above restores from what the swap moved aside.
-		if aside != "" {
-			if err := os.RemoveAll(aside); err != nil {
-				printWarn(cfg, "%s: could not remove old extract dir: %v", res.Name, err)
-			}
-		}
+		// Only now: every undo above restores from the version the pointer left.
+		prune(cfg, res.Name, keyDir)
 	}
 
 	if updated > 0 {

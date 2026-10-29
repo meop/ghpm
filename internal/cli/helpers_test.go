@@ -511,14 +511,13 @@ func TestOverlayMergesDirsAndLetsTheLaterFileWin(t *testing.T) {
 	}
 }
 
-// the bin key, and so a shim's target, has no version in it to change with the next release
-func TestExtractOverlay_StagesBesideTheInstallWithNoVersionInTheBinPath(t *testing.T) {
+func TestExtractOverlay_StagesInTheKeysDirWithNoVersionInTheBinPath(t *testing.T) {
 	withHome(t)
 	cache := t.TempDir()
 	writeTarGzFiles(t, filepath.Join(cache, "tool-1.2.0-linux.tar.gz"), map[string]string{
 		"tool-1.2.0-linux/" + exeName("tool"): binaryBody(),
 	})
-	ex, err := extractOverlay(store.NewLocalDirs(), "tool", cache, "tool", []gh.Asset{{Name: "tool-1.2.0-linux.tar.gz"}})
+	ex, err := extractOverlay(store.NewLocalDirs(), "tool", "1.2.0", cache, "tool", []gh.Asset{{Name: "tool-1.2.0-linux.tar.gz"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,8 +525,9 @@ func TestExtractOverlay_StagesBesideTheInstallWithNoVersionInTheBinPath(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ex.pkgDir != filepath.Join(extracts, "tool") || ex.stageDir != filepath.Join(extracts, ".tool.new") {
-		t.Errorf("pkgDir %s, stageDir %s", ex.pkgDir, ex.stageDir)
+	key := filepath.Join(extracts, "tool")
+	if ex.pkgDir != filepath.Join(key, "latest") || ex.versionDir != filepath.Join(key, "1.2.0") || ex.stageDir != filepath.Join(key, ".1.2.0.new") {
+		t.Errorf("pkgDir %s, versionDir %s, stageDir %s", ex.pkgDir, ex.versionDir, ex.stageDir)
 	}
 	if keys := binKeys(ex.bins); len(keys) != 1 || keys[0] != exeName("tool") {
 		t.Errorf("bin keys = %v", keys)
