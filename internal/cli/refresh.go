@@ -20,34 +20,17 @@ func newRefreshCmd() *cobra.Command {
 }
 
 func runRefresh(cmd *cobra.Command, args []string) error {
-	ci, err := initCommand(context.Background(), cmdOptions{Lock: true, GH: true})
+	// no gh up front: the refresh below fetches one where there is none, and
+	// says so, rather than finding one the startup check just fetched
+	ci, err := initCommand(context.Background(), cmdOptions{Lock: true})
 	if err != nil {
 		return err
 	}
 	defer ci.close()
 	cfg := ci.cfg
 
-	syncResults, err := config.RefreshRepos()
-	if syncResults == nil && err != nil {
-		// RefreshRepos returns (nil, err) only when it can't even load settings
-		// to find the configured sources — nothing to range over below, so
-		// without this check the command would silently exit 0 with no output.
-		// In every other case each source's own result carries its own error,
-		// which the loop below already surfaces per-source; this top-level err
-		// is otherwise redundant with those.
-		printFail(cfg, "%v", err)
-		return errSilent
-	}
+	// gh first, so the repo sources are fetched with the gh just refreshed
 	var hadErrors bool
-	for _, r := range syncResults {
-		if r.Err != nil {
-			printFail(cfg, "%s %v", r.Source, r.Err)
-			hadErrors = true
-		} else {
-			printPass(cfg, "synced %s (%d entries)", r.Source, r.Count)
-		}
-	}
-	sep()
 	ctx := context.Background()
 	for _, tool := range []struct {
 		name    string
@@ -70,6 +53,27 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 			if tool.name == "wedge" {
 				print("shims keep the wedge they were stamped with: `ghpm sync --reinstall` restamps them")
 			}
+		}
+	}
+	sep()
+
+	syncResults, err := config.RefreshRepos()
+	if syncResults == nil && err != nil {
+		// RefreshRepos returns (nil, err) only when it can't even load settings
+		// to find the configured sources — nothing to range over below, so
+		// without this check the command would silently exit 0 with no output.
+		// In every other case each source's own result carries its own error,
+		// which the loop below already surfaces per-source; this top-level err
+		// is otherwise redundant with those.
+		printFail(cfg, "%v", err)
+		return errSilent
+	}
+	for _, r := range syncResults {
+		if r.Err != nil {
+			printFail(cfg, "%s %v", r.Source, r.Err)
+			hadErrors = true
+		} else {
+			printPass(cfg, "synced %s (%d entries)", r.Source, r.Count)
 		}
 	}
 	if hadErrors {
