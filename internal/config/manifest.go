@@ -6,7 +6,7 @@ import (
 	"github.com/meop/ghpm/internal/store"
 )
 
-// The manifest is golie's: ghpm and gotm keep the same file, so what reads it
+// The manifest is golie's: ghpm and goup keep the same file, so what reads it
 // (list, sync, remove, tidy) reads one contract. See golie's manifest package
 // for what an entry records and why.
 type (
