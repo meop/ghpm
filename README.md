@@ -168,10 +168,11 @@ version still in use when its turn to go comes is left for `ghpm tidy`.
 
 ## Upgrading ghpm
 
-Run `ghpm upgrade` before `ghpm sync`. A newer ghpm moves each package to the layout above on its next sync, and
-`ghpm sync --reinstall` moves them all at once; the choices you made (which binaries, their names) carry over. Once
-it has, do not run an older ghpm on that machine: it looks for packages where they no longer are, and its `tidy`
-would remove them.
+Run `ghpm upgrade` before `ghpm sync`. `ghpm sync` stamps again any shim an older wedge stamped, so a fix in the wedge a
+newer ghpm carries reaches every package, updated or not. A newer ghpm moves each package to the layout above on its
+next sync, and `ghpm sync --reinstall` moves them all at once; the choices you made (which binaries, their names)
+carry over. Once it has, do not run an older ghpm on that machine: it looks for packages where they no longer are,
+and its `tidy` would remove them.
 
 ## Verifying releases
 

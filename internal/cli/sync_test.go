@@ -230,6 +230,48 @@ func TestSyncBinShims_ForceReplacesAForeignFile(t *testing.T) {
 	}
 }
 
+func TestRestampShims_StampsOnlyShimsFromAnotherWedge(t *testing.T) {
+	withHome(t)
+	fakeMallet(t)
+	binDir, err := store.BinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimDir, err := store.ShimDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	extracts, err := store.ExtractsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shimDir, exeName("wedge")), []byte("a wedge template"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	current, old := filepath.Join(extracts, "fd", "version", exeName("fd")), filepath.Join(extracts, "rg", "version", exeName("rg"))
+	if err := os.WriteFile(filepath.Join(binDir, exeName("fd")), stampedBody(current), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, exeName("rg")), append([]byte("an older"), stampedBody(old)...), 0755); err != nil {
+		t.Fatal(err)
+	}
+	m := &config.Manifest{Extracts: map[string]config.PackageEntry{
+		"fd": {Bin: map[string]string{exeName("fd"): exeName("fd")}},
+		"rg": {Bin: map[string]string{exeName("rg"): exeName("rg")}},
+	}}
+
+	if failed := restampShims(&config.Settings{}, m); len(failed) != 0 {
+		t.Fatalf("unexpected failures: %v", failed)
+	}
+	args, err := os.ReadFile(filepath.Join(shimDir, "mallet-args.txt"))
+	if err != nil {
+		t.Fatalf("expected mallet to restamp rg: %v", err)
+	}
+	if !strings.Contains(string(args), old) || strings.Contains(string(args), current) {
+		t.Errorf("expected only rg restamped, to its own target, mallet got: %s", args)
+	}
+}
+
 // TestSyncBinShims_FailedCreateNotRecorded guards against a failed shim.Create
 // still reading back as installed, the same class of bug as add.go's applyShimPlan.
 func TestSyncBinShims_FailedCreateNotRecorded(t *testing.T) {
