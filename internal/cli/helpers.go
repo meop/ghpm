@@ -174,7 +174,7 @@ func initCommand(ctx context.Context, opts cmdOptions) (*cmdInit, error) {
 	}
 
 	if opts.GH {
-		if err := gh.CheckInstalled(ctx); err != nil {
+		if err := gh.CheckInstalled(ctx, fetchingVendored("gh")); err != nil {
 			printFail(cfg, "%v", err)
 			return nil, ci.fail()
 		}

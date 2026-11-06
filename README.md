@@ -55,7 +55,7 @@ ghpm tidy                 # remove unused cached assets and orphaned package dir
 ghpm tidy --all           # remove all cached assets
 
 ghpm upgrade              # upgrade ghpm itself
-ghpm refresh              # refresh repo sources to latest versions
+ghpm refresh              # refresh repo sources, and ghpm's own gh and wedge, to their latest
 ghpm doctor               # check system health
 ```
 
@@ -148,6 +148,8 @@ A command that reads takes the start of a word. `find`, `list` and `outdated` ma
 GitHub itself is only searched as a fallback, and held to the same two rules. For a name the registry does not have, `add` and `info` offer the GitHub repos named exactly that, whoever owns them, and you pick one: `ghpm add fzf` would offer `junegunn/fzf` and never `junegunn/fzf.vim`. For a term that found nothing, `find` offers to search GitHub, and lists the repos whose name or description has a word starting with it. So a vague term goes to `find` first; `add` will not guess from it.
 
 `ghpm refresh` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
+
+`ghpm refresh` also moves the two tools ghpm uses itself, kept under `~/.ghpm/vendor/`, to their latest releases: [gh](https://github.com/cli/cli), for everything ghpm asks GitHub, and [wedge](https://github.com/meop/wedge), whose `mallet` stamps its shims. It says what it checked and what changed. No other command looks for a newer one: each uses what is there, and only fetches one where there is none, as on a new machine. A release is checked before it is used: its archive against the release's checksums, and for wedge those checksums against their signature by the meop release key. Shims keep the wedge they were stamped with until `ghpm sync --reinstall` restamps them. `ghpm upgrade` checks ghpm's own release the same way.
 
 If a name isn't in the map, `ghpm` looks for GitHub repos of exactly that name and prompts you to pick one.
 

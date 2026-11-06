@@ -8,44 +8,69 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/meop/golie/pinned"
 	"github.com/meop/golie/ui"
+	"github.com/meop/golie/vendored"
 
 	"github.com/meop/ghpm/internal/toolchain"
 )
 
-// Ensure makes sure ghpm has its own vendored gh, and that it is exactly the
-// release toolchain pins: not merely a gh at that version, but the pinned
-// binary, checked by its sha256 on every call. Never skipped just because
-// something is on PATH: ghpm's own gh use doesn't depend on it. A copy from
-// another version, a damaged one and one something else put there all fail
-// the same check and are replaced the same way — a plain download of the
-// pinned release, checked before it is installed (see golie's pinned
-// package). It costs one hash of gh per invocation, which is less than
-// asking gh its version was, and no network at all while the pin holds.
+// Ensure makes sure ghpm has its own vendored gh. Never skipped just because
+// something is on PATH: ghpm's own gh use doesn't depend on it. Whatever
+// release is there is used, with no network; only where there is none — a new
+// machine, a removed vendor dir — is the latest fetched, checked against its
+// release's checksums first (see golie's vendored package), and logged in.
+// fetching, when not nil, is told the archive just before that download.
 // Staying *authenticated* is a separate concern handled reactively — see
 // ReAuth — rather than checked here on every invocation: that would mean a
 // network round trip before every single gh call, on top of the one the call
 // itself is about to make.
-func Ensure(ctx context.Context) error {
+func Ensure(ctx context.Context, fetching func(archive string)) error {
+	dir, r, err := release()
+	if err != nil {
+		return err
+	}
+	installed, err := r.Ensure(ctx, dir, options(fetching))
+	if err != nil || installed == "" {
+		return err
+	}
+	return loginFresh(ctx)
+}
+
+// Refresh moves ghpm's vendored gh to gh's latest release, and says what it
+// had and what it has: the same twice when it was current, and from "" when
+// there was none.
+func Refresh(ctx context.Context, fetching func(archive string)) (from, to string, err error) {
+	dir, r, err := release()
+	if err != nil {
+		return "", "", err
+	}
+	from, to, err = r.Refresh(ctx, dir, options(fetching))
+	if err != nil || from != "" || to == "" {
+		return from, to, err
+	}
+	return from, to, loginFresh(ctx)
+}
+
+func release() (string, vendored.Release, error) {
 	dir, err := vendorSubDir()
 	if err != nil {
-		return err
+		return "", vendored.Release{}, err
 	}
-	tool, ok := toolchain.Gh(runtime.GOOS, runtime.GOARCH)
+	r, ok := toolchain.Gh(runtime.GOOS, runtime.GOARCH)
 	if !ok {
-		return fmt.Errorf("no gh release available for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return "", vendored.Release{}, fmt.Errorf("no gh release available for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	if tool.Verified(dir) {
-		ui.Verbose("%s %s: current in %s", tool.Name, tool.Version, dir)
-		return nil
-	}
-	// gh's config dir sits beside it and holds ghpm's token: it is kept, and
-	// everything else that is not the pinned gh is cleared out
-	err = pinned.Ensure(ctx, tool, dir, pinned.Options{Keep: []string{configDirName}})
-	if err != nil {
-		return err
-	}
+	return dir, r, nil
+}
+
+// options keeps gh's config dir, which sits beside it and holds ghpm's token;
+// everything else that is not gh is cleared out
+func options(fetching func(string)) vendored.Options {
+	return vendored.Options{Keep: []string{configDirName}, Fetching: fetching}
+}
+
+// loginFresh logs a just-vendored gh in, when it is not already
+func loginFresh(ctx context.Context) error {
 	path, err := VendorPath()
 	if err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/meop/golie/sig"
 	"github.com/meop/golie/upgrade"
 
 	"github.com/meop/ghpm/internal/config"
@@ -17,8 +18,9 @@ import (
 // self is ghpm as its own release page publishes it. Everything upgrade asks
 // of GitHub is a plain page or release download — not the API and not gh —
 // so ghpm can upgrade itself before, or without, its vendored gh being
-// authenticated. See golie's upgrade package.
-var self = upgrade.Self{Name: binGhpm, ReleasesURL: "https://github.com/meop/ghpm/releases/"}
+// authenticated. The release's SHA256SUMS is checked against its signature by
+// the meop release key before its archive is. See golie's upgrade package.
+var self = upgrade.Self{Name: binGhpm, ReleasesURL: "https://github.com/meop/ghpm/releases/", Key: sig.ReleaseKey}
 
 // installedSelf is self held to the one place ghpm upgrades itself from:
 // ~/.ghpm/bin, where its installer puts it. A ghpm that runs from anywhere

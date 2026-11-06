@@ -131,7 +131,7 @@ func findOnGitHub(term string) {
 	if !promptConfirm(fmt.Sprintf("search github for %q?", term)) {
 		return
 	}
-	if err := gh.CheckInstalled(context.Background()); err != nil {
+	if err := gh.CheckInstalled(context.Background(), fetchingVendored("gh")); err != nil {
 		printFail(nil, "%v", err)
 		return
 	}

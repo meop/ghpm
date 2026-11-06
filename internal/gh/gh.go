@@ -102,10 +102,10 @@ func sanitizeRelease(rel Release) (Release, error) {
 	return rel, nil
 }
 
-// CheckInstalled ensures ghpm has a usable gh, vendoring one if nothing —
-// vendored or on PATH — is there yet.
-func CheckInstalled(ctx context.Context) error {
-	if err := ghbin.Ensure(ctx); err != nil {
+// CheckInstalled ensures ghpm has a usable gh, vendoring one if there is
+// none yet; fetching is told the archive just before that download.
+func CheckInstalled(ctx context.Context, fetching func(archive string)) error {
+	if err := ghbin.Ensure(ctx, fetching); err != nil {
 		return err
 	}
 	_, err := ghbin.Find()

@@ -6,13 +6,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/ghbin"
 )
 
 func newRefreshCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "refresh",
 		Aliases: []string{"rf", "ref"},
-		Short:   "Refresh repo sources to latest versions",
+		Short:   "Refresh repo sources, and the gh and wedge ghpm uses, to their latest",
 		Args:    cobra.NoArgs,
 		RunE:    runRefresh,
 	}
@@ -44,6 +45,31 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 		} else {
 			printPass(cfg, "synced %s (%d entries)", r.Source, r.Count)
+		}
+	}
+	sep()
+	ctx := context.Background()
+	for _, tool := range []struct {
+		name    string
+		refresh func(context.Context) (string, string, error)
+	}{
+		{"gh", func(ctx context.Context) (string, string, error) { return ghbin.Refresh(ctx, fetchingVendored("gh")) }},
+		{"wedge", refreshWedge},
+	} {
+		from, to, err := tool.refresh(ctx)
+		switch {
+		case err != nil:
+			printFail(cfg, "%s %v", tool.name, err)
+			hadErrors = true
+		case from == to:
+			printPass(cfg, "%s %s is the latest", tool.name, to)
+		case from == "":
+			printPass(cfg, "installed %s %s", tool.name, to)
+		default:
+			printPass(cfg, "updated %s %s → %s", tool.name, from, to)
+			if tool.name == "wedge" {
+				print("shims keep the wedge they were stamped with: `ghpm sync --reinstall` restamps them")
+			}
 		}
 	}
 	if hadErrors {

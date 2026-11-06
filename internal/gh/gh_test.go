@@ -352,7 +352,7 @@ func TestCheckInstalled_NotFound(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
 	defer cancel()
 
-	if err := CheckInstalled(ctx); err == nil {
+	if err := CheckInstalled(ctx, nil); err == nil {
 		t.Error("expected error when gh not found")
 	}
 }

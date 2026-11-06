@@ -22,9 +22,8 @@ import (
 	"github.com/meop/ghpm/internal/gh"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
-	"github.com/meop/ghpm/internal/toolchain"
-	"github.com/meop/golie/pinned"
 	"github.com/meop/golie/ui"
+	golievendored "github.com/meop/golie/vendored"
 )
 
 func writeSettings(t *testing.T, s *config.Settings) {
@@ -54,27 +53,12 @@ func fakeGHBin(t *testing.T, script string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The vendored gh is pinned by content (ghbin.Ensure), so every fake is
-	// pinned as what it is, or the first gh-using command re-vendors it for
-	// real, over the network.
-	pinFakeGh(t, filepath.Base(vendored), faketool.Write(t, vendored, script))
-}
-
-// pinFakeGh makes body the gh this platform's pin names, for the length of
-// the test.
-func pinFakeGh(t *testing.T, name string, body []byte) {
-	t.Helper()
-	key := toolchain.GhKey(runtime.GOOS, runtime.GOARCH)
-	orig, had := toolchain.GhAssets[key]
-	sum := sha256.Sum256(body)
-	toolchain.GhAssets[key] = pinned.Asset{SHA256: orig.SHA256, Files: map[string]string{name: hex.EncodeToString(sum[:])}}
-	t.Cleanup(func() {
-		if had {
-			toolchain.GhAssets[key] = orig
-		} else {
-			delete(toolchain.GhAssets, key)
-		}
-	})
+	faketool.Write(t, vendored, script)
+	// with a version file, the fake is a gh ghbin.Ensure takes as installed,
+	// rather than fetching the real one over the network
+	if err := os.WriteFile(filepath.Join(filepath.Dir(vendored), golievendored.VersionFile), []byte("0.0.0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestReservedShimNames_ExcludesOwner(t *testing.T) {
