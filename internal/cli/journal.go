@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -58,9 +59,14 @@ func installVersion(jrn *journal, ex extractResult, version string) (string, err
 }
 
 // prune clears a key's dir of all but its version file and that version,
-// once the manifest no longer needs them, and says what would not go.
+// once the manifest no longer needs them, and says what would not go. A version
+// a running program was started from is kept, which is not a failure.
 func prune(cfg *config.Settings, name, keyDir string) {
 	for _, st := range tidy.PruneInstall(keyDir) {
+		if inUse, ok := errors.AsType[tidy.InUse](st.Err); ok {
+			print("%s: kept %s, which %s runs from: tidy removes it once that stops", name, filepath.Base(st.Path), filepath.Base(inUse.Program))
+			continue
+		}
 		printWarn(cfg, "%s: could not remove %s, left for tidy: %v", name, filepath.Base(st.Path), st.Err)
 	}
 }

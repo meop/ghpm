@@ -166,7 +166,9 @@ A package is unpacked to `~/.ghpm/extract/<name>/<version>`, and its shims in `~
 `~/.ghpm/extract/<name>/version`, a file naming that version. An update unpacks the new version beside the old,
 rewrites that file, and only then removes the old version, so the shims stay the same files from one version to the
 next, and a program still running from the old version (the shell you ran `ghpm sync` in, say) keeps running. A
-version still in use when its turn to go comes is left for `ghpm tidy`.
+version a running program was started from is kept, on every platform, and `ghpm tidy` removes it once nothing runs
+from it: a server outlives the update that replaced it, and macOS's firewall drops connections to a program whose
+binary is gone.
 
 ## Upgrading ghpm
 
