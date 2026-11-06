@@ -49,17 +49,6 @@ func Create(shimName, binaryName, pkgDir, binSubdir string, force bool) error {
 	return s.Create(shimName, filepath.Join(pkgDir, binSubdir, binaryName), force)
 }
 
-// Restamp stamps ~/.ghpm/bin/shimName again, to the binary it already runs,
-// when it was stamped from a wedge other than the one vendored now. It reports
-// whether it did.
-func Restamp(shimName string) (bool, error) {
-	s, err := Stamper()
-	if err != nil {
-		return false, err
-	}
-	return s.Restamp(shimName)
-}
-
 // Remove deletes the shim for shimName from ~/.ghpm/bin/. A file of that name
 // that ghpm did not stamp is left alone: ghpm removing its own package should
 // never take somebody else's binary with it.

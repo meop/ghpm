@@ -43,8 +43,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	ghClient := ci.gh
 	dirs := ci.dirs
 
-	failedItems := restampShims(cfg, manifest)
-	hadErrors := len(failedItems) > 0
+	var hadErrors bool
+	var failedItems []failedItem
 	targets := map[string]config.PackageEntry{}
 	if len(args) == 0 {
 		for k, p := range manifest.Extracts {
@@ -471,24 +471,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 	return nil
-}
-
-// restampShims brings every installed shim to the wedge syncWedge just
-// vendored, so a new wedge reaches the packages no update touches. Silent, as
-// the vendored toolchain is: only a shim it could not stamp is said.
-func restampShims(cfg *config.Settings, manifest *config.Manifest) (failed []failedItem) {
-	if dryRun {
-		return nil
-	}
-	for _, key := range manifest.Keys() {
-		for _, shimName := range sortedKeys(manifest.Extracts[key].Bin) {
-			if _, err := shim.Restamp(shimName); err != nil {
-				printFail(cfg, "%s: %s: could not restamp shim: %v", key, shimName, err)
-				failed = append(failed, failedItem{name: key, reason: fmt.Sprintf("%s: could not restamp shim: %v", shimName, err)})
-			}
-		}
-	}
-	return failed
 }
 
 // shimSyncErr is one shim-create failure from syncBinShims, naming the shim
