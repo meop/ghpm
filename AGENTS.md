@@ -60,7 +60,6 @@ Update `README.md` when user-visible behavior changes: new flags or subcommands,
 
 ```sh
 GOOS=darwin  GOARCH=arm64 go build -o ghpm-darwin-arm64      ./cmd/ghpm
-GOOS=darwin  GOARCH=amd64 go build -o ghpm-darwin-amd64      ./cmd/ghpm
 GOOS=linux   GOARCH=arm64 go build -o ghpm-linux-arm64       ./cmd/ghpm
 GOOS=linux   GOARCH=amd64 go build -o ghpm-linux-amd64       ./cmd/ghpm
 GOOS=windows GOARCH=arm64 go build -o ghpm-windows-arm64.exe ./cmd/ghpm
@@ -71,7 +70,7 @@ GOOS=windows GOARCH=amd64 go build -o ghpm-windows-amd64.exe ./cmd/ghpm
 
 To cut a release: bump the version in `VERSION` and push to `main`.
 
-The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips the rest if `v<VERSION>` already exists) → Validate (fmt + lint + test), with the tests run again on Windows and macOS → Release, which creates a GPG-signed tag `v<VERSION>` and runs `goreleaser release --clean` to build and publish cross-platform binaries (linux/darwin/windows, amd64/arm64) to a public GitHub release. Each archive includes `LICENSE`; GoReleaser publishes `SHA256SUMS` and its detached GPG signature. Requires `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` repository secrets. Never create the tag by hand — CI owns tagging, and pushing a `VERSION` bump is by itself enough to publish a real public release within about a minute.
+The CI pipeline (`.github/workflows/pipeline.yaml`) runs: Version check (skips the rest if `v<VERSION>` already exists) → Validate (fmt + lint) and Test (on every platform and architecture it ships for, each on its own runner) → Release, which creates a GPG-signed tag `v<VERSION>` and runs `goreleaser release --clean` to build and publish cross-platform binaries (linux and windows on amd64 and arm64, darwin on arm64) to a public GitHub release. Each archive includes `LICENSE`; GoReleaser publishes `SHA256SUMS` and its detached GPG signature. Requires `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` repository secrets. Never create the tag by hand — CI owns tagging, and pushing a `VERSION` bump is by itself enough to publish a real public release within about a minute.
 
 ## Project structure
 
@@ -161,7 +160,7 @@ All output and prompts go through `internal/ui`, which uses **deferred separator
 
 ## Testing on a real host
 
-CI runs the tests on Linux, macOS and Windows. To run them on a machine of your own over ssh:
+CI runs the tests on Linux and Windows on x86_64 and arm64, and macOS on arm64. To run them on a machine of your own over ssh:
 
 - Windows: build the test binary anywhere (`GOOS=windows go test -c -o <pkg>.test.exe ./<pkg>/`), copy it over and run
   it there with Git for Windows' `bin` on PATH, for the fake tools. In PowerShell, quote a test flag whole (`'-test.v=true'`): PowerShell splits a bare `-test.v` at its dot.
