@@ -15,7 +15,9 @@ import (
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
+	"github.com/meop/golie/doctor"
 	"github.com/meop/golie/ui"
+	"github.com/meop/golie/vendored"
 )
 
 func newDoctorCmd() *cobra.Command {
@@ -38,32 +40,9 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return errSilent
 	}
 
-	passLabel := "PASS"
-	failLabel := "FAIL"
-	warnLabel := "WARN"
-	if fn := colorfn(cfg, "pass"); fn != nil {
-		passLabel = fn("PASS")
-	}
-	if fn := colorfn(cfg, "fail"); fn != nil {
-		failLabel = fn("FAIL")
-	}
-	if fn := colorfn(cfg, "warn"); fn != nil {
-		warnLabel = fn("WARN")
-	}
-
-	line := func(status, label, detail string) {
-		if detail != "" {
-			ui.Out("  [%s] %s — %s", status, label, detail)
-		} else {
-			ui.Out("  [%s] %s", status, label)
-		}
-	}
-	pass := func(label, detail string) { line(passLabel, label, detail) }
-	fail := func(label, detail string) { line(failLabel, label, detail) }
-	warn := func(label, detail string) { line(warnLabel, label, detail) }
-
-	print("ghpm doctor")
-	print("%s", strings.Repeat("─", 50))
+	ui.SetColorResolver(func(role string) func(string) string { return colorfn(cfg, role) })
+	pass, warn, fail := doctor.Pass, doctor.Warn, doctor.Fail
+	doctor.Start("ghpm")
 
 	if err := config.CheckLock(); err != nil {
 		warn("lock", err.Error())
@@ -87,26 +66,31 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	// ghpm never runs the system gh above — only its own vendored copy (see
 	// ghbin.Find) — so that copy's presence and auth are what actually
 	// determines whether commands needing gh will work.
-	vendoredGh, vendorErr := ghbin.VendorPath()
-	if vendorErr != nil {
-		fail("gh (vendored)", vendorErr.Error())
-	} else if _, statErr := os.Stat(vendoredGh); statErr != nil {
-		warn("gh (vendored)", "not present — run any command that needs gh (e.g. 'ghpm refresh') to vendor it")
+	if dir, r, err := ghbin.Release(); err != nil {
+		fail(vendored.Label("gh"), err.Error())
 	} else {
-		pass("gh (vendored)", "present — "+vendoredGh)
-		cfgDir, cfgErr := ghbin.ConfigDir()
-		if cfgErr != nil {
-			fail("gh (vendored)", cfgErr.Error())
-		} else {
-			cmd := exec.Command(vendoredGh, "auth", "status")
-			cmd.Env = append(os.Environ(), "GH_CONFIG_DIR="+cfgDir)
-			out, authErr := cmd.CombinedOutput()
-			if authErr == nil {
-				pass("gh (vendored)", "authenticated")
+		doctor.Vendored("gh", r, dir, "ghpm refresh")
+		if r.Installed(dir) != "" {
+			vendoredGh, _ := ghbin.VendorPath()
+			cfgDir, cfgErr := ghbin.ConfigDir()
+			if cfgErr != nil {
+				fail(vendored.Label("gh"), cfgErr.Error())
 			} else {
-				fail("gh (vendored)", authStatusFailureDetail(out))
+				cmd := exec.Command(vendoredGh, "auth", "status")
+				cmd.Env = append(os.Environ(), "GH_CONFIG_DIR="+cfgDir)
+				out, authErr := cmd.CombinedOutput()
+				if authErr == nil {
+					pass(vendored.Label("gh"), "authenticated")
+				} else {
+					fail(vendored.Label("gh"), authStatusFailureDetail(out))
+				}
 			}
 		}
+	}
+	if dir, r, err := wedgeRelease(); err != nil {
+		fail(vendored.Label("wedge"), err.Error())
+	} else {
+		doctor.Vendored("wedge", r, dir, "ghpm refresh")
 	}
 
 	ghpmDir, err := store.Dir()
@@ -142,6 +126,16 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 			fail("config.toml", "invalid TOML")
 		} else {
 			pass("config.toml", "present — "+configPath)
+		}
+	}
+
+	for _, source := range cfg.Sources() {
+		if v, file, err := config.RepoVersion(source); err != nil {
+			fail(config.RepoLabel(source), err.Error())
+		} else if v == "" {
+			warn(config.RepoLabel(source), "not present — `ghpm refresh` installs it")
+		} else {
+			pass(config.RepoLabel(source), doctor.Present(v, file))
 		}
 	}
 
@@ -202,17 +196,8 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if shimDir, err := store.ShimDir(); err == nil {
-		malletPath := filepath.Join(shimDir, exeName("mallet"))
-		if _, err := os.Stat(malletPath); err != nil {
-			warn("mallet", "not present — run any command that creates shims (e.g. 'ghpm add') to vendor it")
-		} else {
-			pass("mallet", "present — "+malletPath)
-		}
-	}
-
 	if releaseDir, err := store.ReleaseBaseDir(); err == nil {
-		pass("cache", humanBytes(dirSize(releaseDir))+" — "+releaseDir)
+		pass("cache", doctor.Size(releaseDir)+" — "+releaseDir)
 	}
 
 	return nil
@@ -223,31 +208,4 @@ func authStatusFailureDetail(out []byte) string {
 		return strings.TrimSpace(lines[0])
 	}
 	return "not authenticated"
-}
-
-func dirSize(path string) int64 {
-	var total int64
-	_ = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		if info, err := d.Info(); err == nil {
-			total += info.Size()
-		}
-		return nil
-	})
-	return total
-}
-
-func humanBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

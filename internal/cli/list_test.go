@@ -324,20 +324,3 @@ func TestRunList_ShortNames(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-func TestRunRefresh(t *testing.T) {
-	withHome(t)
-	writeSettings(t, &config.Settings{
-		RepoSources: []string{"github.com/meop/ghpm-config"},
-	})
-
-	fakeGHBin(t, `case "$*" in
-  *api*) echo '{"repos": {"fzf": "github.com/junegunn/fzf"}}' ;;
-  *) echo '{}' ;;
-esac`)
-
-	err := runRefresh(nil, nil)
-	if err != nil {
-		t.Logf("refresh error (expected without real gh): %v", err)
-	}
-}

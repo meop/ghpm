@@ -46,8 +46,11 @@ func wedgeRelease() (string, vendored.Release, error) {
 	return shimDir, r, err
 }
 
-// fetchingVendored says a vendored tool's archive is being fetched, as any
-// other asset fetch is said
-func fetchingVendored(name string) func(archive string) {
-	return func(archive string) { print("%s: asset fetching [%s]...", name, archive) }
+// fetching says the thing label names is fetching path, as any other asset
+// fetch is said
+func fetching(label string) func(path string) {
+	return func(path string) { print("%s: asset fetching [%s]...", label, path) }
 }
+
+// fetchingVendored is fetching for a vendored tool, under golie's label for it
+func fetchingVendored(name string) func(archive string) { return fetching(vendored.Label(name)) }

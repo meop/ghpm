@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -114,18 +115,24 @@ func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
 func TestRefreshRepos_FetchesAllSourcesAndPreservesOrder(t *testing.T) {
 	withHome(t)
 	writeConfigTOML(t, &Settings{RepoSources: []string{"github.com/o/a", "github.com/o/b"}})
+	a := "pkg1 = \"github.com/o/pkg1\"\n"
+	b := "pkg1 = \"github.com/o/pkg1\"\npkg2 = \"github.com/o/pkg2\"\n"
 
 	fakeGHBin(t, `case "$*" in
-  *"repos/o/a/contents/repo.toml"*)
-    echo 'pkg1 = "github.com/o/pkg1"'
-    ;;
-  *"repos/o/b/contents/repo.toml"*)
-    printf 'pkg1 = "github.com/o/pkg1"\npkg2 = "github.com/o/pkg2"\n'
-    ;;
+  *"repos/o/a/contents --jq"*) echo `+gitBlobHash([]byte(a))+` ;;
+  *"repos/o/b/contents --jq"*) echo `+gitBlobHash([]byte(b))+` ;;
+  *"repos/o/a/contents/repo.toml"*) printf '`+a+`' ;;
+  *"repos/o/b/contents/repo.toml"*) printf '`+b+`' ;;
   *) exit 1 ;;
 esac`)
 
-	results, err := RefreshRepos()
+	var fetched []string
+	var mu sync.Mutex
+	results, err := RefreshRepos(func(source, path string) {
+		mu.Lock()
+		defer mu.Unlock()
+		fetched = append(fetched, source+" "+path)
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,11 +144,40 @@ esac`)
 	if results[0].Source != "github.com/o/a" || results[1].Source != "github.com/o/b" {
 		t.Fatalf("expected results in source order, got %+v", results)
 	}
-	if results[0].Count != 1 {
-		t.Errorf("expected 1 entry for source a, got %d", results[0].Count)
+	for i, body := range []string{a, b} {
+		if r := results[i]; r.From != "" || r.To != short(gitBlobHash([]byte(body))) {
+			t.Errorf("%s went %q → %q, want \"\" → its file's short hash", r.Source, r.From, r.To)
+		}
 	}
-	if results[1].Count != 2 {
-		t.Errorf("expected 2 entries for source b, got %d", results[1].Count)
+	slices.Sort(fetched)
+	if !slices.Equal(fetched, []string{"github.com/o/a repo.toml", "github.com/o/b repo.toml"}) {
+		t.Errorf("fetching was told %v", fetched)
+	}
+}
+
+// TestRefreshRepos_ACurrentFileIsNotDownloaded: GitHub's hash for the file is
+// asked first, and where it is the copy here's, nothing is fetched.
+func TestRefreshRepos_ACurrentFileIsNotDownloaded(t *testing.T) {
+	withHome(t)
+	writeConfigTOML(t, &Settings{RepoSources: []string{"github.com/o/a"}})
+	body := "pkg1 = \"github.com/o/pkg1\"\n"
+	dir, err := store.RepoDir("github.com/o/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoTOML(t, dir, body)
+
+	fakeGHBin(t, `case "$*" in
+  *"repos/o/a/contents --jq"*) echo `+gitBlobHash([]byte(body))+` ;;
+  *) exit 1 ;;
+esac`)
+
+	results, err := RefreshRepos(func(source, path string) { t.Errorf("fetched %s %s", source, path) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := results[0]; r.From != short(gitBlobHash([]byte(body))) || r.To != r.From {
+		t.Errorf("went %q → %q, want its short hash twice", r.From, r.To)
 	}
 }
 
@@ -150,17 +186,16 @@ func TestRefreshRepos_PartialFailurePreservesOtherResults(t *testing.T) {
 	writeConfigTOML(t, &Settings{RepoSources: []string{"github.com/o/good", "github.com/o/bad"}})
 
 	fakeGHBin(t, `case "$*" in
-  *"repos/o/good/contents/repo.toml"*)
-    echo 'pkg1 = "github.com/o/pkg1"'
-    ;;
-  *"repos/o/bad/contents/repo.toml"*)
+  *"repos/o/good/contents --jq"*) echo 0000000000000000000000000000000000000000 ;;
+  *"repos/o/good/contents/repo.toml"*) echo 'pkg1 = "github.com/o/pkg1"' ;;
+  *"repos/o/bad/"*)
     echo "not found" >&2
     exit 1
     ;;
   *) exit 1 ;;
 esac`)
 
-	results, err := RefreshRepos()
+	results, err := RefreshRepos(nil)
 	if err == nil {
 		t.Fatal("expected an error since one source failed")
 	}

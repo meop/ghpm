@@ -5,6 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/meop/golie/vendored"
+
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/ghbin"
 )
@@ -40,24 +42,18 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 		{"wedge", refreshWedge},
 	} {
 		from, to, err := tool.refresh(ctx)
-		switch {
-		case err != nil:
-			printFail(cfg, "%s %v", tool.name, err)
+		if err != nil {
+			printFail(cfg, "%s: %v", vendored.Label(tool.name), err)
 			hadErrors = true
-		case from == to:
-			printPass(cfg, "%s %s is the latest", tool.name, to)
-		case from == "":
-			printPass(cfg, "installed %s %s", tool.name, to)
-		default:
-			printPass(cfg, "updated %s %s → %s", tool.name, from, to)
-			if tool.name == "wedge" {
-				print("shims keep the wedge they were stamped with: `ghpm sync --reinstall` restamps them")
-			}
+			continue
+		}
+		printPass(cfg, "%s", vendored.Said(vendored.Label(tool.name), from, to))
+		if tool.name == "wedge" && from != "" && from != to {
+			print("%s: shims keep the wedge that stamped them until [ghpm sync --reinstall]", vendored.Label("wedge"))
 		}
 	}
-	sep()
 
-	syncResults, err := config.RefreshRepos()
+	syncResults, err := config.RefreshRepos(func(source, path string) { fetching(config.RepoLabel(source))(path) })
 	if syncResults == nil && err != nil {
 		// RefreshRepos returns (nil, err) only when it can't even load settings
 		// to find the configured sources — nothing to range over below, so
@@ -70,10 +66,10 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 	}
 	for _, r := range syncResults {
 		if r.Err != nil {
-			printFail(cfg, "%s %v", r.Source, r.Err)
+			printFail(cfg, "%s: %v", config.RepoLabel(r.Source), r.Err)
 			hadErrors = true
 		} else {
-			printPass(cfg, "synced %s (%d entries)", r.Source, r.Count)
+			printPass(cfg, "%s", vendored.Said(config.RepoLabel(r.Source), r.From, r.To))
 		}
 	}
 	if hadErrors {

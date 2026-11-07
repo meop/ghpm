@@ -2,10 +2,13 @@ package config
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -117,23 +120,23 @@ func LoadRepos() (map[string]RepoEntry, error) {
 }
 
 // RefreshRepos fetches repo.toml from each source configured in settings
-// SyncResult holds the outcome of syncing a single repo source.
+// SyncResult is what refreshing a repo source did: the short git hash of the
+// repo.toml it had and of the one it has, the same twice when it was current,
+// and From "" when it had none.
 type SyncResult struct {
-	Source string
-	Count  int
-	Err    error
+	Source   string
+	From, To string
+	Err      error
 }
 
-// Called by ghpm refresh.
-func RefreshRepos() ([]SyncResult, error) {
+// Called by ghpm refresh. fetching, when not nil, is told each source and the
+// path in it just before that file is downloaded.
+func RefreshRepos(fetching func(source, path string)) ([]SyncResult, error) {
 	cfg, err := LoadSettings()
 	if err != nil {
 		return nil, err
 	}
-	sources := cfg.RepoSources
-	if len(sources) == 0 {
-		sources = defaultSettings().RepoSources
-	}
+	sources := cfg.Sources()
 
 	// One source per task, run through the same bounded pool the rest of the
 	// app uses for independent network fetches, rather than fetching sources
@@ -143,8 +146,8 @@ func RefreshRepos() ([]SyncResult, error) {
 		tasks[i] = parallel.Task[SyncResult]{
 			Name: source,
 			Run: func() (SyncResult, error) {
-				count, err := fetchAndCacheRepos(source)
-				return SyncResult{Source: source, Count: count, Err: err}, nil
+				from, to, err := fetchAndCacheRepos(source, fetching)
+				return SyncResult{Source: source, From: from, To: to, Err: err}, nil
 			},
 		}
 	}
@@ -164,43 +167,110 @@ func RefreshRepos() ([]SyncResult, error) {
 	return results, nil
 }
 
-func fetchAndCacheRepos(source string) (int, error) {
+// RepoLabel is how a repo source is named in what ghpm prints of it:
+// `repo - ghpm-config` for github.com/meop/ghpm-config.
+func RepoLabel(source string) string { return "repo - " + path.Base(source) }
+
+// RepoVersion is the short git hash of the repo.toml source has here, and
+// where it is; the hash is "" when there is none.
+func RepoVersion(source string) (version, file string, err error) {
+	dir, err := store.RepoDir(source)
+	if err != nil {
+		return "", "", err
+	}
+	file = filepath.Join(dir, repoFile)
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", file, nil
+	}
+	return short(gitBlobHash(data)), file, nil
+}
+
+// repoFile is the file a repo source holds its entries in, at its root.
+const repoFile = "repo.toml"
+
+// fetchAndCacheRepos brings source's repo.toml up to date. It asks GitHub
+// first for the file's git hash, which needs no download, and fetches the file
+// only when that differs from the hash of the copy here.
+func fetchAndCacheRepos(source string, fetching func(source, path string)) (from, to string, err error) {
 	slug := strings.TrimPrefix(source, "github.com/")
 	if !strings.Contains(slug, "/") {
-		return 0, fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
-	}
-	cmd, err := ghbin.Command("api",
-		fmt.Sprintf("repos/%s/contents/repo.toml", slug),
-		"--header", "Accept: application/vnd.github.raw+json",
-	)
-	if err != nil {
-		return 0, err
-	}
-	data, err := cmd.Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return 0, fmt.Errorf("gh api: %s", strings.TrimSpace(string(ee.Stderr)))
-		}
-		return 0, err
-	}
-	entries, err := parseRepoTable(data, "repo.toml from "+source)
-	if err != nil {
-		return 0, err
+		return "", "", fmt.Errorf("invalid repo source %q (want github.com/owner/repo)", source)
 	}
 	dir, err := store.RepoDir(source)
 	if err != nil {
-		return 0, err
+		return "", "", err
 	}
-	path := filepath.Join(dir, "repo.toml")
+	path := filepath.Join(dir, repoFile)
+	have := ""
+	if data, err := os.ReadFile(path); err == nil {
+		have = gitBlobHash(data)
+	}
+	listed, err := ghAPI(fmt.Sprintf("repos/%s/contents", slug),
+		"--jq", fmt.Sprintf(`.[] | select(.path == %q) | .sha`, repoFile))
+	if err != nil {
+		return short(have), short(have), err
+	}
+	latest := strings.TrimSpace(string(listed))
+	if latest == "" {
+		return short(have), short(have), fmt.Errorf("no %s at the root of %s", repoFile, source)
+	}
+	if latest == have {
+		return short(have), short(have), nil
+	}
+	if fetching != nil {
+		fetching(source, repoFile)
+	}
+	data, err := ghAPI(fmt.Sprintf("repos/%s/contents/%s", slug, repoFile),
+		"--header", "Accept: application/vnd.github.raw+json")
+	if err != nil {
+		return short(have), short(have), err
+	}
+	if _, err := parseRepoTable(data, repoFile+" from "+source); err != nil {
+		return short(have), short(have), err
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return 0, err
+		return short(have), short(have), err
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return 0, err
+		return short(have), short(have), err
 	}
-	return len(entries), nil
+	return short(have), short(gitBlobHash(data)), nil
+}
+
+// ghAPI runs `gh api` with ghpm's gh, and gives back what it printed, or what
+// it said on stderr as the error.
+func ghAPI(args ...string) ([]byte, error) {
+	cmd, err := ghbin.Command(append([]string{"api"}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("gh api: %s", strings.TrimSpace(string(ee.Stderr)))
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
+// gitBlobHash is the hash git, and so GitHub, gives a file with this content.
+func gitBlobHash(data []byte) string {
+	h := sha1.New()
+	_, _ = fmt.Fprintf(h, "blob %d\x00", len(data))
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// short is a git hash as git shortens one.
+func short(hash string) string {
+	if len(hash) > 7 {
+		return hash[:7]
+	}
+	return hash
 }
 
 // ParseVersionSuffix splits "fzf@0.70" → ("fzf", "0.70", true).

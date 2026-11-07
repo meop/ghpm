@@ -18,6 +18,15 @@ type Settings struct {
 	SkipHashCheck bool              `toml:"skip_hash_check"`
 }
 
+// Sources are the repo sources refresh fetches: the configured ones, or the
+// default's when none are.
+func (s *Settings) Sources() []string {
+	if len(s.RepoSources) == 0 {
+		return defaultSettings().RepoSources
+	}
+	return s.RepoSources
+}
+
 func defaultSettings() *Settings {
 	return &Settings{
 		CacheTTL: "5m",

@@ -25,7 +25,7 @@ import (
 // network round trip before every single gh call, on top of the one the call
 // itself is about to make.
 func Ensure(ctx context.Context, fetching func(archive string)) error {
-	dir, r, err := release()
+	dir, r, err := Release()
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func Ensure(ctx context.Context, fetching func(archive string)) error {
 // had and what it has: the same twice when it was current, and from "" when
 // there was none.
 func Refresh(ctx context.Context, fetching func(archive string)) (from, to string, err error) {
-	dir, r, err := release()
+	dir, r, err := Release()
 	if err != nil {
 		return "", "", err
 	}
@@ -51,7 +51,9 @@ func Refresh(ctx context.Context, fetching func(archive string)) (from, to strin
 	return from, to, loginFresh(ctx)
 }
 
-func release() (string, vendored.Release, error) {
+// Release is ghpm's vendored gh: the dir it is kept in, and gh's release for
+// this machine.
+func Release() (string, vendored.Release, error) {
 	dir, err := vendorSubDir()
 	if err != nil {
 		return "", vendored.Release{}, err
