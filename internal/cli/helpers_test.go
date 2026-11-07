@@ -388,17 +388,19 @@ func TestPrintFailedTable(t *testing.T) {
 		}
 	})
 
-	t.Run("blank line after when more output follows", func(t *testing.T) {
+	t.Run("no blank of its own after it: the next step asks for one", func(t *testing.T) {
 		var buf bytes.Buffer
 		ui.SetOutput(&buf)
 		t.Cleanup(func() { ui.SetOutput(os.Stdout) })
 
 		printFailedTable(nil, "package", []failedItem{{name: "deno", reason: "file locked"}})
-		print("next section")
+		print("same step")
+		sep()
+		print("next step")
 
 		out := buf.String()
-		if !strings.HasSuffix(out, "\n\nnext section\n") {
-			t.Errorf("got %q, expected a blank line before the next section", out)
+		if !strings.HasSuffix(out, "file locked\nsame step\n\nnext step\n") {
+			t.Errorf("got %q, want no blank after the table, and the next step's own before it", out)
 		}
 	})
 

@@ -84,11 +84,9 @@ type failedItem struct {
 // the same reason twice (once when it happens, once in this table) is the
 // kind of close-proximity duplication that's worse than just picking the one
 // place — the table — that's guaranteed to still be on screen when the run
-// ends. noun is singular ("package", "component", "asset"). Bracketed by
-// sep() like any other section — a leading blank unless nothing has printed
-// yet, a trailing blank unless this is the last thing printed — so it never
-// runs tight into whatever the caller prints next, and never leaves a
-// dangling blank when it's the final output.
+// ends. noun is singular ("package", "component", "asset"). It is a step of
+// its own, so it asks for its blank before it, none when nothing has printed
+// yet, and none after: a step after it asks for its own.
 func printFailedTable(cfg *config.Settings, noun string, items []failedItem) {
 	if len(items) == 0 {
 		return
@@ -102,7 +100,6 @@ func printFailedTable(cfg *config.Settings, noun string, items []failedItem) {
 		rows[i] = []string{it.name, it.reason}
 	}
 	printTable([]string{"name", "reason"}, rows, nil)
-	sep()
 }
 
 type cmdInit struct {
@@ -516,9 +513,9 @@ func downloadAsset(ctx context.Context, ghClient gh.Client, owner, repo, tagName
 // input order in its results). An already-cached asset is silently skipped —
 // no "downloading" line for it is itself the signal nothing needed fetching,
 // and printing one anyway just buries the lines that do matter once most of
-// what's requested is already cached (the common case). A trailing sep()
-// requests a blank line before whatever the caller prints next, so the
-// download block reads as its own section rather than running into the next one.
+// what's requested is already cached (the common case). The downloads are part
+// of the work they serve, so the lines that follow them run tight; a step that
+// does start after them asks for its own blank.
 func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []assetDownload, numParallel int) map[int]error {
 	tasks := make([]parallel.Task[int], 0, len(downloads))
 	for _, d := range downloads {
@@ -540,7 +537,6 @@ func downloadAllAssets(ctx context.Context, ghClient gh.Client, downloads []asse
 			}
 		}
 	}
-	sep()
 	return errs
 }
 

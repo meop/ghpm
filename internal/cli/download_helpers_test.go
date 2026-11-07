@@ -122,7 +122,7 @@ func TestDownloadAllAssets_SkipsAlreadyCached(t *testing.T) {
 // download block actually printed something itself (ui.Break is a no-op
 // unless output has already started, so an all-cached, silent batch doesn't
 // manufacture a separator for a section that did nothing).
-func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
+func TestDownloadAllAssets_RunsTightIntoTheWorkAfterIt(t *testing.T) {
 	t.Run("real download, then more output", func(t *testing.T) {
 		var buf bytes.Buffer
 		ui.SetOutput(&buf)
@@ -137,9 +137,9 @@ func TestDownloadAllAssets_TrailingSepBeforeNextOutput(t *testing.T) {
 		}
 		print("next section")
 
-		want := "pkg: asset fetching [a1]...\n\nnext section\n"
+		want := "pkg: asset fetching [a1]...\nnext section\n"
 		if got := buf.String(); got != want {
-			t.Errorf("got %q, want %q (blank line between the download block and the next section)", got, want)
+			t.Errorf("got %q, want %q (the downloads are part of the work after them: no blank between)", got, want)
 		}
 	})
 

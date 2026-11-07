@@ -267,8 +267,9 @@ func TestSelectBins_ShowMoreRevealsHidden(t *testing.T) {
 }
 
 // TestSelectBins_PromptLabelAndBlank guards the prompt UX: when a selection
-// menu interrupts a stream of progress output (e.g. during `up`), it must be
-// preceded and followed by a blank line and name the package it belongs to.
+// menu interrupts a stream of progress output (e.g. during `up`), it gets
+// exactly one blank line before it and names the package it belongs to, and
+// the progress after the answer resumes on the line right below it.
 func TestSelectBins_PromptLabelAndBlank(t *testing.T) {
 	fakeStdin(t, "1\n")
 	var buf bytes.Buffer
@@ -280,15 +281,14 @@ func TestSelectBins_PromptLabelAndBlank(t *testing.T) {
 	if _, err := SelectBins(c, "codex"); err != nil {
 		t.Fatal(err)
 	}
-	// Resumed progress output flushes the prompt's trailing Break as a blank.
 	ui.Out("uv: found bin [uv.exe]")
 	if !strings.Contains(buf.String(), "caddy.exe]\n\ncodex: choose bin(s)\n") {
 		t.Errorf("missing blank line and/or label before menu:\n%q", buf.String())
 	}
-	// In the buffer the user's echoed Enter is absent, so the trailing blank
-	// shows as the prompt line followed by a single newline before "uv".
-	if !strings.Contains(buf.String(), "): \nuv: found bin [uv.exe]") {
-		t.Errorf("missing blank line after menu:\n%q", buf.String())
+	// In the buffer the user's echoed Enter is absent, so output right below
+	// the answer shows as the prompt line running straight into "uv".
+	if !strings.Contains(buf.String(), "): uv: found bin [uv.exe]") {
+		t.Errorf("output after the answer is not right below it:\n%q", buf.String())
 	}
 }
 
