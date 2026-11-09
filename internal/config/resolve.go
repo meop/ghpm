@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -167,9 +166,10 @@ func RefreshRepos(fetching func(source, path string)) ([]SyncResult, error) {
 	return results, nil
 }
 
-// RepoLabel is how a repo source is named in what ghpm prints of it:
-// `repo - ghpm-config` for github.com/meop/ghpm-config.
-func RepoLabel(source string) string { return "repo - " + path.Base(source) }
+// RepoLabel is how a repo source is named in what ghpm prints of it, the
+// source whole: `repo - github.com/meop/ghpm-config`. Two sources can share a
+// repo's name and differ only in where it is.
+func RepoLabel(source string) string { return "repo - " + source }
 
 // RepoVersion is the short git hash of the repo.toml source has here, and
 // where it is; the hash is "" when there is none.

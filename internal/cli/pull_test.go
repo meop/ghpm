@@ -43,8 +43,8 @@ esac`)
 		"✓ vendor - gh: at the latest [0.0.0]",
 		"vendor - wedge: asset fetching [",
 		"✓ vendor - wedge: installed [2.0.0]",
-		"repo - ghpm-config: asset fetching [repo.toml]...",
-		"✓ repo - ghpm-config: installed [",
+		"repo - github.com/meop/ghpm-config: asset fetching [repo.toml]...",
+		"✓ repo - github.com/meop/ghpm-config: installed [",
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("refresh printed %d lines, want %d:\n%s", len(lines), len(want), buf.String())
