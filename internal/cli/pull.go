@@ -11,17 +11,17 @@ import (
 	"github.com/meop/ghpm/internal/ghbin"
 )
 
-func newRefreshCmd() *cobra.Command {
+func newPullCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "refresh",
-		Aliases: []string{"rf", "ref"},
-		Short:   "Refresh repo sources, and the gh and wedge ghpm uses, to their latest",
+		Use:     "pull",
+		Aliases: []string{"p", "refresh", "rf"},
+		Short:   "Pull repo sources, and the gh and wedge ghpm uses, to their latest",
 		Args:    cobra.NoArgs,
-		RunE:    runRefresh,
+		RunE:    runPull,
 	}
 }
 
-func runRefresh(cmd *cobra.Command, args []string) error {
+func runPull(cmd *cobra.Command, args []string) error {
 	// no gh up front: the refresh below fetches one where there is none, and
 	// says so, rather than finding one the startup check just fetched
 	ci, err := initCommand(context.Background(), cmdOptions{Lock: true})
@@ -49,7 +49,7 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 		}
 		printPass(cfg, "%s", vendored.Said(vendored.Label(tool.name), from, to))
 		if tool.name == "wedge" && from != "" && from != to {
-			print("%s: shims keep the wedge that stamped them until [ghpm sync --reinstall]", vendored.Label("wedge"))
+			print("%s: shims keep the wedge that stamped them until [ghpm renew]", vendored.Label("wedge"))
 		}
 	}
 

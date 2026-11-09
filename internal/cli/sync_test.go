@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -311,5 +313,20 @@ func TestSyncPkgFonts_FailedInstallNotRecorded(t *testing.T) {
 	}
 	if _, ok := installed["missing"]; ok {
 		t.Errorf("expected the failed font to not be recorded as installed, got %v", installed)
+	}
+}
+
+func TestAllTargets_AFixedPinHoldsBackASyncNotARenew(t *testing.T) {
+	extracts := map[string]config.PackageEntry{
+		"fzf":        {Version: "0.60.0"},
+		"rg@14":      {Pin: "major", Version: "14.1.0"},
+		"bat@0.24.0": {Pin: "fixed", Version: "0.24.0"},
+	}
+	sync := allTargets(extracts, false)
+	if _, ok := sync["bat@0.24.0"]; ok || len(sync) != 2 {
+		t.Errorf("sync targets = %v, want fzf and rg@14", slices.Sorted(maps.Keys(sync)))
+	}
+	if renew := allTargets(extracts, true); len(renew) != 3 {
+		t.Errorf("renew targets = %v, want every package", slices.Sorted(maps.Keys(renew)))
 	}
 }

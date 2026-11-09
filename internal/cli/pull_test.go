@@ -34,7 +34,7 @@ esac`)
 	var buf bytes.Buffer
 	ui.SetOutput(&buf)
 	t.Cleanup(func() { ui.SetOutput(os.Stdout) })
-	if err := runRefresh(nil, nil); err != nil {
+	if err := runPull(nil, nil); err != nil {
 		t.Fatal(err)
 	}
 

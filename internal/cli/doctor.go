@@ -23,7 +23,7 @@ import (
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "doctor",
-		Aliases: []string{"doc", "check"},
+		Aliases: []string{"doc"},
 		Short:   "Check system health and configuration",
 		Args:    cobra.NoArgs,
 		RunE:    runDoctor,
@@ -69,7 +69,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	if dir, r, err := ghbin.Release(); err != nil {
 		fail(vendored.Label("gh"), err.Error())
 	} else {
-		doctor.Vendored("gh", r, dir, "ghpm refresh")
+		doctor.Vendored("gh", r, dir, "ghpm pull")
 		if r.Installed(dir) != "" {
 			vendoredGh, _ := ghbin.VendorPath()
 			cfgDir, cfgErr := ghbin.ConfigDir()
@@ -90,7 +90,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	if dir, r, err := wedgeRelease(); err != nil {
 		fail(vendored.Label("wedge"), err.Error())
 	} else {
-		doctor.Vendored("wedge", r, dir, "ghpm refresh")
+		doctor.Vendored("wedge", r, dir, "ghpm pull")
 	}
 
 	ghpmDir, err := store.Dir()
@@ -133,7 +133,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		if v, file, err := config.RepoVersion(source); err != nil {
 			fail(config.RepoLabel(source), err.Error())
 		} else if v == "" {
-			warn(config.RepoLabel(source), "not present — `ghpm refresh` installs it")
+			warn(config.RepoLabel(source), "not present — `ghpm pull` installs it")
 		} else {
 			pass(config.RepoLabel(source), doctor.Present(v, file))
 		}

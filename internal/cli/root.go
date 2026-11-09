@@ -188,10 +188,11 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 		newInfoCmd(),
 		newAddCmd(),
 		newListCmd(),
-		newRefreshCmd(),
+		newPullCmd(),
 		newOutdatedCmd(),
 		newSyncCmd(),
 		newRemoveCmd(),
+		newRenewCmd(),
 		newUpgradeCmd(),
 	)
 

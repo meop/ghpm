@@ -129,7 +129,7 @@ type SyncResult struct {
 	Err      error
 }
 
-// Called by ghpm refresh. fetching, when not nil, is told each source and the
+// Called by ghpm pull. fetching, when not nil, is told each source and the
 // path in it just before that file is downloaded.
 func RefreshRepos(fetching func(source, path string)) ([]SyncResult, error) {
 	cfg, err := LoadSettings()

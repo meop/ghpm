@@ -32,7 +32,6 @@ ghpm add fzf@14           # install latest fzf 14.x (tracks within major)
 ghpm add fzf@14.1         # install latest fzf 14.1.x (tracks within minor)
 ghpm add fzf@14.1.0       # install exact fzf 14.1.0 (static, never updates)
 ghpm add fzf ripgrep bat  # install multiple in parallel
-ghpm add --reinstall fzf  # reinstall even if already installed
 
 ghpm list                 # show installed packages
 ghpm list fzf rip         # show only packages a term starts a word of
@@ -44,8 +43,9 @@ ghpm outdated fzf         # check updates for only packages a term starts a word
 
 ghpm sync                 # update all floating and major/minor-pinned packages
 ghpm sync fzf             # update specific package
-ghpm sync --reinstall     # reinstall all packages even if already at latest version
-ghpm sync --reinstall fzf # reinstall specific package even if already at latest version
+
+ghpm renew                # a fresh copy of every package, at the release each already has
+ghpm renew fzf            # a fresh copy of specific package
 
 ghpm download fzf         # download release asset to cache without installing
 ghpm download --path /tmp fzf # download release asset to a specific directory
@@ -55,7 +55,7 @@ ghpm tidy                 # remove unused cached assets and orphaned package dir
 ghpm tidy --all           # remove all cached assets
 
 ghpm upgrade              # upgrade ghpm itself
-ghpm refresh              # refresh repo sources, and ghpm's own gh and wedge, to their latest
+ghpm pull                 # pull repo sources, and ghpm's own gh and wedge, to their latest
 ghpm doctor               # check system health
 ```
 
@@ -72,8 +72,7 @@ ghpm doctor               # check system health
 
 | Flag | Commands | Description |
 |---|---|---|
-| `--reinstall`, `-r` | `add`, `sync` | Reinstall even if already installed / already at latest version |
-| `--force`, `-f` | `add`, `sync` | Replace a file in `~/.ghpm/bin` that ghpm did not put there |
+| `--force`, `-f` | `add`, `sync`, `renew` | Replace a file in `~/.ghpm/bin` that ghpm did not put there |
 | `--path` | `download` | Destination directory (default: `~/.ghpm/download/`) |
 | `--all` | `tidy` | Remove all cached assets regardless of installation status |
 | `--long-names`, `-l` | `list`, `find`, `outdated` | Print names only, one per line, and nothing when there are none |
@@ -123,7 +122,7 @@ warn = "yellow"
 | `color` | see above | Output colors by message type |
 | `no_color` | `false` | Disable colored output |
 | `num_parallel` | `5` | Max concurrent downloads |
-| `repo_sources` | `["github.com/meop/ghpm-config"]` | Remote sources `ghpm refresh` fetches `repo.toml` files from |
+| `repo_sources` | `["github.com/meop/ghpm-config"]` | Remote sources `ghpm pull` fetches `repo.toml` files from |
 | `skip_hash_check` | `false` | Permanently skip SHA256 hash verification (same as always passing `--skip-hash-check`) |
 
 ### Repo map
@@ -147,9 +146,9 @@ A command that reads takes the start of a word. `find`, `list` and `outdated` ma
 
 GitHub itself is only searched as a fallback, and held to the same two rules. For a name the registry does not have, `add` and `info` offer the GitHub repos named exactly that, whoever owns them, and you pick one: `ghpm add fzf` would offer `junegunn/fzf` and never `junegunn/fzf.vim`. For a term that found nothing, `find` offers to search GitHub, and lists the repos whose name or description has a word starting with it. So a vague term goes to `find` first; `add` will not guess from it.
 
-`ghpm refresh` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`, each only when GitHub's copy differs from the one there. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm refresh`).
+`ghpm pull` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`, each only when GitHub's copy differs from the one there. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm pull`).
 
-`ghpm refresh` also moves the two tools ghpm uses itself, kept under `~/.ghpm/vendor/`, to their latest releases: [gh](https://github.com/cli/cli), for everything ghpm asks GitHub, and [wedge](https://github.com/meop/wedge), whose `mallet` stamps its shims. It says what it checked and what changed. No other command looks for a newer one: each uses what is there, and only fetches one where there is none, as on a new machine. A release is checked before it is used: its archive against the release's checksums, and for wedge those checksums against their signature by the meop release key. Shims keep the wedge they were stamped with until `ghpm sync --reinstall` restamps them. `ghpm upgrade` checks ghpm's own release the same way.
+`ghpm pull` also moves the two tools ghpm uses itself, kept under `~/.ghpm/vendor/`, to their latest releases: [gh](https://github.com/cli/cli), for everything ghpm asks GitHub, and [wedge](https://github.com/meop/wedge), whose `mallet` stamps its shims. It says what it checked and what changed. No other command looks for a newer one: each uses what is there, and only fetches one where there is none, as on a new machine. A release is checked before it is used: its archive against the release's checksums, and for wedge those checksums against their signature by the meop release key. Shims keep the wedge they were stamped with until `ghpm sync --reinstall` restamps them. `ghpm upgrade` checks ghpm's own release the same way.
 
 If a name isn't in the map, `ghpm` looks for GitHub repos of exactly that name and prompts you to pick one.
 
@@ -173,7 +172,7 @@ binary is gone.
 ## Upgrading ghpm
 
 Run `ghpm upgrade` before `ghpm sync`. A newer ghpm moves each package to the layout above on its next sync, and
-`ghpm sync --reinstall` moves them all at once; the choices you made (which binaries, their names) carry over. Once
+`ghpm renew` moves them all at once; the choices you made (which binaries, their names) carry over. Once
 it has, do not run an older ghpm on that machine: it looks for packages where they no longer are, and its `tidy`
 would remove them.
 

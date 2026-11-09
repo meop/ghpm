@@ -22,15 +22,49 @@ func newSyncCmd() *cobra.Command {
 		Use:     "sync [name...]",
 		Aliases: []string{"s", "sy", "up", "update"},
 		Short:   "Sync packages to their latest releases",
-		RunE:    runSync,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSync(cmd, args, false)
+		},
 	}
 	addSkipHashCheckFlag(cmd)
-	addInstallFlags(cmd, "Reinstall even if already at latest version")
+	addForceFlag(cmd)
 	return cmd
 }
 
-func runSync(cmd *cobra.Command, args []string) error {
-	reinstall, _ := cmd.Flags().GetBool("reinstall")
+// renew is sync aimed at the release each package already has rather than the latest: the same downloads, extracts
+// and shims, with the choices made at add carried over, so a package comes back as a fresh copy of itself. a pin holds
+// back a sync, not a renew, so a fixed package is renewed too
+func newRenewCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "renew [name...]",
+		Aliases: []string{"rn"},
+		Short:   "Renew packages: a fresh copy of the release each already has",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSync(cmd, args, true)
+		},
+	}
+	addSkipHashCheckFlag(cmd)
+	addForceFlag(cmd)
+	return cmd
+}
+
+// allTargets is every package a bare sync or renew acts on: a fixed pin holds a package back from a sync, never from a
+// renew, which only puts back what is already there
+func allTargets(extracts map[string]config.PackageEntry, renew bool) map[string]config.PackageEntry {
+	targets := map[string]config.PackageEntry{}
+	for k, p := range extracts {
+		if renew || p.Pin != "fixed" {
+			targets[k] = p
+		}
+	}
+	return targets
+}
+
+func runSync(cmd *cobra.Command, args []string, renew bool) error {
+	op := "sync"
+	if renew {
+		op = "renew"
+	}
 	force, _ := cmd.Flags().GetBool("force")
 	ctx := cmd.Context()
 	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Shim: true, Repos: true, SkipHashCheck: true})
@@ -47,16 +81,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 	var failedItems []failedItem
 	targets := map[string]config.PackageEntry{}
 	if len(args) == 0 {
-		for k, p := range manifest.Extracts {
-			if p.Pin != "fixed" {
-				targets[k] = p
-			}
-		}
+		targets = allTargets(manifest.Extracts, renew)
 	} else {
 		for _, name := range args {
 			if isItself(name) {
 				hadErrors = true
-				failedItems = append(failedItems, refuseItself(cfg, "sync", len(args) == 1)...)
+				failedItems = append(failedItems, refuseItself(cfg, op, len(args) == 1)...)
 				continue
 			}
 			matched := filterExtracts(manifest.Extracts, []string{canonicalKey(name, manifest, ci.repos)})
@@ -65,7 +95,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			for key, p := range matched {
-				if p.Pin == "fixed" {
+				if p.Pin == "fixed" && !renew {
 					print("%s: fixed at %s, skipping", key, p.Version)
 					continue
 				}
@@ -88,7 +118,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 	items := buildBatchItems(targets, manifest.Repos)
 
-	batchResults := ghClient.BatchLatestVersions(ctx, items, cfg.CacheTTL)
+	var batchResults []gh.BatchResult
+	if renew {
+		// the release to fetch is the one each package has: its version finds the tag, whatever convention the repo
+		// tags by
+		for key, p := range targets {
+			batchResults = append(batchResults, gh.BatchResult{Key: key, LatestTag: p.Version})
+		}
+	} else {
+		batchResults = ghClient.BatchLatestVersions(ctx, items, cfg.CacheTTL)
+	}
 
 	type syncJob struct {
 		key     string
@@ -131,7 +170,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		checked++
 		pkg := targets[res.Key]
 		latest := config.NormalizeVersion(res.LatestTag)
-		if config.CompareVersions(latest, pkg.Version) <= 0 && !reinstall {
+		if !renew && config.CompareVersions(latest, pkg.Version) <= 0 {
 			continue
 		}
 		outdated = append(outdated, outdatedPkg{key: res.Key, source: keyToSource[res.Key], pkg: pkg, latestTag: res.LatestTag})
@@ -142,7 +181,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(outdated) == 0 {
-		if skipped == 0 {
+		if skipped == 0 && !renew {
 			print(msgAllUpToDate)
 		}
 		if hadErrors {
@@ -154,13 +193,23 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	slices.SortFunc(outdated, func(a, b outdatedPkg) int { return strings.Compare(a.key, b.key) })
 
-	updateColors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
-	gateRows := make([][]string, 0, len(outdated))
-	for _, o := range outdated {
-		gateRows = append(gateRows, []string{o.key, o.pkg.Version, config.NormalizeVersion(o.latestTag), o.pkg.Pin, o.source})
-	}
-	if !gate([]string{"name", "version", "update", "pin", "uri"}, gateRows, updateColors, fmt.Sprintf("update %d package(s)", len(outdated))) {
-		return nil
+	if renew {
+		gateRows := make([][]string, 0, len(outdated))
+		for _, o := range outdated {
+			gateRows = append(gateRows, []string{o.key, o.pkg.Version, o.pkg.Pin, o.source})
+		}
+		if !gate([]string{"name", "version", "pin", "uri"}, gateRows, nil, fmt.Sprintf("renew %d package(s)", len(outdated))) {
+			return nil
+		}
+	} else {
+		updateColors := []func(string) string{nil, colorfn(cfg, "old"), colorfn(cfg, "new"), nil, nil}
+		gateRows := make([][]string, 0, len(outdated))
+		for _, o := range outdated {
+			gateRows = append(gateRows, []string{o.key, o.pkg.Version, config.NormalizeVersion(o.latestTag), o.pkg.Pin, o.source})
+		}
+		if !gate([]string{"name", "version", "update", "pin", "uri"}, gateRows, updateColors, fmt.Sprintf("update %d package(s)", len(outdated))) {
+			return nil
+		}
 	}
 
 	// Phase 2: after the user opts in, fetch each release and resolve its
@@ -459,7 +508,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if updated > 0 {
-		printPass(cfg, "updated %d package(s)", updated)
+		if renew {
+			printPass(cfg, "renewed %d package(s)", updated)
+		} else {
+			printPass(cfg, "updated %d package(s)", updated)
+		}
 	}
 	printFailedTable(cfg, "package", failedItems)
 

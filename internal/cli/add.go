@@ -26,7 +26,7 @@ func newAddCmd() *cobra.Command {
 		Args:    cobra.MinimumNArgs(1),
 		RunE:    runAdd,
 	}
-	addInstallFlags(cmd, "Reinstall even if already installed")
+	addForceFlag(cmd)
 	addSkipHashCheckFlag(cmd)
 	return cmd
 }
@@ -81,7 +81,6 @@ type installTaskResult struct {
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	reinstall, _ := cmd.Flags().GetBool("reinstall")
 	force, _ := cmd.Flags().GetBool("force")
 	ctx := cmd.Context()
 	ci, err := initCommand(ctx, cmdOptions{Lock: true, Manifest: true, GH: true, Shim: true, Dirs: true, Repos: true, SkipHashCheck: true})
@@ -148,12 +147,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		partialJob := installJob{name: pkgName, version: ver, pinned: pinned}
-		if entry, exists := manifest.Extracts[partialJob.key()]; exists && !reinstall {
-			print("%s: already added → %s", pkgName, entry.Version)
+		if entry, exists := manifest.Extracts[partialJob.key()]; exists {
+			print("%s: already added → %s, [ghpm renew] puts a fresh copy back", pkgName, entry.Version)
 			continue
 		}
 		if !pinned {
-			if existing, found := manifest.FindBySource(source); found && existing != pkgName && !reinstall {
+			if existing, found := manifest.FindBySource(source); found && existing != pkgName {
 				print("%s: already added as %s", pkgName, existing)
 				continue
 			}
@@ -473,32 +472,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			hadErrors = true
 			failedItems = append(failedItems, failedItem{name: p.jobName, reason: err.Error()})
 			continue
-		}
-
-		if reinstall && existing.Version != "" {
-			for shimName := range existing.AllBins() {
-				undo := shimUndo(shimName)
-				if err := shim.Remove(shimName); err != nil {
-					printWarn(cfg, "%s: could not remove stale shim: %v", shimName, err)
-					continue
-				}
-				jrn.Did("stale shim "+shimName, undo)
-			}
-			if oldFonts := existing.AllFonts(); len(oldFonts) > 0 {
-				var newPaths []string
-				for _, fontPath := range p.font {
-					newPaths = append(newPaths, fontPath)
-				}
-				if fontsDir, err := userFontDir(); err == nil {
-					for _, fontPath := range staleFontPaths(oldFonts, newPaths) {
-						if err := uninstallFont(fontPath, fontsDir); err != nil {
-							printWarn(cfg, "%s: could not remove stale font: %v", filepath.Base(fontPath), err)
-							continue
-						}
-						jrn.Did("stale font "+filepath.Base(fontPath), fontUndo("", fontPath, oldPkgDir, fontsDir))
-					}
-				}
-			}
 		}
 
 		p.placedDir = placed
