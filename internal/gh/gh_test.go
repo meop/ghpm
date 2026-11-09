@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -196,83 +195,77 @@ func TestReleaseStreamRank(t *testing.T) {
 	}
 }
 
-func TestCandidateTags(t *testing.T) {
-	got := candidateTags("bun", "v1.2.3.4")
-	want := []string{"1.2.3.4", "v1.2.3.4", "bun-v1.2.3.4", "b1.2.3.4", "bun-b1.2.3.4"}
-	if !slices.Equal(got, want) {
-		t.Errorf("candidateTags(%q, %q) = %v, want %v", "bun", "v1.2.3.4", got, want)
+// fakeReleases answers gh release list with tags (stable unless its name says "-alpha"), and gh release view for any
+// of them
+func fakeReleases(t *testing.T, tags ...string) {
+	var list []string
+	for _, tag := range tags {
+		list = append(list, fmt.Sprintf(`{"tagName":%q,"isPrerelease":%t}`, tag, strings.Contains(tag, "-alpha")))
 	}
-}
-
-// TestGetReleaseByTag_FallsBackThroughCandidates covers pinning by a bare
-// version against a repo that tags releases with a package-name prefix
-// (bun's "bun-v1.2.3.4"): the exact tag and the plain "v"-prefixed guess both
-// miss, so it must keep trying rather than give up after one retry.
-func TestGetReleaseByTag_FallsBackThroughCandidates(t *testing.T) {
-	fakeGH(t, `
-		for a in "$@"; do
-			if [ "$a" = "bun-v1.2.3.4" ]; then
-				echo '{"tagName":"bun-v1.2.3.4","assets":[]}'
-				exit 0
-			fi
-		done
-		exit 1
-	`)
-
-	rel, err := GetReleaseByTag(context.Background(), "owner", "bun", "1.2.3.4")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rel.TagName != "bun-v1.2.3.4" {
-		t.Errorf("expected tag bun-v1.2.3.4, got %s", rel.TagName)
-	}
-}
-
-// TestGetReleaseByTag_BareBuildNumber covers llama.cpp's tagging: a bare
-// "b<n>" build number with no "v" and no package-name prefix at all.
-func TestGetReleaseByTag_BareBuildNumber(t *testing.T) {
-	fakeGH(t, `
-		for a in "$@"; do
-			if [ "$a" = "b1234" ]; then
-				echo '{"tagName":"b1234","assets":[]}'
-				exit 0
-			fi
-		done
-		exit 1
-	`)
-
-	rel, err := GetReleaseByTag(context.Background(), "owner", "llama.cpp", "1234")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rel.TagName != "b1234" {
-		t.Errorf("expected tag b1234, got %s", rel.TagName)
-	}
-}
-
-// TestGetReleaseByTag_AnyPrefixThroughTheReleaseList covers a convention no guess spells, codex's "rust-v": the
-// release whose tag is the same version is found in the list
-func TestGetReleaseByTag_AnyPrefixThroughTheReleaseList(t *testing.T) {
-	fakeGH(t, `
+	fakeGH(t, fmt.Sprintf(`
 		case "$1 $2" in
-			"release list") echo '[{"tagName":"rust-v0.169.0-alpha.6","isPrerelease":true},{"tagName":"rust-v0.167.0","isPrerelease":false}]' ;;
+			"release list") echo '[%s]' ;;
 			"release view")
 				for a in "$@"; do
-					if [ "$a" = "rust-v0.167.0" ]; then
-						echo '{"tagName":"rust-v0.167.0","assets":[]}'
-						exit 0
-					fi
+					for t in %s; do
+						if [ "$a" = "$t" ]; then
+							printf '{"tagName":"%%s","assets":[]}' "$t"
+							exit 0
+						fi
+					done
 				done
 				exit 1 ;;
 		esac
-	`)
+	`, strings.Join(list, ","), strings.Join(tags, " ")))
+}
 
-	rel, err := GetReleaseByTag(context.Background(), "openai", "codex", "0.167.0")
-	if err != nil {
-		t.Fatal(err)
+// a version finds its release under whatever prefix the repo tags by
+func TestGetReleaseByTag_AVersionFindsItsTagUnderAnyPrefix(t *testing.T) {
+	for _, tc := range []struct{ repo, ver, tag string }{
+		{"bun", "1.2.3.4", "bun-v1.2.3.4"},
+		{"llama.cpp", "1234", "b1234"},
+		{"codex", "0.167.0", "rust-v0.167.0"},
+		{"fzf", "0.74.5", "v0.74.5"},
+		{"jq", "1.8.1", "jq-1.8.1"},
+	} {
+		fakeReleases(t, "other-9.9.9", tc.tag)
+		rel, err := GetReleaseByTag(context.Background(), "owner", tc.repo, tc.ver)
+		if err != nil {
+			t.Fatalf("%s %s: %v", tc.repo, tc.ver, err)
+		}
+		if rel.TagName != tc.tag {
+			t.Errorf("%s %s: got %s, want %s", tc.repo, tc.ver, rel.TagName, tc.tag)
+		}
 	}
-	if rel.TagName != "rust-v0.167.0" {
-		t.Errorf("expected tag rust-v0.167.0, got %s", rel.TagName)
+}
+
+// a real tag is fetched as given, with no list
+func TestGetReleaseByTag_ATagIsUsedAsGiven(t *testing.T) {
+	fakeGH(t, `
+		case "$1 $2" in
+			"release list") exit 1 ;;
+			"release view") echo '{"tagName":"rust-v0.167.0","assets":[]}' ;;
+		esac
+	`)
+	rel, err := GetReleaseByTag(context.Background(), "openai", "codex", "rust-v0.167.0")
+	if err != nil || rel.TagName != "rust-v0.167.0" {
+		t.Fatalf("got %v, %v", rel.TagName, err)
+	}
+}
+
+// two products of one repo tag the same version: the one with the latest stable release's prefix
+func TestTagForVersion_PrefersTheLatestStablePrefix(t *testing.T) {
+	releases := []Release{
+		{TagName: "sdk-v2.0.0-alpha.1", IsPrerelease: true},
+		{TagName: "cli-v1.3.0"},
+		{TagName: "sdk-v1.2.0"},
+		{TagName: "cli-v1.2.0"},
+	}
+	if got, ok := tagForVersion(releases, "1.2.0"); !ok || got != "cli-v1.2.0" {
+		t.Errorf("got %q, %v; want cli-v1.2.0", got, ok)
+	}
+	if _, ok := tagForVersion(releases, "9.9.9"); ok {
+		t.Error("a version with no release was found")
 	}
 }
 

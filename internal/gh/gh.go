@@ -121,10 +121,14 @@ func SplitSource(source string) (string, string, error) {
 }
 
 func ListReleases(ctx context.Context, owner, repo string) ([]Release, error) {
+	return listReleases(ctx, owner, repo, 200)
+}
+
+func listReleases(ctx context.Context, owner, repo string, limit int) ([]Release, error) {
 	out, err := runCmd(ctx, "gh", "release", "list",
 		"-R", owner+"/"+repo,
 		"--json", "tagName,isPrerelease",
-		"--limit", "200",
+		"--limit", fmt.Sprint(limit),
 	)
 	if err != nil {
 		return nil, err
@@ -159,54 +163,56 @@ func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) 
 	return resolvePointerRelease(ctx, owner, repo, rel)
 }
 
-// GetReleaseByTag fetches the release at tag, trying it exactly as given
-// first (the fast path for a caller re-fetching a tag it already confirmed
-// exists, e.g. sync refreshing a known release), then falling back through
-// candidateTags built from tag's bare version. That covers pinning by just a
-// version number regardless of which of ghpm's known tagging conventions the
-// repo actually uses.
+// GetReleaseByTag fetches the release a tag or a version names. A real tag, as sync passes the latest it found, is
+// used as given. Otherwise the release is the one whose tag is that version under any prefix a repo tags by ("v1.2",
+// "rust-v1.2", "bun-v1.2", "b1234"); where two tags carry the version, as two products of one repo can, the one
+// with the prefix of the repo's latest stable release
 func GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, error) {
 	rel, err := getReleaseView(ctx, owner, repo, tag)
 	if err == nil {
 		return rel, nil
 	}
-	lastErr := err
-	for _, cand := range candidateTags(repo, tag) {
-		if cand == tag {
-			continue
-		}
-		rel, err := getReleaseView(ctx, owner, repo, cand)
-		if err == nil {
-			return rel, nil
-		}
-		lastErr = err
+	releases, listErr := listReleases(ctx, owner, repo, releaseLookupLimit)
+	if listErr != nil {
+		return Release{}, listErr
 	}
-	// a convention none of the guesses spell (codex's "rust-v0.167.0"): the release whose tag is the same version
-	if releases, err := ListReleases(ctx, owner, repo); err == nil {
-		want := vers.Normalize(tag)
-		for _, r := range releases {
-			if vers.Normalize(r.TagName) == want {
-				return getReleaseView(ctx, owner, repo, r.TagName)
-			}
-		}
+	match, ok := tagForVersion(releases, tag)
+	if !ok {
+		return Release{}, err
 	}
-	return Release{}, lastErr
+	return getReleaseView(ctx, owner, repo, match)
 }
 
-// candidateTags returns tag string variants to try, in priority order: bare
-// version, "v"+version, "<repo>-v"+version, "b"+version, "<repo>-b"+version.
-// This is every gh release tagging convention ghpm has seen so far: bare or
-// "v"-prefixed (most projects), llama.cpp's bare "b"-prefixed build numbers,
-// and bun's "<repo>-v"-prefixed tags.
-func candidateTags(repo, ver string) []string {
-	core := vers.Normalize(ver)
-	return []string{
-		core,
-		"v" + core,
-		repo + "-v" + core,
-		"b" + core,
-		repo + "-b" + core,
+// releaseLookupLimit is how far back a version is looked for: a repo cutting prereleases daily still reaches years
+const releaseLookupLimit = 1000
+
+// tagForVersion is the tag in releases that is ver under any prefix, preferring the prefix the latest stable release
+// has
+func tagForVersion(releases []Release, ver string) (string, bool) {
+	want := vers.Normalize(ver)
+	prefix := func(tag string) string { return strings.TrimSuffix(tag, vers.Normalize(tag)) }
+	latest := ""
+	for _, r := range releases {
+		if !r.IsPrerelease {
+			latest = prefix(r.TagName)
+			break
+		}
 	}
+	var found []string
+	for _, r := range releases {
+		if vers.Normalize(r.TagName) == want {
+			found = append(found, r.TagName)
+		}
+	}
+	for _, t := range found {
+		if prefix(t) == latest {
+			return t, true
+		}
+	}
+	if len(found) > 0 {
+		return found[0], true
+	}
+	return "", false
 }
 
 func FindLatestMatching(ctx context.Context, owner, repo string, c config.Constraint) (Release, error) {
