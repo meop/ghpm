@@ -67,6 +67,7 @@ type shimPlan struct {
 	fontDeclined []string
 	pin          string
 	version      string
+	tag          string
 }
 
 type jobWithRelease struct {
@@ -402,6 +403,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			fontDeclined: fontDeclined,
 			pin:          r.job.pin(),
 			version:      config.NormalizeVersion(r.release.TagName),
+			tag:          r.release.TagName,
 		})
 	}
 
@@ -486,6 +488,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		manifest.Extracts[p.key] = config.PackageEntry{
 			Pin:          p.pin,
 			Version:      p.version,
+			Tag:          p.tag,
 			Assets:       p.assets,
 			Bin:          installedBin,
 			Font:         installedFont,

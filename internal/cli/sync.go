@@ -60,6 +60,15 @@ func allTargets(extracts map[string]config.PackageEntry, renew bool) map[string]
 	return targets
 }
 
+// renewTag is what finds the release a package has: the tag it recorded, or, for an entry from before tags were
+// recorded, its version
+func renewTag(p config.PackageEntry) string {
+	if p.Tag != "" {
+		return p.Tag
+	}
+	return p.Version
+}
+
 func runSync(cmd *cobra.Command, args []string, renew bool) error {
 	op := "sync"
 	if renew {
@@ -120,10 +129,9 @@ func runSync(cmd *cobra.Command, args []string, renew bool) error {
 
 	var batchResults []gh.BatchResult
 	if renew {
-		// the release to fetch is the one each package has: its version finds the tag, whatever convention the repo
-		// tags by
+		// the release to fetch is the one each package has
 		for key, p := range targets {
-			batchResults = append(batchResults, gh.BatchResult{Key: key, LatestTag: p.Version})
+			batchResults = append(batchResults, gh.BatchResult{Key: key, LatestTag: renewTag(p)})
 		}
 	} else {
 		batchResults = ghClient.BatchLatestVersions(ctx, items, cfg.CacheTTL)
@@ -496,6 +504,7 @@ func runSync(cmd *cobra.Command, args []string, renew bool) error {
 		manifest.Extracts[tr.r.key] = config.PackageEntry{
 			Pin:          tr.r.pkg.Pin,
 			Version:      newVer,
+			Tag:          tr.r.release.TagName,
 			Assets:       assetNames(tr.r.chosens),
 			Bin:          newBin,
 			Font:         newFont,
