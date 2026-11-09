@@ -40,7 +40,7 @@ esac`)
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
 	want := []string{
-		"✓ vendor - gh: at the latest [0.0.0]",
+		"✓ vendor - gh: up to date [0.0.0]",
 		"vendor - wedge: asset fetching [",
 		"✓ vendor - wedge: installed [2.0.0]",
 		"repo - github.com/meop/ghpm-config: asset fetching [repo.toml]...",
