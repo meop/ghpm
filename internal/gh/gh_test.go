@@ -250,6 +250,32 @@ func TestGetReleaseByTag_BareBuildNumber(t *testing.T) {
 	}
 }
 
+// TestGetReleaseByTag_AnyPrefixThroughTheReleaseList covers a convention no guess spells, codex's "rust-v": the
+// release whose tag is the same version is found in the list
+func TestGetReleaseByTag_AnyPrefixThroughTheReleaseList(t *testing.T) {
+	fakeGH(t, `
+		case "$1 $2" in
+			"release list") echo '[{"tagName":"rust-v0.169.0-alpha.6","isPrerelease":true},{"tagName":"rust-v0.167.0","isPrerelease":false}]' ;;
+			"release view")
+				for a in "$@"; do
+					if [ "$a" = "rust-v0.167.0" ]; then
+						echo '{"tagName":"rust-v0.167.0","assets":[]}'
+						exit 0
+					fi
+				done
+				exit 1 ;;
+		esac
+	`)
+
+	rel, err := GetReleaseByTag(context.Background(), "openai", "codex", "0.167.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "rust-v0.167.0" {
+		t.Errorf("expected tag rust-v0.167.0, got %s", rel.TagName)
+	}
+}
+
 // TestGetReleaseByTag_AllAttemptsFail confirms an error surfaces (not a
 // silent empty release) when no candidate tag resolves.
 func TestGetReleaseByTag_AllAttemptsFail(t *testing.T) {

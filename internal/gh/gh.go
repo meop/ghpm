@@ -181,6 +181,15 @@ func GetReleaseByTag(ctx context.Context, owner, repo, tag string) (Release, err
 		}
 		lastErr = err
 	}
+	// a convention none of the guesses spell (codex's "rust-v0.167.0"): the release whose tag is the same version
+	if releases, err := ListReleases(ctx, owner, repo); err == nil {
+		want := vers.Normalize(tag)
+		for _, r := range releases {
+			if vers.Normalize(r.TagName) == want {
+				return getReleaseView(ctx, owner, repo, r.TagName)
+			}
+		}
+	}
 	return Release{}, lastErr
 }
 
