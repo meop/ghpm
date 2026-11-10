@@ -38,6 +38,7 @@ ghpm list fzf rip         # show only packages a term starts a word of
 ghpm find fzf             # search cached repos by name, alias, source or description
 ghpm find regex           # ...when what you remember is what the tool does
 ghpm info fzf             # show available releases and assets
+ghpm info fzf@0           # ...and the assets of the newest release a pin allows, as add would pick it
 ghpm outdated             # check for updates
 ghpm outdated fzf         # check updates for only packages a term starts a word of
 
@@ -48,6 +49,7 @@ ghpm renew                # a fresh copy of every package, at the release each a
 ghpm renew fzf            # a fresh copy of specific package
 
 ghpm download fzf         # download release asset to cache without installing
+ghpm download fzf@0.60    # ...of the newest release a pin allows, as add would pick it
 ghpm download --path /tmp fzf # download release asset to a specific directory
 
 ghpm remove fzf           # remove package

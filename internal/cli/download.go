@@ -83,12 +83,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return resolved{}, err
 				}
-				var rel gh.Release
-				if ver != "" {
-					rel, err = ghClient.GetReleaseByTag(ctx, owner, repo, ver)
-				} else {
-					rel, err = ghClient.GetLatestRelease(ctx, owner, repo)
-				}
+				rel, err := releaseFor(ctx, ghClient, owner, repo, ver)
 				if err != nil {
 					return resolved{}, err
 				}

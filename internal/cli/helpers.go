@@ -739,3 +739,19 @@ func printNameList(names []string) bool {
 	}
 	return false
 }
+
+// releaseFor is the release a version asks for: the latest for none, that tag for an exact version, and the newest
+// release in its line for a major or minor pin.
+func releaseFor(ctx context.Context, ghClient gh.Client, owner, repo, ver string) (gh.Release, error) {
+	if ver == "" {
+		return ghClient.GetLatestRelease(ctx, owner, repo)
+	}
+	c, err := config.ParseConstraint(ver)
+	if err != nil {
+		return gh.Release{}, err
+	}
+	if c.Level == config.PinExact {
+		return ghClient.GetReleaseByTag(ctx, owner, repo, ver)
+	}
+	return ghClient.FindLatestMatching(ctx, owner, repo, c)
+}

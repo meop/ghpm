@@ -166,23 +166,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			failedItems = append(failedItems, failedItem{name: pkgName, reason: err.Error()})
 			continue
 		}
-		var rel gh.Release
-		if !pinned {
-			rel, err = ghClient.GetLatestRelease(ctx, owner, repo)
-		} else {
-			c, perr := config.ParseConstraint(ver)
-			if perr != nil {
-				printFail(cfg, "%s: %v", pkgName, perr)
-				hadErrors = true
-				failedItems = append(failedItems, failedItem{name: pkgName, reason: perr.Error()})
-				continue
-			}
-			if c.Level == config.PinExact {
-				rel, err = ghClient.GetReleaseByTag(ctx, owner, repo, ver)
-			} else {
-				rel, err = ghClient.FindLatestMatching(ctx, owner, repo, c)
-			}
-		}
+		rel, err := releaseFor(ctx, ghClient, owner, repo, ver)
 		if err != nil {
 			printFail(cfg, "%s: %v", pkgName, err)
 			hadErrors = true

@@ -94,7 +94,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 			Name: outcomes[job.idx].pkgName,
 			Run: func() (infoFetch, error) {
 				if job.ver != "" {
-					rel, err := ghClient.GetReleaseByTag(ctx, job.owner, job.repo, job.ver)
+					rel, err := releaseFor(ctx, ghClient, job.owner, job.repo, job.ver)
 					if err != nil {
 						return infoFetch{}, err
 					}
