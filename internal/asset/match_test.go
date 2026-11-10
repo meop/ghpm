@@ -1013,16 +1013,19 @@ func TestSecondaryScore_Linux(t *testing.T) {
 	}{
 		{"tool-linux-gnu-amd64.tar.gz", 17},  // gnu(+2) + tar.gz(+15)
 		{"tool-linux-musl-amd64.tar.gz", 16}, // musl(+1) + tar.gz(+15)
-		{"tool-linux-amd64.tar.gz", 15},      // tar.gz(+15)
-		{"tool-linux-amd64.tgz", 14},         // tgz(+14)
-		{"tool-linux-amd64.tar.bz2", 6},      // tar.bz2(+6) — grouped with the bz2 family, near the end
-		{"tool-linux-amd64.tar.xz", 12},      // tar.xz(+12)
-		{"tool-linux-amd64.gz", 13},          // bare gz(+13) — grouped right after tar.gz/tgz
-		{"tool-linux-gnu-amd64.zip", 3},      // gnu(+2) + zip(+1)
-		{"tool-linux-amd64.zip", 1},          // zip(+1)
+		{"tool-linux-amd64.tar.gz", 18},      // unmarked(+3) + tar.gz(+15): the default build, above gnu and musl
+		// opencode ships both, and its musl build cannot run on a glibc host
+		{"opencode-linux-x64.tar.gz", 18},      // unmarked(+3) + tar.gz(+15)
+		{"opencode-linux-x64-musl.tar.gz", 16}, // musl(+1) + tar.gz(+15)
+		{"tool-linux-amd64.tgz", 17},           // unmarked(+3) + tgz(+14)
+		{"tool-linux-amd64.tar.bz2", 9},        // unmarked(+3) + tar.bz2(+6) — grouped with the bz2 family, near the end
+		{"tool-linux-amd64.tar.xz", 15},        // unmarked(+3) + tar.xz(+12)
+		{"tool-linux-amd64.gz", 16},            // unmarked(+3) + bare gz(+13) — grouped right after tar.gz/tgz
+		{"tool-linux-gnu-amd64.zip", 3},        // gnu(+2) + zip(+1)
+		{"tool-linux-amd64.zip", 4},            // unmarked(+3) + zip(+1)
 		// "magnum" contains "gnu" as a substring but not as a delimited segment
 		// ('a' before, 'm' after both block it) — must not earn the gnu bonus.
-		{"tool-magnum-amd64.tar.gz", 15}, // tar.gz(+15) only
+		{"tool-magnum-amd64.tar.gz", 18}, // unmarked(+3) + tar.gz(+15), no gnu bonus of its own
 	}
 	for _, c := range cases {
 		if got := secondaryScore(c.name); got != c.want {
@@ -1052,7 +1055,7 @@ func TestSecondaryScore_Windows(t *testing.T) {
 		// the same longest-suffix rule: "tar.xz" (+4), not the bare "xz" (+6)
 		// that reversal also puts earlier in the list.
 		{"tool-windows-msvc.tar.xz", 6}, // msvc(+2) + tar.xz(+4)
-		{"tool-windows-amd64.zip", 15},  // zip(+15)
+		{"tool-windows-amd64.zip", 18},  // unmarked(+3) + zip(+15): the default build, above msvc and gnu
 	}
 	for _, c := range cases {
 		if got := secondaryScore(c.name); got != c.want {

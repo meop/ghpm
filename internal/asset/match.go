@@ -134,12 +134,18 @@ func secondaryScore(name string) int {
 	lower := strings.ToLower(name)
 	goos := runtime.GOOS
 	total := 0
-	if prefs, ok := toolPrefs[goos]; ok {
+	if prefs, ok := toolPrefs[goos]; ok && len(prefs) > 0 {
 		n := len(prefs)
+		mentioned := false
 		for i := n - 1; i >= 0; i-- {
 			if p := prefs[i]; p != "" && toolMentioned(lower, p) {
 				total += 1 + (n - 1 - i)
+				mentioned = true
 			}
+		}
+		// a name with no toolchain is the release's default build, and a named one beside it is a variant, so it ranks above every named toolchain
+		if !mentioned {
+			total += n + 1
 		}
 	}
 	if prefs, ok := extPrefs[goos]; ok {
