@@ -178,19 +178,23 @@ func TestGetLatestRelease_PrefersNormalVSemverStream(t *testing.T) {
 func TestReleaseStreamRank(t *testing.T) {
 	cases := []struct {
 		tag        string
+		repo       string
 		prerelease bool
 		wantRank   int
 	}{
-		{"v2.43.0", false, 0},
-		{"dua-core-v3.3.0", false, 1},
-		{"bun-v1.3.13", false, 1},
-		{"b1234", false, 2},
-		{"v2.44.0-rc.1", true, 4},
-		{"2.43.0", false, 3},
+		{"zcode-cli-v3.4.0", "zcode-cli", false, rankRepoNamed},
+		{"bun-v1.3.13", "bun", false, rankRepoNamed},
+		{"v3.17.2", "zcode-cli", false, rankVSemver},
+		{"v2.43.0", "dua-cli", false, rankVSemver},
+		{"dua-core-v3.3.0", "dua-cli", false, rankPrefixed},
+		{"b1234", "llama.cpp", false, rankBuildNumber},
+		{"2.43.0", "repo", false, rankUnknown},
+		{"v2.44.0-rc.1", "repo", true, rankPrerelease},
+		{"zcode-cli-v3.5.0-alpha.1", "zcode-cli", true, rankPrerelease},
 	}
 	for _, c := range cases {
-		if got := releaseStreamRank(Release{TagName: c.tag, IsPrerelease: c.prerelease}); got != c.wantRank {
-			t.Errorf("releaseStreamRank(%q, prerelease=%v) = %d, want %d", c.tag, c.prerelease, got, c.wantRank)
+		if got := releaseStreamRank(Release{TagName: c.tag, IsPrerelease: c.prerelease}, c.repo); got != c.wantRank {
+			t.Errorf("releaseStreamRank(%q, %q, prerelease=%v) = %d, want %d", c.tag, c.repo, c.prerelease, got, c.wantRank)
 		}
 	}
 }

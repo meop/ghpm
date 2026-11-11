@@ -60,6 +60,11 @@ type releaseField struct {
 			Name string `json:"name"`
 		} `json:"nodes"`
 	} `json:"nvRefs"`
+	RepoRefs *struct {
+		Nodes []struct {
+			Name string `json:"name"`
+		} `json:"nodes"`
+	} `json:"repoRefs"`
 }
 
 func BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult {
@@ -142,7 +147,7 @@ func executeBatch(ctx context.Context, items []BatchItem, cacheTTL string) []Bat
 			continue
 		}
 
-		tag, err := extractTag(rf, item.Pin)
+		tag, err := extractTag(rf, item.Pin, ownerMap[alias][1])
 		if err != nil {
 			results[i] = BatchResult{Key: item.Key, Err: err}
 			continue
@@ -166,6 +171,7 @@ func buildBatchQuery(items []BatchItem, aliases []string, ownerMap map[string][2
 			vq, nvq := tagQueries(item.Pin)
 			fmt.Fprintf(&b, "    vRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", vq)
 			fmt.Fprintf(&b, "    nvRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", nvq)
+			fmt.Fprintf(&b, "    repoRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", pair[1]+"-"+vq)
 		} else {
 			b.WriteString("    latestRelease { tagName }\n")
 		}
@@ -187,7 +193,7 @@ func tagQueries(c config.Constraint) (vQuery, nvQuery string) {
 	return "v" + base, base
 }
 
-func extractTag(rf releaseField, pin config.Constraint) (string, error) {
+func extractTag(rf releaseField, pin config.Constraint, repo string) (string, error) {
 	if pin.Raw == "" {
 		if rf.LatestRelease == nil {
 			return "", fmt.Errorf("no latest release returned")
@@ -195,29 +201,53 @@ func extractTag(rf releaseField, pin config.Constraint) (string, error) {
 		return rf.LatestRelease.TagName, nil
 	}
 
-	bestTag := ""
-	consider := func(tag string) {
-		if isPrereleaseName(tag) || !pin.Matches(tag) {
-			return
+	best := func(tags []string) string {
+		bestTag := ""
+		for _, tag := range tags {
+			if isPrereleaseName(tag) || !pin.Matches(tag) {
+				continue
+			}
+			if bestTag == "" || config.CompareVersions(tag, bestTag) > 0 {
+				bestTag = tag
+			}
 		}
-		if bestTag == "" || config.CompareVersions(tag, bestTag) > 0 {
-			bestTag = tag
+		return bestTag
+	}
+	names := func(refs *struct {
+		Nodes []struct {
+			Name string `json:"name"`
+		} `json:"nodes"`
+	}) []string {
+		if refs == nil {
+			return nil
+		}
+		out := make([]string, 0, len(refs.Nodes))
+		for _, n := range refs.Nodes {
+			out = append(out, n.Name)
+		}
+		return out
+	}
+
+	// tags named for the repo outrank its plain ones, as releaseStreamRank does
+	var repoNamed []string
+	for _, tag := range names(rf.RepoRefs) {
+		if isRepoNamedTag(tag, repo) {
+			repoNamed = append(repoNamed, tag)
 		}
 	}
-	if rf.VRefs != nil {
-		for _, n := range rf.VRefs.Nodes {
-			consider(n.Name)
+	if tag := best(repoNamed); tag != "" {
+		return tag, nil
+	}
+	var plain []string
+	for _, tag := range append(names(rf.VRefs), names(rf.NvRefs)...) {
+		if !isRepoNamedTag(tag, repo) {
+			plain = append(plain, tag)
 		}
 	}
-	if rf.NvRefs != nil {
-		for _, n := range rf.NvRefs.Nodes {
-			consider(n.Name)
-		}
+	if tag := best(plain); tag != "" {
+		return tag, nil
 	}
-	if bestTag == "" {
-		return "", fmt.Errorf("no release found matching %q", pin.Raw)
-	}
-	return bestTag, nil
+	return "", fmt.Errorf("no release found matching %q", pin.Raw)
 }
 
 // isPrereleaseName reports whether a tag looks like a pre-release.
