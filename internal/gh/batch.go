@@ -210,7 +210,7 @@ func extractTag(rf releaseField, pin config.Constraint) (string, error) {
 	best := func(keep func(string) bool) string {
 		bestTag := ""
 		for _, tag := range candidates {
-			if isPrereleaseName(tag) || !pin.Matches(tag) || !keep(tag) {
+			if isPrereleaseName(tag) || !config.Matches(pin, tag) || !keep(tag) {
 				continue
 			}
 			if bestTag == "" || config.CompareVersions(tag, bestTag) > 0 {

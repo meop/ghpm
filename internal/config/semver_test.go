@@ -59,3 +59,32 @@ func TestIsPrerelease(t *testing.T) {
 		}
 	}
 }
+
+func TestMatches(t *testing.T) {
+	cases := []struct {
+		pin, tag string
+		want     bool
+	}{
+		{"14", "v14.1.0", true},
+		{"14", "v15.0.0", false},
+		{"14.1", "14.1.9", true},
+		{"14.1", "14.2.0", false},
+		{"14.1.0", "v14.1.0", true},
+		{"14.1.0", "v14.1.1", false},
+		{"3.17", "zcode-cli-v3.17.2", true},
+		{"3.17", "zcode-cli-v3.17.2-rc.1", true},
+		{"3.18.0-rc.1", "zcode-cli-v3.18.0-rc.1", true},
+		{"3.18.0", "zcode-cli-v3.18.0-rc.1", false},
+		{"1", "b1234", false},
+		{"1", "nightly", false},
+	}
+	for _, c := range cases {
+		pin, err := ParseConstraint(c.pin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := Matches(pin, c.tag); got != c.want {
+			t.Errorf("Matches(%q, %q) = %v, want %v", c.pin, c.tag, got, c.want)
+		}
+	}
+}

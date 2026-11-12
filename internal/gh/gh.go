@@ -225,7 +225,7 @@ func FindLatestMatching(ctx context.Context, owner, repo string, c config.Constr
 		if r.IsPrerelease || isPrereleaseName(r.TagName) {
 			continue
 		}
-		if !c.Matches(r.TagName) {
+		if !config.Matches(c, r.TagName) {
 			continue
 		}
 		if bestTag == "" || config.CompareVersions(r.TagName, bestTag) > 0 {

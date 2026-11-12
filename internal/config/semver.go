@@ -56,6 +56,22 @@ func CompareVersions(a, b string) int {
 	return comparePrerelease(ap, bp)
 }
 
+// Matches reports whether tag satisfies the pin: its major, and its minor for a minor pin, or the whole version for
+// an exact one. tag may carry any leading junk (a "v", a package-name prefix, llama.cpp's "b").
+func Matches(c Constraint, tag string) bool {
+	parts, _ := versionCore(tag)
+	if len(parts) == 0 || parts[0] != c.Major {
+		return false
+	}
+	if c.Level >= PinMinor && (len(parts) < 2 || parts[1] != c.Minor) {
+		return false
+	}
+	if c.Level == PinExact {
+		return NormalizeVersion(tag) == c.Raw
+	}
+	return true
+}
+
 // IsPrerelease reports whether a version or tag carries a pre-release part after its numbers: "v1.2.0-rc.1",
 // "zcode-cli-v3.18.0-rc.1". Build metadata alone ("1.2.0+build.5") is not one.
 func IsPrerelease(v string) bool {
