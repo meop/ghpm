@@ -190,11 +190,10 @@ const releaseLookupLimit = 1000
 // has
 func tagForVersion(releases []Release, ver string) (string, bool) {
 	want := vers.Normalize(ver)
-	prefix := func(tag string) string { return strings.TrimSuffix(tag, vers.Normalize(tag)) }
 	latest := ""
 	for _, r := range releases {
 		if !r.IsPrerelease {
-			latest = prefix(r.TagName)
+			latest = tagPrefix(r.TagName)
 			break
 		}
 	}
@@ -205,7 +204,7 @@ func tagForVersion(releases []Release, ver string) (string, bool) {
 		}
 	}
 	for _, t := range found {
-		if prefix(t) == latest {
+		if tagPrefix(t) == latest {
 			return t, true
 		}
 	}

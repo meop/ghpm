@@ -60,11 +60,6 @@ type releaseField struct {
 			Name string `json:"name"`
 		} `json:"nodes"`
 	} `json:"nvRefs"`
-	RepoRefs *struct {
-		Nodes []struct {
-			Name string `json:"name"`
-		} `json:"nodes"`
-	} `json:"repoRefs"`
 }
 
 func BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult {
@@ -147,7 +142,7 @@ func executeBatch(ctx context.Context, items []BatchItem, cacheTTL string) []Bat
 			continue
 		}
 
-		tag, err := extractTag(rf, item.Pin, ownerMap[alias][1])
+		tag, err := extractTag(rf, item.Pin)
 		if err != nil {
 			results[i] = BatchResult{Key: item.Key, Err: err}
 			continue
@@ -169,9 +164,9 @@ func buildBatchQuery(items []BatchItem, aliases []string, ownerMap map[string][2
 		fmt.Fprintf(&b, "  %s: repository(owner: %q, name: %q) {\n", aliases[i], pair[0], pair[1])
 		if item.Pin.Raw != "" {
 			vq, nvq := tagQueries(item.Pin)
+			b.WriteString("    latestRelease { tagName }\n")
 			fmt.Fprintf(&b, "    vRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", vq)
 			fmt.Fprintf(&b, "    nvRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", nvq)
-			fmt.Fprintf(&b, "    repoRefs: refs(refPrefix: \"refs/tags/\", query: %q, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}, first: 100) { nodes { name } }\n", pair[1]+"-"+vq)
 		} else {
 			b.WriteString("    latestRelease { tagName }\n")
 		}
@@ -193,7 +188,7 @@ func tagQueries(c config.Constraint) (vQuery, nvQuery string) {
 	return "v" + base, base
 }
 
-func extractTag(rf releaseField, pin config.Constraint, repo string) (string, error) {
+func extractTag(rf releaseField, pin config.Constraint) (string, error) {
 	if pin.Raw == "" {
 		if rf.LatestRelease == nil {
 			return "", fmt.Errorf("no latest release returned")
@@ -201,10 +196,21 @@ func extractTag(rf releaseField, pin config.Constraint, repo string) (string, er
 		return rf.LatestRelease.TagName, nil
 	}
 
-	best := func(tags []string) string {
+	var candidates []string
+	if rf.VRefs != nil {
+		for _, n := range rf.VRefs.Nodes {
+			candidates = append(candidates, n.Name)
+		}
+	}
+	if rf.NvRefs != nil {
+		for _, n := range rf.NvRefs.Nodes {
+			candidates = append(candidates, n.Name)
+		}
+	}
+	best := func(keep func(string) bool) string {
 		bestTag := ""
-		for _, tag := range tags {
-			if isPrereleaseName(tag) || !pin.Matches(tag) {
+		for _, tag := range candidates {
+			if isPrereleaseName(tag) || !pin.Matches(tag) || !keep(tag) {
 				continue
 			}
 			if bestTag == "" || config.CompareVersions(tag, bestTag) > 0 {
@@ -213,42 +219,22 @@ func extractTag(rf releaseField, pin config.Constraint, repo string) (string, er
 		}
 		return bestTag
 	}
-	names := func(refs *struct {
-		Nodes []struct {
-			Name string `json:"name"`
-		} `json:"nodes"`
-	}) []string {
-		if refs == nil {
-			return nil
-		}
-		out := make([]string, 0, len(refs.Nodes))
-		for _, n := range refs.Nodes {
-			out = append(out, n.Name)
-		}
-		return out
-	}
-
-	// tags named for the repo outrank its plain ones, as releaseStreamRank does
-	var repoNamed []string
-	for _, tag := range names(rf.RepoRefs) {
-		if isRepoNamedTag(tag, repo) {
-			repoNamed = append(repoNamed, tag)
+	// where two tags carry the version, as a fork's own beside its upstream's can, the prefix of the latest
+	// release wins, as it does for an exact pin
+	if rf.LatestRelease != nil {
+		latest := tagPrefix(rf.LatestRelease.TagName)
+		if tag := best(func(t string) bool { return tagPrefix(t) == latest }); tag != "" {
+			return tag, nil
 		}
 	}
-	if tag := best(repoNamed); tag != "" {
-		return tag, nil
-	}
-	var plain []string
-	for _, tag := range append(names(rf.VRefs), names(rf.NvRefs)...) {
-		if !isRepoNamedTag(tag, repo) {
-			plain = append(plain, tag)
-		}
-	}
-	if tag := best(plain); tag != "" {
+	if tag := best(func(string) bool { return true }); tag != "" {
 		return tag, nil
 	}
 	return "", fmt.Errorf("no release found matching %q", pin.Raw)
 }
+
+// tagPrefix is what a tag carries before its version: "v", "bun-v", "zcode-cli-v", or nothing.
+func tagPrefix(tag string) string { return strings.TrimSuffix(tag, config.NormalizeVersion(tag)) }
 
 // isPrereleaseName reports whether a tag looks like a pre-release.
 // Standard semver uses a hyphen separator for pre-release identifiers (e.g. v1.0.0-rc.1).

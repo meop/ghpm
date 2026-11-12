@@ -54,8 +54,8 @@ func TestBuildBatchQuery_Pinned(t *testing.T) {
 	if !strings.Contains(query, `refPrefix: "refs/tags/", query: "14."`) {
 		t.Error("expected non-v refs query for pinned major")
 	}
-	if strings.Contains(query, "latestRelease") {
-		t.Error("should not request latestRelease for pinned packages")
+	if !strings.Contains(query, "latestRelease") {
+		t.Error("expected latestRelease for pinned packages, whose tag prefix the pin prefers")
 	}
 }
 
@@ -107,7 +107,7 @@ func TestExtractTag_Floating(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
 		t.Fatal(err)
 	}
-	tag, err := extractTag(rf, config.Constraint{}, "repo")
+	tag, err := extractTag(rf, config.Constraint{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestExtractTag_Pinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := config.ParseConstraint("1")
-	tag, err := extractTag(rf, c, "repo")
+	tag, err := extractTag(rf, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestExtractTag_PinnedSkipsPrerelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := config.ParseConstraint("1")
-	tag, err := extractTag(rf, c, "repo")
+	tag, err := extractTag(rf, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestExtractTag_PinnedMergesVAndNonV(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := config.ParseConstraint("1")
-	tag, err := extractTag(rf, c, "repo")
+	tag, err := extractTag(rf, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestExtractTag_PinnedNoMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := config.ParseConstraint("99")
-	_, err := extractTag(rf, c, "repo")
+	_, err := extractTag(rf, c)
 	if err == nil {
 		t.Error("expected error when no matching release")
 	}
@@ -183,7 +183,7 @@ func TestExtractTag_NoLatestRelease(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
 		t.Fatal(err)
 	}
-	_, err := extractTag(rf, config.Constraint{}, "repo")
+	_, err := extractTag(rf, config.Constraint{})
 	if err == nil {
 		t.Error("expected error when no latest release")
 	}
@@ -299,36 +299,52 @@ func TestBatchLatestVersions_SurfacesGraphQLError(t *testing.T) {
 	}
 }
 
-func TestExtractTag_PinnedPrefersRepoNamedTags(t *testing.T) {
-	// a fork keeps its upstream's v<semver> tags beside its own <repo>-v<semver> releases
-	raw := `{"vRefs":{"nodes":[{"name":"v3.18.0"},{"name":"zcode-cli-v3.4.0"}]},
-		"repoRefs":{"nodes":[{"name":"zcode-cli-v3.4.0"},{"name":"zcode-cli-v3.3.1"},{"name":"zcode-cli-v3.5.0-alpha.1"}]}}`
+func TestExtractTag_PinnedPrefersTheLatestReleasesPrefix(t *testing.T) {
+	// a fork keeps its upstream's v<semver> tags beside its own releases' tags
+	raw := `{"latestRelease":{"tagName":"zcode-cli-v3.17.2"},
+		"vRefs":{"nodes":[{"name":"v3.18.0"},{"name":"zcode-cli-v3.17.2"},{"name":"v3.17.2"},{"name":"zcode-cli-v3.18.0-alpha.1"}]}}`
 	var rf releaseField
 	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := config.ParseConstraint("3")
-	tag, err := extractTag(rf, c, "zcode-cli")
+	tag, err := extractTag(rf, c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tag != "zcode-cli-v3.4.0" {
-		t.Errorf("got %q, want zcode-cli-v3.4.0 (the repo's own stream, its newest stable)", tag)
+	if tag != "zcode-cli-v3.17.2" {
+		t.Errorf("got %q, want zcode-cli-v3.17.2 (the latest release's stream, its newest stable)", tag)
 	}
 }
 
-func TestExtractTag_PinnedFallsBackToPlainTags(t *testing.T) {
-	raw := `{"vRefs":{"nodes":[{"name":"v3.18.0"}]},"repoRefs":{"nodes":[{"name":"zcode-cli-v2.0.0"}]}}`
+func TestExtractTag_PinnedFallsBackPastTheLatestReleasesPrefix(t *testing.T) {
+	raw := `{"latestRelease":{"tagName":"zcode-cli-v2.0.0"},"vRefs":{"nodes":[{"name":"v3.18.0"}]}}`
 	var rf releaseField
 	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := config.ParseConstraint("3")
-	tag, err := extractTag(rf, c, "zcode-cli")
+	tag, err := extractTag(rf, c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tag != "v3.18.0" {
-		t.Errorf("got %q, want v3.18.0 when no repo-named tag matches the pin", tag)
+		t.Errorf("got %q, want v3.18.0 when no tag of the latest release's stream matches the pin", tag)
+	}
+}
+
+func TestExtractTag_PinnedKeepsAPrefixedLatestStream(t *testing.T) {
+	raw := `{"latestRelease":{"tagName":"bun-v1.4.4"},"vRefs":{"nodes":[{"name":"bun-v1.3.13"},{"name":"bun-v1.3.2"}]}}`
+	var rf releaseField
+	if err := json.Unmarshal([]byte(raw), &rf); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := config.ParseConstraint("1.3")
+	tag, err := extractTag(rf, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag != "bun-v1.3.13" {
+		t.Errorf("got %q, want bun-v1.3.13", tag)
 	}
 }
