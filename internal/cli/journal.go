@@ -2,7 +2,6 @@ package cli
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 
 	gjournal "github.com/meop/golie/journal"
@@ -30,16 +29,10 @@ func pointVersion(file, dir string) (undo func() error, err error) {
 }
 
 // oldRoot is where the install the version file is about to leave keeps its
-// files: the file's target, or with no version file the version's dir, or the
-// key's dir itself, as ghpm 0.14.0 unpacked.
-func oldRoot(keyDir, oldVersion string) string {
-	if target, ok := pointer.Target(filepath.Join(keyDir, layout.VersionFile)); ok {
-		return target
-	}
-	if fi, err := os.Stat(filepath.Join(keyDir, oldVersion)); oldVersion != "" && err == nil && fi.IsDir() {
-		return filepath.Join(keyDir, oldVersion)
-	}
-	return keyDir
+// files, the file's target, or "" before a first install.
+func oldRoot(keyDir string) string {
+	target, _ := pointer.Target(filepath.Join(keyDir, layout.VersionFile))
+	return target
 }
 
 // installVersion places the unpacked version and points the version file at

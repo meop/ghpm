@@ -450,7 +450,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		// (nothing, for a first add) rather than recorded half-created.
 		jrn := &journal{}
 		keyDir := filepath.Dir(p.pkgDir)
-		oldPkgDir := oldRoot(keyDir, existing.Version)
+		oldPkgDir := oldRoot(keyDir)
 		placed, err := installVersion(jrn, extractResult{pkgDir: p.pkgDir, stageDir: p.stageDir, versionDir: p.versionDir}, p.version)
 		if err != nil {
 			rollbackPkg(cfg, jrn, p.jobName)

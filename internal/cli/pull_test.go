@@ -22,7 +22,7 @@ func TestRunRefresh_SaysEachThingOnALineOfItsOwn(t *testing.T) {
 	writeSettings(t, &config.Settings{RepoSources: []string{"github.com/meop/ghpm-config"}})
 	fakeGHBin(t, `case "$*" in
   *"contents --jq"*) echo 0000000000000000000000000000000000000000 ;;
-  *"contents/repo.toml"*) printf 'fzf = "github.com/junegunn/fzf"\n' ;;
+  *"contents/repo.toml"*) printf '[fzf]\nuri = "github.com/junegunn/fzf"\n' ;;
   *) exit 0 ;;
 esac`)
 	ghURL, _ := faketool.Release(t, "0.0.0", nil, "")

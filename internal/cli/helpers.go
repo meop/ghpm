@@ -294,33 +294,6 @@ func appendEntryRows(rows [][]string, prefix []string, p config.PackageEntry) []
 	return rows
 }
 
-// carriedKeys is sameKeySetFold, also matching old keys that all sit in one
-// top-level dir to new keys without it: an install from before extraction
-// dropped the dir an archive wraps itself in.
-func carriedKeys(newKeys, oldKeys []string) (recase map[string]string, ok bool) {
-	if recase, ok := sameKeySetFold(newKeys, oldKeys); ok {
-		return recase, true
-	}
-	stripped := make([]string, len(oldKeys))
-	top := ""
-	for i, k := range oldKeys {
-		dir, rest, found := strings.Cut(k, "/")
-		if !found || (top != "" && dir != top) {
-			return nil, false
-		}
-		top, stripped[i] = dir, rest
-	}
-	byStripped, ok := sameKeySetFold(newKeys, stripped)
-	if !ok {
-		return nil, false
-	}
-	recase = make(map[string]string, len(oldKeys))
-	for i, k := range oldKeys {
-		recase[k] = byStripped[stripped[i]]
-	}
-	return recase, true
-}
-
 // sameKeySetFold reports whether newKeys and oldKeys hold the same bin/font
 // keys once case is ignored, and if so returns an old→new casing map. Bin and
 // font paths are case-sensitive on disk, so even a casing-only rename between

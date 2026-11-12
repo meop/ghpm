@@ -57,16 +57,10 @@ func TestJournal_DidDropsNilUndo(t *testing.T) {
 	}
 }
 
-func TestOldRoot_IsTheVersionFilesTargetOrTheVersionDirOrTheKeysDir(t *testing.T) {
+func TestOldRoot_IsTheVersionFilesTarget(t *testing.T) {
 	keyDir := t.TempDir()
-	if got := oldRoot(keyDir, "1.0.0"); got != keyDir {
-		t.Errorf("an install with its files in the key's dir: %s", got)
-	}
-	if err := os.MkdirAll(filepath.Join(keyDir, "1.0.0"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if got := oldRoot(keyDir, "1.0.0"); got != filepath.Join(keyDir, "1.0.0") {
-		t.Errorf("an install in a version dir with no version file: %s", got)
+	if got := oldRoot(keyDir); got != "" {
+		t.Errorf("before a first install: %s", got)
 	}
 	linked := filepath.Join(keyDir, "1.0.0+1")
 	if err := os.MkdirAll(linked, 0755); err != nil {
@@ -75,7 +69,7 @@ func TestOldRoot_IsTheVersionFilesTargetOrTheVersionDirOrTheKeysDir(t *testing.T
 	if err := pointer.Point(filepath.Join(keyDir, "version"), linked); err != nil {
 		t.Fatal(err)
 	}
-	if got := oldRoot(keyDir, "1.0.0"); got != linked {
+	if got := oldRoot(keyDir); got != linked {
 		t.Errorf("an install with a version file: %s", got)
 	}
 }

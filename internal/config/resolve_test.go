@@ -85,7 +85,7 @@ func TestLoadRepos_Single(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeRepoTOML(t, filepath.Join(base, "a"), "fzf = \"github.com/junegunn/fzf\"\n")
+	writeRepoTOML(t, filepath.Join(base, "a"), "[fzf]\nuri = \"github.com/junegunn/fzf\"\n")
 	repos, err := LoadRepos()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -101,8 +101,8 @@ func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeRepoTOML(t, filepath.Join(base, "a"), "tool = \"github.com/owner/a\"\n")
-	writeRepoTOML(t, filepath.Join(base, "b"), "tool = \"github.com/owner/b\"\n")
+	writeRepoTOML(t, filepath.Join(base, "a"), "[tool]\nuri = \"github.com/owner/a\"\n")
+	writeRepoTOML(t, filepath.Join(base, "b"), "[tool]\nuri = \"github.com/owner/b\"\n")
 	repos, err := LoadRepos()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -115,8 +115,8 @@ func TestLoadRepos_AlphabeticalOrder_LaterWins(t *testing.T) {
 func TestRefreshRepos_FetchesAllSourcesAndPreservesOrder(t *testing.T) {
 	withHome(t)
 	writeConfigTOML(t, &Settings{RepoSources: []string{"github.com/o/a", "github.com/o/b"}})
-	a := "pkg1 = \"github.com/o/pkg1\"\n"
-	b := "pkg1 = \"github.com/o/pkg1\"\npkg2 = \"github.com/o/pkg2\"\n"
+	a := "[pkg1]\nuri = \"github.com/o/pkg1\"\n"
+	b := "[pkg1]\nuri = \"github.com/o/pkg1\"\n[pkg2]\nuri = \"github.com/o/pkg2\"\n"
 
 	fakeGHBin(t, `case "$*" in
   *"repos/o/a/contents --jq"*) echo `+gitBlobHash([]byte(a))+` ;;
@@ -160,7 +160,7 @@ esac`)
 func TestRefreshRepos_ACurrentFileIsNotDownloaded(t *testing.T) {
 	withHome(t)
 	writeConfigTOML(t, &Settings{RepoSources: []string{"github.com/o/a"}})
-	body := "pkg1 = \"github.com/o/pkg1\"\n"
+	body := "[pkg1]\nuri = \"github.com/o/pkg1\"\n"
 	dir, err := store.RepoDir("github.com/o/a")
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestRefreshRepos_PartialFailurePreservesOtherResults(t *testing.T) {
 
 	fakeGHBin(t, `case "$*" in
   *"repos/o/good/contents --jq"*) echo 0000000000000000000000000000000000000000 ;;
-  *"repos/o/good/contents/repo.toml"*) echo 'pkg1 = "github.com/o/pkg1"' ;;
+  *"repos/o/good/contents/repo.toml"*) printf '[pkg1]\nuri = "github.com/o/pkg1"\n' ;;
   *"repos/o/bad/"*)
     echo "not found" >&2
     exit 1
@@ -460,20 +460,15 @@ esac`)
 	}
 }
 
-// TestLoadRepos_TableForm covers the registry's current entry shape, where a
-// package is a table carrying uri and descr, alongside the legacy uri-only
-// string form that user-authored repo.toml files may still use.
+// TestLoadRepos_TableForm covers the registry's entry shape, where a package is
+// a table carrying uri and descr.
 func TestLoadRepos_TableForm(t *testing.T) {
 	withHome(t)
 	base, err := store.ReposBaseDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The legacy string entry has to precede every section header: TOML would
-	// otherwise read it as a key of the section above it, not a package.
 	writeRepoTOML(t, filepath.Join(base, "a"), `
-rg = "github.com/BurntSushi/ripgrep"
-
 [fzf]
 uri = "github.com/junegunn/fzf"
 descr = "Command-line fuzzy finder."
@@ -491,32 +486,6 @@ uri = "github.com/sharkdp/bat"
 	if repos["bat"].URI != "github.com/sharkdp/bat" || repos["bat"].Descr != "" {
 		t.Errorf("descr-less table entry: got %+v", repos["bat"])
 	}
-	if repos["rg"].URI != "github.com/BurntSushi/ripgrep" {
-		t.Errorf("legacy string entry: got %+v", repos["rg"])
-	}
-}
-
-// TestLoadRepos_UnknownFieldIgnored is what lets the registry publish a new
-// per-entry field without breaking every ghpm release that predates it.
-func TestLoadRepos_UnknownFieldIgnored(t *testing.T) {
-	withHome(t)
-	base, err := store.ReposBaseDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeRepoTOML(t, filepath.Join(base, "a"), `
-[sometool]
-uri = "github.com/owner/sometool"
-descr = "Does something."
-os = ["linux"]
-`)
-	repos, err := LoadRepos()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if repos["sometool"].URI != "github.com/owner/sometool" {
-		t.Errorf("got %+v", repos["sometool"])
-	}
 }
 
 func TestLoadRepos_MalformedEntry(t *testing.T) {
@@ -527,7 +496,7 @@ func TestLoadRepos_MalformedEntry(t *testing.T) {
 	}
 	writeRepoTOML(t, filepath.Join(base, "a"), "fzf = 42\n")
 	if _, err := LoadRepos(); err == nil {
-		t.Error("expected an error for a non-string, non-table entry")
+		t.Error("expected an error for an entry that is not a table")
 	}
 }
 
@@ -536,7 +505,7 @@ func TestParseRepoTable_Aliases(t *testing.T) {
 [rg]
 uri = "github.com/BurntSushi/ripgrep"
 descr = "Line-oriented regex search tool."
-aliases = ["ripgrep", "", 7]
+aliases = ["ripgrep", ""]
 
 [fzf]
 uri = "github.com/junegunn/fzf"
@@ -544,12 +513,24 @@ uri = "github.com/junegunn/fzf"
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// a blank or a non-string is not a name, and is dropped rather than refused
+	// a blank is not a name, and is dropped
 	if got := entries["rg"].Aliases; len(got) != 1 || got[0] != "ripgrep" {
 		t.Errorf("aliases: got %v", got)
 	}
 	if got := entries["fzf"].Aliases; len(got) != 0 {
 		t.Errorf("an entry without aliases has none: got %v", got)
+	}
+}
+
+func TestParseRepoTable_RefusesWhatItDoesNotKnow(t *testing.T) {
+	for _, body := range []string{
+		"fzf = \"github.com/junegunn/fzf\"\n",
+		"[fzf]\nuri = \"github.com/junegunn/fzf\"\nhomepage = \"x\"\n",
+		"[fzf]\nuri = \"github.com/junegunn/fzf\"\naliases = [7]\n",
+	} {
+		if _, err := parseRepoTable([]byte(body), "repo.toml"); err == nil {
+			t.Errorf("accepted %q", body)
+		}
 	}
 }
 

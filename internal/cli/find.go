@@ -152,9 +152,8 @@ func findOnGitHub(term string) {
 }
 
 // printMatchTable renders the repo table, dropping the aliases and descr
-// columns entirely when no matched entry has one — a registry predating either,
-// or a user's own repo.toml written in the legacy uri-only form, should not
-// print a column of blanks.
+// columns entirely when no matched entry has one, rather than print a column of
+// blanks.
 func printMatchTable(matches []repoMatch) {
 	withAliases := slices.ContainsFunc(matches, func(m repoMatch) bool { return len(m.aliases) > 0 })
 	withDescr := slices.ContainsFunc(matches, func(m repoMatch) bool { return m.descr != "" })

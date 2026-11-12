@@ -436,25 +436,6 @@ func TestInitCommand_WithDirs(t *testing.T) {
 	_ = ci
 }
 
-func TestCarriedKeys_OldKeysInOneTopDirMatchNewKeysWithoutIt(t *testing.T) {
-	recase, ok := carriedKeys(
-		[]string{"nu", "nu_plugin_gstat"},
-		[]string{"nu-0.116.1-aarch64-apple-darwin/nu", "nu-0.116.1-aarch64-apple-darwin/nu_plugin_gstat"},
-	)
-	if !ok || recase["nu-0.116.1-aarch64-apple-darwin/nu"] != "nu" || recase["nu-0.116.1-aarch64-apple-darwin/nu_plugin_gstat"] != "nu_plugin_gstat" {
-		t.Errorf("carriedKeys = %v, %v", recase, ok)
-	}
-}
-
-func TestCarriedKeys_OldKeysInDifferentTopDirsAreNotCarried(t *testing.T) {
-	if _, ok := carriedKeys([]string{"codex", "rg"}, []string{"bin/codex", "codex-path/rg"}); ok {
-		t.Error("keys from two top dirs were carried as one stripped set")
-	}
-	if recase, ok := carriedKeys([]string{"bin/codex"}, []string{"bin/codex"}); !ok || recase["bin/codex"] != "bin/codex" {
-		t.Errorf("unchanged keys: %v, %v", recase, ok)
-	}
-}
-
 func TestUnwrappedIsTheOneDirAnArchiveWrapsItselfIn(t *testing.T) {
 	wrapped := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(wrapped, "delish-0.2.0-darwin-aarch64"), 0755); err != nil {

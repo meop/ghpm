@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,42 +33,34 @@ type RepoEntry struct {
 	Aliases []string
 }
 
-// parseRepoTable decodes one repo.toml. Both entry shapes are accepted:
+// repoTOMLEntry is one entry as repo.toml spells it.
+type repoTOMLEntry struct {
+	URI     string   `toml:"uri"`
+	Descr   string   `toml:"descr"`
+	Aliases []string `toml:"aliases"`
+}
+
+// parseRepoTable decodes one repo.toml, each entry a table:
 //
-//	fzf = "github.com/junegunn/fzf"                       # legacy, uri only
-//	[rg]                                                  # current
+//	[rg]
 //	uri = "github.com/BurntSushi/ripgrep"
 //	descr = "Line-oriented regex search tool."
 //	aliases = ["ripgrep"]
 //
-// Unknown keys inside an entry are ignored rather than rejected, so a registry
-// that starts publishing a new field does not break the ghpm versions that
-// predate it. path only names the file in error messages.
+// A key ghpm does not know, or a value of the wrong type, is an error: the
+// registry and ghpm change together. path only names the file in error messages.
 func parseRepoTable(data []byte, path string) (map[string]RepoEntry, error) {
-	var raw map[string]any
-	if err := toml.Unmarshal(data, &raw); err != nil {
+	var raw map[string]repoTOMLEntry
+	md, err := toml.Decode(string(data), &raw)
+	if err != nil {
 		return nil, fmt.Errorf("malformed %s: %w", path, err)
 	}
+	if undecoded := md.Undecoded(); len(undecoded) > 0 {
+		return nil, fmt.Errorf("malformed %s: unknown key %s", path, undecoded[0])
+	}
 	entries := make(map[string]RepoEntry, len(raw))
-	for name, v := range raw {
-		switch t := v.(type) {
-		case string:
-			entries[name] = RepoEntry{URI: t}
-		case map[string]any:
-			uri, _ := t["uri"].(string)
-			descr, _ := t["descr"].(string)
-			var aliases []string
-			if list, ok := t["aliases"].([]any); ok {
-				for _, a := range list {
-					if alias, ok := a.(string); ok && alias != "" {
-						aliases = append(aliases, alias)
-					}
-				}
-			}
-			entries[name] = RepoEntry{URI: uri, Descr: descr, Aliases: aliases}
-		default:
-			return nil, fmt.Errorf("malformed %s: entry %q must be a uri string or a table", path, name)
-		}
+	for name, e := range raw {
+		entries[name] = RepoEntry{URI: e.URI, Descr: e.Descr, Aliases: slices.DeleteFunc(e.Aliases, func(a string) bool { return a == "" })}
 	}
 	return entries, nil
 }

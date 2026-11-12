@@ -60,15 +60,6 @@ func allTargets(extracts map[string]config.PackageEntry, renew bool) map[string]
 	return targets
 }
 
-// renewTag is what finds the release a package has: the tag it recorded, or, for an entry from before tags were
-// recorded, its version
-func renewTag(p config.PackageEntry) string {
-	if p.Tag != "" {
-		return p.Tag
-	}
-	return p.Version
-}
-
 func runSync(cmd *cobra.Command, args []string, renew bool) error {
 	op := "sync"
 	if renew {
@@ -131,7 +122,7 @@ func runSync(cmd *cobra.Command, args []string, renew bool) error {
 	if renew {
 		// the release to fetch is the one each package has
 		for key, p := range targets {
-			batchResults = append(batchResults, gh.BatchResult{Key: key, LatestTag: renewTag(p)})
+			batchResults = append(batchResults, gh.BatchResult{Key: key, LatestTag: p.Tag})
 		}
 	} else {
 		batchResults = ghClient.BatchLatestVersions(ctx, items, cfg.CacheTTL)
@@ -340,7 +331,7 @@ func runSync(cmd *cobra.Command, args []string, renew bool) error {
 		// commit point — untouched for the next run to retry.
 		jrn := &journal{}
 		keyDir := filepath.Dir(tr.pkgDir)
-		oldPkgDir := oldRoot(keyDir, tr.r.pkg.Version)
+		oldPkgDir := oldRoot(keyDir)
 		placed, err := installVersion(jrn, tr.extractResult, newVer)
 		if err != nil {
 			_ = os.RemoveAll(tr.stageDir)
@@ -379,7 +370,7 @@ func runSync(cmd *cobra.Command, args []string, renew bool) error {
 		if len(tr.bins) > 0 {
 			pkgBase, _, pinned := config.ParseVersionSuffix(tr.r.key)
 			prev := tr.r.pkg.DiscoveredBins()
-			recase, foldOK := carriedKeys(binKeys(tr.bins), prev)
+			recase, foldOK := sameKeySetFold(binKeys(tr.bins), prev)
 			if len(prev) > 0 && foldOK {
 				newBin = make(map[string]string, len(tr.r.pkg.Bin))
 				for shimName, oldKey := range tr.r.pkg.Bin {
@@ -433,7 +424,7 @@ func runSync(cmd *cobra.Command, args []string, renew bool) error {
 		if !pkgFailed && len(tr.fonts) > 0 {
 			pkgBase, _, _ := config.ParseVersionSuffix(tr.r.key)
 			prev := tr.r.pkg.DiscoveredFonts()
-			recase, foldOK := carriedKeys(fontKeys(tr.fonts), prev)
+			recase, foldOK := sameKeySetFold(fontKeys(tr.fonts), prev)
 			if len(prev) > 0 && foldOK {
 				newFont = make(map[string]string, len(tr.r.pkg.Font))
 				for fontName, oldPath := range tr.r.pkg.Font {

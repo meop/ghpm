@@ -330,14 +330,3 @@ func TestAllTargets_AFixedPinHoldsBackASyncNotARenew(t *testing.T) {
 		t.Errorf("renew targets = %v, want every package", slices.Sorted(maps.Keys(renew)))
 	}
 }
-
-// renew fetches the release by the tag the package recorded, as its repo spells it; an entry from before tags were
-// recorded goes by its version
-func TestRenewTag(t *testing.T) {
-	if got := renewTag(config.PackageEntry{Version: "0.167.0", Tag: "rust-v0.167.0"}); got != "rust-v0.167.0" {
-		t.Errorf("got %q, want the recorded tag", got)
-	}
-	if got := renewTag(config.PackageEntry{Version: "0.167.0"}); got != "0.167.0" {
-		t.Errorf("got %q, want the version", got)
-	}
-}
