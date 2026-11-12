@@ -11,8 +11,7 @@ import (
 
 // syncWedge makes sure ghpm has its vendored mallet and shim templates: what
 // is there is used, with no network, and only where there are none is wedge's
-// latest fetched. It is the counterpart to ghbin.Ensure; `refresh` is what
-// moves either to a newer release.
+// latest fetched. `pull` is what moves it to a newer release.
 func syncWedge(ctx context.Context) error {
 	shimDir, r, err := wedgeRelease()
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 	"github.com/meop/ghpm/internal/asset"
 	"github.com/meop/ghpm/internal/config"
 	"github.com/meop/ghpm/internal/gh"
+	"github.com/meop/ghpm/internal/ghapi"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/golie/ui"
@@ -171,7 +172,7 @@ func initCommand(ctx context.Context, opts cmdOptions) (*cmdInit, error) {
 	}
 
 	if opts.GH {
-		if err := gh.CheckInstalled(ctx, fetchingVendored("gh")); err != nil {
+		if err := ghapi.EnsureToken(); err != nil {
 			printFail(cfg, "%v", err)
 			return nil, ci.fail()
 		}

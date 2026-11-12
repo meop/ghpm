@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/gh"
+	"github.com/meop/ghpm/internal/ghapi"
 	"github.com/meop/golie/ui"
 )
 
@@ -131,7 +131,7 @@ func findOnGitHub(term string) {
 	if !promptConfirm(fmt.Sprintf("search github for %q?", term)) {
 		return
 	}
-	if err := gh.CheckInstalled(context.Background(), fetchingVendored("gh")); err != nil {
+	if err := ghapi.EnsureToken(); err != nil {
 		printFail(nil, "%v", err)
 		return
 	}

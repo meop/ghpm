@@ -1,6 +1,6 @@
 # ghpm
 
-A package manager that installs portable apps from GitHub Releases, using `gh` as its primary interface to GitHub.
+A package manager that installs portable apps from GitHub Releases, through GitHub's API with a token of its own.
 
 ## Install
 
@@ -22,7 +22,14 @@ irm -ErrorAction Stop -Uri https://raw.githubusercontent.com/meop/ghpm/main/inst
 go install github.com/meop/ghpm/cmd/ghpm@latest
 ```
 
-After installing, add `~/.ghpm/bin` to your PATH.
+After installing, add `~/.ghpm/bin` to your PATH, and give ghpm a GitHub token:
+
+```sh
+ghpm auth login           # paste a fine-grained PAT; Contents: Read-only on public repos is enough
+```
+
+ghpm uses `GH_TOKEN`, then `GITHUB_TOKEN`, then the token `ghpm auth login` keeps in `~/.ghpm/token` (readable by
+you alone). It never reads gh's login. Without a token, a command that needs one asks for it at a terminal.
 
 ## Usage
 
@@ -57,7 +64,10 @@ ghpm tidy                 # remove unused cached assets and orphaned package dir
 ghpm tidy --all           # remove all cached assets
 
 ghpm upgrade              # upgrade ghpm itself
-ghpm pull                 # pull repo sources, and ghpm's own gh and wedge, to their latest
+ghpm pull                 # pull repo sources, and ghpm's own wedge, to their latest
+ghpm auth login           # keep a GitHub token for ghpm (--with-token reads it from stdin)
+ghpm auth status          # which token ghpm uses, and whose it is
+ghpm auth logout          # remove the kept token
 ghpm doctor               # check system health
 ```
 
@@ -150,7 +160,7 @@ GitHub itself is only searched as a fallback, and held to the same two rules. Fo
 
 `ghpm pull` fetches `repo.toml` files from the sources in `repo_sources` and writes them into `~/.ghpm/repo/`, each only when GitHub's copy differs from the one there. You can also place your own `repo.toml` files there in any layout — `~/.ghpm/repo/` is never touched by `ghpm tidy` and is managed manually (or via `ghpm pull`).
 
-`ghpm pull` also moves the two tools ghpm uses itself, kept under `~/.ghpm/vendor/`, to their latest releases: [gh](https://github.com/cli/cli), for everything ghpm asks GitHub, and [wedge](https://github.com/meop/wedge), whose `mallet` stamps its shims. It says what it checked and what changed. No other command looks for a newer one: each uses what is there, and only fetches one where there is none, as on a new machine. A release is checked before it is used: its archive against the release's checksums, and for wedge those checksums against their signature by the meop release key. Shims keep the wedge they were stamped with until `ghpm sync --reinstall` restamps them. `ghpm upgrade` checks ghpm's own release the same way.
+`ghpm pull` also moves the tool ghpm uses itself, kept under `~/.ghpm/vendor/`, to its latest release: [wedge](https://github.com/meop/wedge), whose `mallet` stamps its shims. It says what it checked and what changed. No other command looks for a newer one: each uses what is there, and only fetches one where there is none, as on a new machine. A release is checked before it is used: its archive against the release's checksums, and those checksums against their signature by the meop release key. Shims keep the wedge they were stamped with until `ghpm sync --reinstall` restamps them. `ghpm upgrade` checks ghpm's own release the same way.
 
 If a name isn't in the map, `ghpm` looks for GitHub repos of exactly that name and prompts you to pick one.
 

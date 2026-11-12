@@ -2,11 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/fakegh"
 	"github.com/meop/golie/ui"
 )
 
@@ -25,23 +27,14 @@ func TestRunInfo_OrderPreservedAcrossFailureModes(t *testing.T) {
 		},
 	})
 
-	fakeGHBin(t, `case "$*" in
-  "release list -R good/repo"*)
-    cat <<'EOF'
-[{"tagName":"v1.0.0","isPrerelease":false}]
-EOF
-    ;;
-  "release view -R good/repo"*)
-    cat <<'EOF'
-{"tagName":"v1.0.0","assets":[{"name":"good-1.0.0.tar.gz","size":100,"url":"https://x/good"}]}
-EOF
-    ;;
-  "release list -R bad/repo"*)
-    echo "boom from bad repo" >&2
-    exit 1
-    ;;
-  *) echo '{}' ;;
-esac`)
+	gh := fakeAPI(t)
+	gh.AddRelease("good/repo", fakegh.Release{Tag: "v1.0.0", Assets: []fakegh.Asset{{Name: "good-1.0.0.tar.gz", Body: []byte("x")}}})
+	gh.Fail = func(r *http.Request) (int, string) {
+		if strings.HasPrefix(r.URL.Path, "/repos/bad/repo/") {
+			return 502, `{"message":"boom from bad repo"}`
+		}
+		return 0, ""
+	}
 
 	var buf bytes.Buffer
 	ui.SetOutput(&buf)
@@ -84,29 +77,9 @@ func TestRunInfo_MultiplePackagesEachGetFullBlock(t *testing.T) {
 		},
 	})
 
-	fakeGHBin(t, `case "$*" in
-  "release list -R o/a"*)
-    cat <<'EOF'
-[{"tagName":"v1.0.0","isPrerelease":false}]
-EOF
-    ;;
-  "release view -R o/a"*)
-    cat <<'EOF'
-{"tagName":"v1.0.0","assets":[{"name":"a-1.0.0.tar.gz","size":100,"url":"https://x/a"}]}
-EOF
-    ;;
-  "release list -R o/b"*)
-    cat <<'EOF'
-[{"tagName":"v2.0.0","isPrerelease":false}]
-EOF
-    ;;
-  "release view -R o/b"*)
-    cat <<'EOF'
-{"tagName":"v2.0.0","assets":[{"name":"b-2.0.0.tar.gz","size":200,"url":"https://x/b"}]}
-EOF
-    ;;
-  *) echo '{}' ;;
-esac`)
+	gh := fakeAPI(t)
+	gh.AddRelease("o/a", fakegh.Release{Tag: "v1.0.0", Assets: []fakegh.Asset{{Name: "a-1.0.0.tar.gz", Body: []byte("a")}}})
+	gh.AddRelease("o/b", fakegh.Release{Tag: "v2.0.0", Assets: []fakegh.Asset{{Name: "b-2.0.0.tar.gz", Body: []byte("b")}}})
 
 	var buf bytes.Buffer
 	ui.SetOutput(&buf)

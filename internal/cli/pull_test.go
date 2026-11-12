@@ -9,26 +9,16 @@ import (
 	"github.com/meop/golie/ui"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/faketool"
-	"github.com/meop/ghpm/internal/toolchain"
 )
 
-// TestRunRefresh_SaysEachThingOnALineOfItsOwn: refresh says what it did to
-// each vendored tool and each repo source on one line, labelled first, with no
+// TestRunRefresh_SaysEachThingOnALineOfItsOwn: pull says what it did to
+// the vendored wedge and each repo source on one line, labelled first, with no
 // blank line between them. A download says so on the line before, a repo
 // source's included, and a repo source's version is its file's git hash.
 func TestRunRefresh_SaysEachThingOnALineOfItsOwn(t *testing.T) {
 	withHome(t)
 	writeSettings(t, &config.Settings{RepoSources: []string{"github.com/meop/ghpm-config"}})
-	fakeGHBin(t, `case "$*" in
-  *"contents --jq"*) echo 0000000000000000000000000000000000000000 ;;
-  *"contents/repo.toml"*) printf '[fzf]\nuri = "github.com/junegunn/fzf"\n' ;;
-  *) exit 0 ;;
-esac`)
-	ghURL, _ := faketool.Release(t, "0.0.0", nil, "")
-	orig := toolchain.GhReleasesURL
-	toolchain.GhReleasesURL = ghURL
-	t.Cleanup(func() { toolchain.GhReleasesURL = orig })
+	fakeAPI(t).Files["meop/ghpm-config"] = map[string][]byte{"repo.toml": []byte("[fzf]\nuri = \"github.com/junegunn/fzf\"\n")}
 	serveWedgeRelease(t, "2.0.0", fakeMalletBody)
 
 	var buf bytes.Buffer
@@ -40,7 +30,6 @@ esac`)
 
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
 	want := []string{
-		"✓ vendor - gh: up to date [0.0.0]",
 		"vendor - wedge: asset fetching [",
 		"✓ vendor - wedge: installed [2.0.0]",
 		"repo - github.com/meop/ghpm-config: asset fetching [repo.toml]...",

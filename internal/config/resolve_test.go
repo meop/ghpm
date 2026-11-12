@@ -12,8 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/meop/ghpm/internal/faketool"
-	"github.com/meop/ghpm/internal/ghbin"
+	"github.com/meop/ghpm/internal/fakegh"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/golie/ui"
 )
@@ -36,18 +35,6 @@ func writeRepoTOML(t *testing.T, dir, content string) {
 	if err := os.WriteFile(filepath.Join(dir, "repo.toml"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// fakeGHBin stamps a fake `gh` script directly at ghpm's vendored gh path —
-// the only gh ghpm ever runs internally now. Callers must have already
-// isolated HOME (withHome) so this resolves to a test-owned path.
-func fakeGHBin(t *testing.T, script string) {
-	t.Helper()
-	vendored, err := ghbin.VendorPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	faketool.Write(t, vendored, script)
 }
 
 func writeConfigTOML(t *testing.T, s *Settings) {
@@ -118,13 +105,9 @@ func TestRefreshRepos_FetchesAllSourcesAndPreservesOrder(t *testing.T) {
 	a := "[pkg1]\nuri = \"github.com/o/pkg1\"\n"
 	b := "[pkg1]\nuri = \"github.com/o/pkg1\"\n[pkg2]\nuri = \"github.com/o/pkg2\"\n"
 
-	fakeGHBin(t, `case "$*" in
-  *"repos/o/a/contents --jq"*) echo `+gitBlobHash([]byte(a))+` ;;
-  *"repos/o/b/contents --jq"*) echo `+gitBlobHash([]byte(b))+` ;;
-  *"repos/o/a/contents/repo.toml"*) printf '`+a+`' ;;
-  *"repos/o/b/contents/repo.toml"*) printf '`+b+`' ;;
-  *) exit 1 ;;
-esac`)
+	gh := fakegh.New(t)
+	gh.Files["o/a"] = map[string][]byte{"repo.toml": []byte(a)}
+	gh.Files["o/b"] = map[string][]byte{"repo.toml": []byte(b)}
 
 	var fetched []string
 	var mu sync.Mutex
@@ -167,10 +150,8 @@ func TestRefreshRepos_ACurrentFileIsNotDownloaded(t *testing.T) {
 	}
 	writeRepoTOML(t, dir, body)
 
-	fakeGHBin(t, `case "$*" in
-  *"repos/o/a/contents --jq"*) echo `+gitBlobHash([]byte(body))+` ;;
-  *) exit 1 ;;
-esac`)
+	gh := fakegh.New(t)
+	gh.Files["o/a"] = map[string][]byte{"repo.toml": []byte(body)}
 
 	results, err := RefreshRepos(func(source, path string) { t.Errorf("fetched %s %s", source, path) })
 	if err != nil {
@@ -185,15 +166,8 @@ func TestRefreshRepos_PartialFailurePreservesOtherResults(t *testing.T) {
 	withHome(t)
 	writeConfigTOML(t, &Settings{RepoSources: []string{"github.com/o/good", "github.com/o/bad"}})
 
-	fakeGHBin(t, `case "$*" in
-  *"repos/o/good/contents --jq"*) echo 0000000000000000000000000000000000000000 ;;
-  *"repos/o/good/contents/repo.toml"*) printf '[pkg1]\nuri = "github.com/o/pkg1"\n' ;;
-  *"repos/o/bad/"*)
-    echo "not found" >&2
-    exit 1
-    ;;
-  *) exit 1 ;;
-esac`)
+	gh := fakegh.New(t)
+	gh.Files["o/good"] = map[string][]byte{"repo.toml": []byte("[pkg1]\nuri = \"github.com/o/pkg1\"\n")}
 
 	results, err := RefreshRepos(nil)
 	if err == nil {
@@ -423,18 +397,18 @@ func TestHits_HeldToTheTwoRules(t *testing.T) {
 // GitHub has plenty to say about but no repo is named is not found.
 func TestSearchGitHub_OffersOnlyExactNames(t *testing.T) {
 	withHome(t)
-	fakeGHBin(t, `case "$*" in
-  "search repos --limit 50 --match name --json fullName,description -- fzf")
-    echo '[{"fullName":"junegunn/fzf.vim","description":"fzf and vim"},{"fullName":"junegunn/fzf","description":"A command-line fuzzy finder"}]'
-    ;;
-  "search repos --limit 50 --match name --json fullName,description -- fuzzy")
-    echo '[{"fullName":"junegunn/fzf","description":"A command-line fuzzy finder"}]'
-    ;;
-  "search repos --limit 50 --match name,description --json fullName,description -- fuzzy")
-    echo '[{"fullName":"junegunn/fzf","description":"A command-line fuzzy finder"},{"fullName":"other/unfuzzy","description":""}]'
-    ;;
-  *) exit 1 ;;
-esac`)
+	fzf := fakegh.Hit{FullName: "junegunn/fzf", Description: "A command-line fuzzy finder"}
+	fakegh.New(t).Search = func(q string) []fakegh.Hit {
+		switch q {
+		case "fzf in:name":
+			return []fakegh.Hit{{FullName: "junegunn/fzf.vim", Description: "fzf and vim"}, fzf}
+		case "fuzzy in:name":
+			return []fakegh.Hit{fzf}
+		case "fuzzy in:name,description":
+			return []fakegh.Hit{fzf, {FullName: "other/unfuzzy"}}
+		}
+		return nil
+	}
 	var out bytes.Buffer
 	ui.SetOutput(&out)
 	t.Cleanup(func() { ui.SetOutput(os.Stdout) })

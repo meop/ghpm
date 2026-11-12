@@ -193,7 +193,7 @@ func TestExtractTag_NoLatestRelease(t *testing.T) {
 // real gap: the response's top-level "errors" array was decoded into
 // graphQLResponse.Errors but never read, so an item whose alias was missing
 // from "data" (a per-query GraphQL failure — bad repo name, missing scope,
-// server-side rate limit — while the overall gh CLI call still exits 0) fell
+// server-side rate limit — while the request itself still answers 200) fell
 // through to a generic "no data for %s" message. That not only threw away the
 // real reason but could hide a rate limit from gh.IsRateLimited's substring
 // check downstream, since the generic message never contains "rate limit".
@@ -201,7 +201,7 @@ func TestExtractTag_NoLatestRelease(t *testing.T) {
 // Source doesn't take the whole batch down — it fails on its own, and other
 // items are still queried and resolved normally.
 func TestExecuteBatch_InvalidSourceSkipped(t *testing.T) {
-	fakeGH(t, `echo '{"data":{"r1":{"latestRelease":{"tagName":"v1.0.0"}}}}'`)
+	fakeGraphQL(t, 200, `{"data":{"r1":{"latestRelease":{"tagName":"v1.0.0"}}}}`)
 
 	items := []BatchItem{
 		{Key: "bad", Source: "not-a-valid-source"},
@@ -223,11 +223,11 @@ func TestExecuteBatch_InvalidSourceSkipped(t *testing.T) {
 	}
 }
 
-// TestExecuteBatch_CommandFailure confirms a failure to run `gh` at all
-// (network error, gh not authenticated, ...) surfaces as every item's error,
-// not just a subset or a panic.
+// TestExecuteBatch_CommandFailure confirms a request that fails outright (a
+// server error, a refused token, ...) surfaces as every item's error, not just
+// a subset or a panic.
 func TestExecuteBatch_CommandFailure(t *testing.T) {
-	fakeGH(t, `echo "boom" >&2 && exit 1`)
+	fakeGraphQL(t, 502, "boom")
 
 	items := []BatchItem{
 		{Key: "one", Source: "github.com/owner/repo1"},
@@ -245,10 +245,10 @@ func TestExecuteBatch_CommandFailure(t *testing.T) {
 	}
 }
 
-// TestExecuteBatch_MalformedResponse confirms invalid JSON from `gh api
-// graphql` is reported per-item rather than panicking.
+// TestExecuteBatch_MalformedResponse confirms invalid JSON from GraphQL is
+// reported per-item rather than panicking.
 func TestExecuteBatch_MalformedResponse(t *testing.T) {
-	fakeGH(t, `echo 'not json'`)
+	fakeGraphQL(t, 200, `not json`)
 
 	items := []BatchItem{{Key: "fzf", Source: "github.com/owner/repo"}}
 	results := BatchLatestVersions(context.Background(), items, "")
@@ -266,7 +266,7 @@ func TestExecuteBatch_MalformedResponse(t *testing.T) {
 // top-level GraphQL errors to explain why (distinct from
 // TestBatchLatestVersions_SurfacesGraphQLError, which has errors to surface).
 func TestExecuteBatch_MissingDataNoErrors(t *testing.T) {
-	fakeGH(t, `echo '{"data":{}}'`)
+	fakeGraphQL(t, 200, `{"data":{}}`)
 
 	items := []BatchItem{{Key: "fzf", Source: "github.com/owner/repo"}}
 	results := BatchLatestVersions(context.Background(), items, "")
@@ -280,7 +280,7 @@ func TestExecuteBatch_MissingDataNoErrors(t *testing.T) {
 }
 
 func TestBatchLatestVersions_SurfacesGraphQLError(t *testing.T) {
-	fakeGH(t, `echo '{"data":{},"errors":[{"message":"Could not resolve to a Repository with the name owner/repo."}]}'`)
+	fakeGraphQL(t, 200, `{"data":{},"errors":[{"message":"Could not resolve to a Repository with the name owner/repo."}]}`)
 
 	items := []BatchItem{{Key: "fzf", Source: "github.com/owner/repo"}}
 	results := BatchLatestVersions(context.Background(), items, "")

@@ -13,17 +13,14 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/BurntSushi/toml"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/faketool"
+	"github.com/meop/ghpm/internal/fakegh"
 	"github.com/meop/ghpm/internal/gh"
-	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/golie/ui"
-	golievendored "github.com/meop/golie/vendored"
 )
 
 func writeSettings(t *testing.T, s *config.Settings) {
@@ -44,21 +41,11 @@ func writeSettings(t *testing.T, s *config.Settings) {
 	}
 }
 
-// fakeGHBin stamps a fake `gh` script directly at ghpm's vendored gh path —
-// the only gh ghpm ever runs internally now. Callers must have already
-// isolated HOME (withHome) so this resolves to a test-owned path.
-func fakeGHBin(t *testing.T, script string) {
+// fakeAPI stands up a fake GitHub for this test. Callers must have already
+// isolated HOME (withHome).
+func fakeAPI(t *testing.T) *fakegh.Server {
 	t.Helper()
-	vendored, err := ghbin.VendorPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	faketool.Write(t, vendored, script)
-	// with a version file, the fake is a gh ghbin.Ensure takes as installed,
-	// rather than fetching the real one over the network
-	if err := os.WriteFile(filepath.Join(filepath.Dir(vendored), golievendored.VersionFile), []byte("0.0.0\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	return fakegh.New(t)
 }
 
 func TestReservedShimNames_ExcludesOwner(t *testing.T) {
@@ -215,23 +202,6 @@ func TestInitCommand_WithLock(t *testing.T) {
 		t.Fatal("unlock should be set with Lock option")
 	}
 	ci.close()
-}
-
-func TestInitCommand_GHCheckFails(t *testing.T) {
-	withHome(t)
-	empty := t.TempDir()
-	t.Setenv("PATH", empty)
-	writeSettings(t, &config.Settings{})
-
-	// an already-expired context fails the vendor bootstrap's fetch without
-	// touching the network, deterministically simulating "offline"
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
-	defer cancel()
-
-	_, err := initCommand(ctx, cmdOptions{GH: true})
-	if err == nil {
-		t.Fatal("expected error when gh not found")
-	}
 }
 
 func TestInitCommand_ReposLoadFailure(t *testing.T) {

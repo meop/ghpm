@@ -4,10 +4,9 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -16,7 +15,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/meop/ghpm/internal/ghbin"
+	"github.com/meop/ghpm/internal/ghapi"
 	"github.com/meop/ghpm/internal/parallel"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/golie/manifest"
@@ -199,12 +198,20 @@ func fetchAndCacheRepos(source string, fetching func(source, path string)) (from
 	if data, err := os.ReadFile(path); err == nil {
 		have = gitBlobHash(data)
 	}
-	listed, err := ghAPI(fmt.Sprintf("repos/%s/contents", slug),
-		"--jq", fmt.Sprintf(`.[] | select(.path == %q) | .sha`, repoFile))
-	if err != nil {
+	ctx := context.Background()
+	var listed []struct {
+		Path string `json:"path"`
+		SHA  string `json:"sha"`
+	}
+	if err := ghapi.GetJSON(ctx, fmt.Sprintf("repos/%s/contents", slug), &listed); err != nil {
 		return short(have), short(have), err
 	}
-	latest := strings.TrimSpace(string(listed))
+	latest := ""
+	for _, e := range listed {
+		if e.Path == repoFile {
+			latest = e.SHA
+		}
+	}
 	if latest == "" {
 		return short(have), short(have), fmt.Errorf("no %s at the root of %s", repoFile, source)
 	}
@@ -214,8 +221,7 @@ func fetchAndCacheRepos(source string, fetching func(source, path string)) (from
 	if fetching != nil {
 		fetching(source, repoFile)
 	}
-	data, err := ghAPI(fmt.Sprintf("repos/%s/contents/%s", slug, repoFile),
-		"--header", "Accept: application/vnd.github.raw+json")
+	data, err := ghapi.GetRaw(ctx, fmt.Sprintf("repos/%s/contents/%s", slug, repoFile), "application/vnd.github.raw+json")
 	if err != nil {
 		return short(have), short(have), err
 	}
@@ -231,23 +237,6 @@ func fetchAndCacheRepos(source string, fetching func(source, path string)) (from
 		return short(have), short(have), err
 	}
 	return short(have), short(gitBlobHash(data)), nil
-}
-
-// ghAPI runs `gh api` with ghpm's gh, and gives back what it printed, or what
-// it said on stderr as the error.
-func ghAPI(args ...string) ([]byte, error) {
-	cmd, err := ghbin.Command(append([]string{"api"}, args...)...)
-	if err != nil {
-		return nil, err
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("gh api: %s", strings.TrimSpace(string(ee.Stderr)))
-		}
-		return nil, err
-	}
-	return out, nil
 }
 
 // gitBlobHash is the hash git, and so GitHub, gives a file with this content.
@@ -375,23 +364,24 @@ const (
 	searchShow  = 10
 )
 
-// searchRepos runs `gh search repos` for term, looked for in the given fields
-// of a repository (name, description). It is the deeper search, the one past
-// the registry: GitHub is asked only about a name nothing in repo.toml
-// answered to.
+// searchRepos asks GitHub's repository search for term, looked for in the
+// given fields of a repository (name, description). It is the deeper search,
+// the one past the registry: GitHub is asked only about a name nothing in
+// repo.toml answered to.
 func searchRepos(term, in string) ([]RepoHit, error) {
-	cmd, err := ghbin.Command("search", "repos", "--limit", strconv.Itoa(searchFetch),
-		"--match", in, "--json", "fullName,description", "--", term)
-	if err != nil {
-		return nil, err
+	var res struct {
+		Items []struct {
+			FullName    string `json:"full_name"`
+			Description string `json:"description"`
+		} `json:"items"`
 	}
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("gh search failed — is gh authenticated?")
+	q := url.Values{"q": {term + " in:" + in}, "per_page": {strconv.Itoa(searchFetch)}}
+	if err := ghapi.GetJSON(context.Background(), "search/repositories?"+q.Encode(), &res); err != nil {
+		return nil, fmt.Errorf("searching GitHub: %w", err)
 	}
-	var hits []RepoHit
-	if err := json.Unmarshal(out, &hits); err != nil {
-		return nil, fmt.Errorf("gh search failed: %w", err)
+	hits := make([]RepoHit, len(res.Items))
+	for i, it := range res.Items {
+		hits[i] = RepoHit{FullName: it.FullName, Descr: it.Description}
 	}
 	return hits, nil
 }

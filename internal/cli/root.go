@@ -181,6 +181,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 	root.SetHelpCommand(&cobra.Command{Hidden: true})
 
 	root.AddCommand(
+		newAuthCmd(),
 		newTidyCmd(),
 		newDoctorCmd(),
 		newDownloadCmd(),

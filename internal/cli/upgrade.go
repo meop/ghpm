@@ -16,9 +16,8 @@ import (
 )
 
 // self is ghpm as its own release page publishes it. Everything upgrade asks
-// of GitHub is a plain page or release download — not the API and not gh —
-// so ghpm can upgrade itself before, or without, its vendored gh being
-// authenticated. The release's SHA256SUMS is checked against its signature by
+// of GitHub is a plain page or release download, not the API, so ghpm can
+// upgrade itself without a token. The release's SHA256SUMS is checked against its signature by
 // the meop release key before its archive is. See golie's upgrade package.
 var self = upgrade.Self{Name: binGhpm, ReleasesURL: "https://github.com/meop/ghpm/releases/", Key: sig.ReleaseKey}
 
@@ -47,7 +46,7 @@ func newUpgradeCmd() *cobra.Command {
 }
 
 // runUpgrade upgrades ghpm and nothing else. The tools ghpm vendors for its
-// own use (gh, wedge's mallet) are deliberately not components here: they are
+// own use (wedge's mallet) are deliberately not components here: they are
 // pinned and synced to that pin at runtime, so "upgrade" means exactly what a
 // user reading it expects — upgrade ghpm — rather than asking about internals
 // they never chose to install. The release's archive is always checked

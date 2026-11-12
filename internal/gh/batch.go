@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/meop/ghpm/internal/config"
+	"github.com/meop/ghpm/internal/ghapi"
 )
 
 const batchSize = 50
@@ -30,12 +32,10 @@ type graphQLResponse struct {
 	} `json:"errors"`
 }
 
-// errorMessages joins the response's top-level GraphQL errors, if any. `gh api
-// graphql` exits 0 for a request that reached the server successfully even
-// when individual aliased queries in the batch failed (e.g. a renamed/deleted
-// repo, a scope issue, or a rate-limit message from the API itself) — those
-// failures show up here, not as a runCmd error, and are otherwise silently
-// available-but-unread on the parsed response.
+// errorMessages joins the response's top-level GraphQL errors, if any. GitHub
+// answers 200 for a batch even when some of its aliased queries failed (a
+// renamed or deleted repo, a scope issue, a rate limit): those failures are
+// here, beside the data of the rest.
 func (resp graphQLResponse) errorMessages() string {
 	msgs := make([]string, 0, len(resp.Errors))
 	for _, e := range resp.Errors {
@@ -95,12 +95,8 @@ func executeBatch(ctx context.Context, items []BatchItem, cacheTTL string) []Bat
 
 	query := buildBatchQuery(items, aliases, ownerMap)
 
-	args := []string{"api", "graphql", "-f", "query=" + query}
-	if cacheTTL != "" {
-		args = append(args, "--cache", cacheTTL)
-	}
-
-	out, err := runCmd(ctx, "gh", args...)
+	ttl, _ := time.ParseDuration(cacheTTL)
+	out, err := ghapi.GraphQL(ctx, query, ttl)
 	if err != nil {
 		for i := range items {
 			if results[i].Err != nil {

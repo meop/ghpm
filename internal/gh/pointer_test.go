@@ -2,7 +2,11 @@ package gh
 
 import (
 	"context"
+	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/meop/ghpm/internal/fakegh"
 )
 
 func TestResolvePointerRelease_NoPointerAssetPassesThrough(t *testing.T) {
@@ -21,30 +25,9 @@ func TestResolvePointerRelease_NoPointerAssetPassesThrough(t *testing.T) {
 // its Assets replaced with the b1234 release's real binaries, while
 // TagName stays v0.2.0.
 func TestGetLatestRelease_PointerHop(t *testing.T) {
-	fakeGH(t, `
-		if [ "$1 $2" = "release view" ]; then
-			if [ "$3" = "-R" ]; then
-				echo '{"tagName":"v0.2.0","assets":[{"name":"nightly-tag.txt","size":10,"url":"x"}]}'
-				exit 0
-			fi
-			if [ "$3" = "b1234" ]; then
-				echo '{"tagName":"b1234","assets":[{"name":"llama-b1234-bin-linux-x64.tar.gz","size":999,"url":"y"}]}'
-				exit 0
-			fi
-		fi
-		if [ "$1 $2" = "release download" ]; then
-			dest=""
-			prev=""
-			for a in "$@"; do
-				if [ "$prev" = "-D" ]; then dest="$a"; fi
-				prev="$a"
-			done
-			printf 'b1234' > "$dest/nightly-tag.txt"
-			exit 0
-		fi
-		echo "unexpected gh invocation: $*" >&2
-		exit 1
-	`)
+	s := fakeAPI(t)
+	s.AddRelease("ggml-org/llama.cpp", fakegh.Release{Tag: "b1234", Prerelease: true, Assets: []fakegh.Asset{{Name: "llama-b1234-bin-linux-x64.tar.gz", Body: []byte("bin")}}})
+	s.AddRelease("ggml-org/llama.cpp", fakegh.Release{Tag: "v0.2.0", Assets: []fakegh.Asset{{Name: "nightly-tag.txt", Body: []byte("b1234\n")}}})
 
 	rel, err := GetLatestRelease(context.Background(), "ggml-org", "llama.cpp")
 	if err != nil {
@@ -62,20 +45,16 @@ func TestGetLatestRelease_PointerHop(t *testing.T) {
 }
 
 func TestGetLatestRelease_PointerHop_DownloadFails(t *testing.T) {
-	fakeGH(t, `
-		if [ "$1 $2" = "release view" ] && [ "$3" = "-R" ]; then
-			echo '{"tagName":"v0.2.0","assets":[{"name":"nightly-tag.txt","size":10,"url":"x"}]}'
-			exit 0
-		fi
-		if [ "$1 $2" = "release download" ]; then
-			echo "network error" >&2
-			exit 1
-		fi
-		exit 1
-	`)
+	s := fakeAPI(t)
+	s.AddRelease("ggml-org/llama.cpp", fakegh.Release{Tag: "v0.2.0", Assets: []fakegh.Asset{{Name: "nightly-tag.txt", Body: []byte("b1234")}}})
+	s.Fail = func(r *http.Request) (int, string) {
+		if strings.Contains(r.URL.Path, "/releases/assets/") {
+			return 502, "network error"
+		}
+		return 0, ""
+	}
 
-	_, err := GetLatestRelease(context.Background(), "ggml-org", "llama.cpp")
-	if err == nil {
+	if _, err := GetLatestRelease(context.Background(), "ggml-org", "llama.cpp"); err == nil {
 		t.Fatal("expected an error when the pointer asset can't be fetched")
 	}
 }

@@ -22,7 +22,9 @@ func TestRunOutdated_ShowsUriTypeAndTarget(t *testing.T) {
 			"fzf": {Version: "0.58.0", Pin: "latest", Assets: []string{"fzf-0.58.0-linux_amd64.tar.gz"}, Bin: map[string]string{"fzf": "bin/fzf"}},
 		},
 	})
-	fakeGHBin(t, `echo '{"data":{"r0":{"latestRelease":{"tagName":"v0.60.0"}}}}'`)
+	fakeAPI(t).GraphQL = func(string) (int, string) {
+		return 200, `{"data":{"r0":{"latestRelease":{"tagName":"v0.60.0"}}}}`
+	}
 
 	var buf bytes.Buffer
 	ui.SetOutput(&buf)

@@ -2,21 +2,21 @@ package gh
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
-	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/ghbin"
+	"github.com/meop/ghpm/internal/ghapi"
 	"github.com/meop/golie/vers"
 )
 
 func IsRateLimited(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "rate limit")
+	return errors.Is(err, ErrRateLimited) || err != nil && strings.Contains(strings.ToLower(err.Error()), "rate limit")
 }
 
 type Client interface {
@@ -28,6 +28,7 @@ type Client interface {
 	BatchLatestVersions(ctx context.Context, items []BatchItem, cacheTTL string) []BatchResult
 }
 
+// CLI is the Client that asks GitHub's API.
 type CLI struct{}
 
 func NewCLI() *CLI { return &CLI{} }
@@ -57,6 +58,7 @@ func (c *CLI) BatchLatestVersions(ctx context.Context, items []BatchItem, cacheT
 }
 
 type Asset struct {
+	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	Size   int64  `json:"size"`
 	URL    string `json:"url"`
@@ -102,16 +104,6 @@ func sanitizeRelease(rel Release) (Release, error) {
 	return rel, nil
 }
 
-// CheckInstalled ensures ghpm has a usable gh, vendoring one if there is
-// none yet; fetching is told the archive just before that download.
-func CheckInstalled(ctx context.Context, fetching func(archive string)) error {
-	if err := ghbin.Ensure(ctx, fetching); err != nil {
-		return err
-	}
-	_, err := ghbin.Find()
-	return err
-}
-
 func SplitSource(source string) (string, string, error) {
 	parts := strings.SplitN(source, "/", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
@@ -125,34 +117,61 @@ func ListReleases(ctx context.Context, owner, repo string) ([]Release, error) {
 }
 
 func listReleases(ctx context.Context, owner, repo string, limit int) ([]Release, error) {
-	out, err := runCmd(ctx, "gh", "release", "list",
-		"-R", owner+"/"+repo,
-		"--json", "tagName,isPrerelease",
-		"--limit", fmt.Sprint(limit),
-	)
-	if err != nil {
-		return nil, err
-	}
 	var releases []Release
-	if err := json.Unmarshal(out, &releases); err != nil {
-		return nil, fmt.Errorf("parsing releases: %w", err)
+	for page := 1; len(releases) < limit; page++ {
+		var got []restRelease
+		path := fmt.Sprintf("repos/%s/%s/releases?per_page=%d&page=%d", owner, repo, perPage, page)
+		if err := ghapi.GetJSON(ctx, path, &got); err != nil {
+			return nil, err
+		}
+		for _, r := range got {
+			if r.Draft {
+				continue
+			}
+			releases = append(releases, Release{TagName: r.TagName, IsPrerelease: r.Prerelease})
+		}
+		if len(got) < perPage {
+			break
+		}
+	}
+	if len(releases) > limit {
+		releases = releases[:limit]
 	}
 	return releases, nil
 }
 
-func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) {
-	out, err := runCmd(ctx, "gh", "release", "view",
-		"-R", owner+"/"+repo,
-		"--json", "tagName,assets",
-	)
-	if err != nil {
+// perPage is the most releases GitHub lists in one page
+const perPage = 100
+
+// restRelease is a release as GitHub's REST API spells it
+type restRelease struct {
+	TagName    string `json:"tag_name"`
+	Prerelease bool   `json:"prerelease"`
+	Draft      bool   `json:"draft"`
+	Assets     []struct {
+		ID                 int64  `json:"id"`
+		Name               string `json:"name"`
+		Size               int64  `json:"size"`
+		Digest             string `json:"digest"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+// fetchRelease is the release at path (latest, or tags/<tag>), sanitized
+func fetchRelease(ctx context.Context, owner, repo, which string) (Release, error) {
+	var r restRelease
+	if err := ghapi.GetJSON(ctx, fmt.Sprintf("repos/%s/%s/releases/%s", owner, repo, which), &r); err != nil {
 		return Release{}, err
 	}
-	var rel Release
-	if err := json.Unmarshal(out, &rel); err != nil {
-		return Release{}, fmt.Errorf("parsing release: %w", err)
+	rel := Release{TagName: r.TagName, IsPrerelease: r.Prerelease}
+	for _, a := range r.Assets {
+		rel.Assets = append(rel.Assets, Asset{ID: a.ID, Name: a.Name, Size: a.Size, URL: a.BrowserDownloadURL, Digest: a.Digest})
 	}
-	rel, err = sanitizeRelease(rel)
+	return sanitizeRelease(rel)
+}
+
+func GetLatestRelease(ctx context.Context, owner, repo string) (Release, error) {
+	rel, err := fetchRelease(ctx, owner, repo, "latest")
 	if err != nil {
 		return Release{}, err
 	}
@@ -238,17 +257,51 @@ func FindLatestMatching(ctx context.Context, owner, repo string, c config.Constr
 	return getReleaseView(ctx, owner, repo, bestTag)
 }
 
+// DownloadAsset writes every asset of tag's release whose name matches the
+// glob pattern into dest, each replacing what is there by rename. A pattern no
+// asset matches is an error.
 func DownloadAsset(ctx context.Context, owner, repo, tag, pattern, dest string) error {
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}
-	_, err := runCmd(ctx, "gh", "release", "download", tag,
-		"-R", owner+"/"+repo,
-		"-p", pattern,
-		"-D", dest,
-		"--clobber",
-	)
-	return err
+	rel, err := viewRelease(ctx, owner, repo, tag)
+	if err != nil {
+		return err
+	}
+	matched := 0
+	for _, a := range rel.Assets {
+		if ok, _ := path.Match(pattern, a.Name); !ok {
+			continue
+		}
+		matched++
+		if err := downloadTo(ctx, fmt.Sprintf("repos/%s/%s/releases/assets/%d", owner, repo, a.ID), filepath.Join(dest, a.Name)); err != nil {
+			return fmt.Errorf("%s: %w", a.Name, err)
+		}
+	}
+	if matched == 0 {
+		return fmt.Errorf("release %s: no asset matches %q", tag, pattern)
+	}
+	return nil
+}
+
+func downloadTo(ctx context.Context, apiPath, file string) error {
+	tmp, err := os.CreateTemp(filepath.Dir(file), "."+filepath.Base(file)+".*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if err := ghapi.Download(ctx, apiPath, tmp); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	// CreateTemp makes it its owner's alone; a download is anyone's to read
+	if err := os.Chmod(tmp.Name(), 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), file)
 }
 
 func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, error) {
@@ -263,60 +316,5 @@ func getReleaseView(ctx context.Context, owner, repo, tag string) (Release, erro
 // resolution — the fetch a hop itself uses to reach the release it points at,
 // so following a pointer doesn't loop back through resolvePointerRelease.
 func viewRelease(ctx context.Context, owner, repo, tag string) (Release, error) {
-	out, err := runCmd(ctx, "gh", "release", "view", tag,
-		"-R", owner+"/"+repo,
-		"--json", "tagName,assets",
-	)
-	if err != nil {
-		return Release{}, err
-	}
-	var rel Release
-	if err := json.Unmarshal(out, &rel); err != nil {
-		return Release{}, fmt.Errorf("parsing release: %w", err)
-	}
-	return sanitizeRelease(rel)
-}
-
-// runCmd retries exactly once on an auth failure from the vendored gh: it
-// re-prompts for a token (ghbin.ReAuth, interactive only) and, if that
-// succeeds, runs the exact same command again rather than leaving one dead
-// credential to fail every command after it too.
-func runCmd(ctx context.Context, name string, args ...string) ([]byte, error) {
-	out, err := runCmdOnce(ctx, name, args...)
-	if err == nil || name != "gh" || !errors.Is(err, ErrAuthFailed) {
-		return out, err
-	}
-	if reauthErr := ghbin.ReAuth(ctx); reauthErr != nil {
-		return nil, err
-	}
-	return runCmdOnce(ctx, name, args...)
-}
-
-func runCmdOnce(ctx context.Context, name string, args ...string) ([]byte, error) {
-	var cmd *exec.Cmd
-	if name == "gh" {
-		c, err := ghbin.Command(args...)
-		if err != nil {
-			return nil, err
-		}
-		cmd = exec.CommandContext(ctx, c.Path, c.Args[1:]...)
-		cmd.Env = c.Env
-	} else {
-		cmd = exec.CommandContext(ctx, name, args...)
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			stderr := strings.TrimSpace(string(ee.Stderr))
-			if strings.Contains(strings.ToLower(stderr), "rate limit") {
-				return nil, fmt.Errorf("%w: %s", ErrRateLimited, stderr)
-			}
-			if isAuthError(stderr) {
-				return nil, fmt.Errorf("%w: %s", ErrAuthFailed, stderr)
-			}
-			return nil, fmt.Errorf("%s: %s", name, stderr)
-		}
-		return nil, err
-	}
-	return out, nil
+	return fetchRelease(ctx, owner, repo, "tags/"+url.PathEscape(tag))
 }

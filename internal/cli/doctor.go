@@ -4,16 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/spf13/cobra"
 
 	"github.com/meop/ghpm/internal/config"
-	"github.com/meop/ghpm/internal/ghbin"
 	"github.com/meop/ghpm/internal/store"
 	"github.com/meop/golie/doctor"
 	"github.com/meop/golie/ui"
@@ -50,42 +47,10 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		pass("lock", "no concurrent process detected")
 	}
 
-	ghPath, ghErr := exec.LookPath("gh")
-	if ghErr != nil {
-		fail("gh", "not found")
+	if login, src, err := authStatus(cmd.Context()); err != nil {
+		fail("github", err.Error())
 	} else {
-		pass("gh", "present — "+ghPath)
-		out, authErr := exec.Command("gh", "auth", "status").CombinedOutput()
-		if authErr == nil {
-			pass("gh", "authenticated")
-		} else {
-			fail("gh", authStatusFailureDetail(out))
-		}
-	}
-
-	// ghpm never runs the system gh above — only its own vendored copy (see
-	// ghbin.Find) — so that copy's presence and auth are what actually
-	// determines whether commands needing gh will work.
-	if dir, r, err := ghbin.Release(); err != nil {
-		fail(vendored.Label("gh"), err.Error())
-	} else {
-		doctor.Vendored("gh", r, dir, "ghpm pull")
-		if r.Installed(dir) != "" {
-			vendoredGh, _ := ghbin.VendorPath()
-			cfgDir, cfgErr := ghbin.ConfigDir()
-			if cfgErr != nil {
-				fail(vendored.Label("gh"), cfgErr.Error())
-			} else {
-				cmd := exec.Command(vendoredGh, "auth", "status")
-				cmd.Env = append(os.Environ(), "GH_CONFIG_DIR="+cfgDir)
-				out, authErr := cmd.CombinedOutput()
-				if authErr == nil {
-					pass(vendored.Label("gh"), "authenticated")
-				} else {
-					fail(vendored.Label("gh"), authStatusFailureDetail(out))
-				}
-			}
-		}
+		pass("github", fmt.Sprintf("logged in as %s — the token from %s", login, src))
 	}
 	if dir, r, err := wedgeRelease(); err != nil {
 		fail(vendored.Label("wedge"), err.Error())
@@ -201,11 +166,4 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-func authStatusFailureDetail(out []byte) string {
-	if lines := strings.Split(string(out), "\n"); len(lines) > 0 && strings.TrimSpace(lines[0]) != "" {
-		return strings.TrimSpace(lines[0])
-	}
-	return "not authenticated"
 }

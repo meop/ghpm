@@ -89,6 +89,19 @@ func ghpmSubDir(mkdir bool, elems ...string) (string, error) {
 	return dir, nil
 }
 
+// TokenFile is where `ghpm auth login` keeps ghpm's GitHub token, readable
+// by its owner alone.
+func TokenFile() (string, error) {
+	base, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "token"), nil
+}
+
+// HTTPCacheDir holds the GitHub API answers ghpm keeps for its cache_ttl.
+func HTTPCacheDir() (string, error) { return ghpmSubDir(false, "cache") }
+
 // BinDir holds ghpm itself and the shims it stamps for packages — everything
 // meant to be on the user's PATH.
 func BinDir() (string, error) {
@@ -112,8 +125,8 @@ func VendorDir() (string, error) {
 }
 
 // ShimDir holds wedge's own mallet stamper (and whatever else its release
-// ships), alongside gh under vendor — the other tool ghpm needs to work
-// rather than one it installs for you.
+// ships) under vendor: a tool ghpm needs to work rather than one it installs
+// for you.
 func ShimDir() (string, error) {
 	l, err := Layout()
 	if err != nil {
