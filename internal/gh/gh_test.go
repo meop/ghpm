@@ -304,6 +304,18 @@ func TestFindLatestMatching(t *testing.T) {
 	}
 }
 
+func TestFindLatestMatching_SkipsAPrereleaseNameGitHubDoesNotFlag(t *testing.T) {
+	fakeReleases(t, "v1.4.0-rc.1", "v1.3.0", "v1.2.0")
+	c, _ := config.ParseConstraint("1")
+	rel, err := FindLatestMatching(context.Background(), "owner", "repo", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.TagName != "v1.3.0" {
+		t.Errorf("got %s, want v1.3.0: a pin takes no pre-release, flagged or only named", rel.TagName)
+	}
+}
+
 func TestFindLatestMatching_NoMatch(t *testing.T) {
 	fakeGH(t, `echo '[{"tagName":"v1.9.0","isPrerelease":false}]'`)
 

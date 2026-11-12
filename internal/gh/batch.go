@@ -236,8 +236,5 @@ func extractTag(rf releaseField, pin config.Constraint) (string, error) {
 // tagPrefix is what a tag carries before its version: "v", "bun-v", "zcode-cli-v", or nothing.
 func tagPrefix(tag string) string { return strings.TrimSuffix(tag, config.NormalizeVersion(tag)) }
 
-// isPrereleaseName reports whether a tag looks like a pre-release.
-// Standard semver uses a hyphen separator for pre-release identifiers (e.g. v1.0.0-rc.1).
-func isPrereleaseName(tag string) bool {
-	return strings.Contains(config.NormalizeVersion(tag), "-")
-}
+// isPrereleaseName reports whether a tag names a pre-release (v1.0.0-rc.1), whether or not GitHub flags it as one.
+func isPrereleaseName(tag string) bool { return config.IsPrerelease(tag) }
