@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -61,12 +63,15 @@ func runTidy(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	b1 := cleanBrokenInstalls(cfg, manifest, releaseDir)
-	b2 := cleanOrphanedBinShims(cfg, manifest)
-	b3 := cleanOrphanedFonts(cfg, manifest, releaseDir)
-	b4 := cleanOrphanedExtracts(cfg, manifest)
-	b5 := cleanOrphanedReleases(cfg, releaseDir, manifest)
-	if !b1 && !b2 && !b3 && !b4 && !b5 {
+	tidied := []bool{
+		cleanBrokenInstalls(cfg, manifest, releaseDir),
+		cleanOrphanedBinShims(cfg, manifest),
+		cleanOrphanedFonts(cfg, manifest, releaseDir),
+		cleanOrphanedExtracts(cfg, manifest),
+		cleanOrphanedReleases(cfg, releaseDir, manifest),
+		cleanStaleHTTPCache(cfg),
+	}
+	if !slices.Contains(tidied, true) {
 		print("nothing to tidy")
 	}
 	return nil
@@ -368,6 +373,63 @@ func cleanOrphanedReleases(cfg *config.Settings, releaseDir string, manifest *co
 	tidy.PruneEmptyDirs(releaseDir)
 	if removed > 0 {
 		printPass(cfg, "removed %d orphaned download(s)", removed)
+	}
+	return true
+}
+
+// cleanStaleHTTPCache removes GitHub API answers in cache/ older than the
+// cache ttl.
+func cleanStaleHTTPCache(cfg *config.Settings) bool {
+	cacheDir, err := store.HTTPCacheDir()
+	if err != nil {
+		return false
+	}
+	ttl, err := time.ParseDuration(cfg.CacheTTL)
+	if err != nil || ttl <= 0 {
+		return false
+	}
+	stale := time.Now().Add(-ttl)
+
+	var paths []string
+	_ = filepath.WalkDir(cacheDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if info.ModTime().Before(stale) {
+			paths = append(paths, p)
+		}
+		return nil
+	})
+
+	if len(paths) == 0 {
+		return false
+	}
+
+	printTable([]string{"cached api answer"}, [][]string{{fmt.Sprintf("%d older than %s", len(paths), cfg.CacheTTL)}}, nil)
+
+	if dryRun {
+		return dryRunBail()
+	}
+
+	if !promptConfirm(fmt.Sprintf("remove %d stale api answer(s)", len(paths))) {
+		return true
+	}
+
+	removed := 0
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil {
+			printFail(cfg, "%s: %v", p, err)
+			continue
+		}
+		removed++
+	}
+	tidy.PruneEmptyDirs(cacheDir)
+	if removed > 0 {
+		printPass(cfg, "removed %d stale api answer(s)", removed)
 	}
 	return true
 }

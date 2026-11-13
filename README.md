@@ -60,7 +60,7 @@ ghpm download fzf@0.60    # ...of the newest release a pin allows, as add would 
 ghpm download --path /tmp fzf # download release asset to a specific directory
 
 ghpm remove fzf           # remove package
-ghpm tidy                 # remove unused cached assets and orphaned package dirs
+ghpm tidy                 # remove unused cached assets, stale api answers and orphaned package dirs
 ghpm tidy --all           # remove all cached assets
 
 ghpm upgrade              # upgrade ghpm itself
