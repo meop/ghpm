@@ -20,7 +20,7 @@ import (
 func newSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "sync [name...]",
-		Aliases: []string{"s", "sy", "up", "update"},
+		Aliases: []string{"s", "sy", "up", "upd", "update"},
 		Short:   "Sync packages to their latest releases",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSync(cmd, args, false)
@@ -37,7 +37,7 @@ func newSyncCmd() *cobra.Command {
 func newRenewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "renew [name...]",
-		Aliases: []string{"rn"},
+		Aliases: []string{"ren"},
 		Short:   "Renew packages: a fresh copy of the release each already has",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSync(cmd, args, true)

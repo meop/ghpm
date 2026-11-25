@@ -14,7 +14,7 @@ import (
 func newPullCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "pull",
-		Aliases: []string{"p", "refresh", "rf"},
+		Aliases: []string{"p", "pu", "refresh", "ref"},
 		Short:   "Pull repo sources, and the wedge ghpm uses, to their latest",
 		Args:    cobra.NoArgs,
 		RunE:    runPull,

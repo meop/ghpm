@@ -38,7 +38,7 @@ func installedSelf() (upgrade.Self, error) {
 func newUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "upgrade",
-		Aliases: []string{"ug", "upg"},
+		Aliases: []string{"upg"},
 		Short:   "Upgrade ghpm to its latest release",
 		Args:    cobra.NoArgs,
 		RunE:    runUpgrade,
